@@ -2,9 +2,12 @@
 using System.Collections.Generic;
 using System.Text;
 
-namespace RogueLike.App.States
+namespace RogueLike.App.States;
+
+using RogueLike.App;
+
+public interface IGameState
 {
-    internal class IGameState
-    {
-    }
+    string Name { get; }
+    void Update(GameContext ctx);
 }

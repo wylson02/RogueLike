@@ -4,7 +4,12 @@ using System.Text;
 
 namespace RogueLike.Domain
 {
-    internal class Direction
+    public enum Direction
     {
+        None,
+        Up,
+        Down,
+        Left,
+        Right
     }
 }

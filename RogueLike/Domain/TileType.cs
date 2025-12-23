@@ -4,7 +4,10 @@ using System.Text;
 
 namespace RogueLike.Domain
 {
-    internal class TileType
+    public enum TileType
     {
+        Floor,
+        Wall,
+        Exit
     }
 }

@@ -2,9 +2,16 @@
 using System.Collections.Generic;
 using System.Text;
 
-namespace RogueLike.Domain.Entities
+namespace RogueLike.Domain.Entities;
+
+using RogueLike.Domain;
+
+public sealed class Player : Character
 {
-    internal class Player
+    public override char Glyph => '@';
+
+    public Player(Position pos)
+        : base(pos, hp: 30, attack: 5)
     {
     }
 }
