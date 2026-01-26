@@ -35,6 +35,22 @@ public static class ConsoleRenderer
         }
 
         Console.WriteLine($"State: {stateName} | PV: {ctx.Player.Hp}/{ctx.Player.MaxHp} | ATK: {ctx.Player.Attack}");
-        Console.WriteLine("Flèches ou ZQSD pour bouger.");
+        DrawTimeBar(ctx);
+        Console.WriteLine("Flèches ou ZQSD pour bouger."); 
+    }
+
+    private static void DrawTimeBar(GameContext ctx)
+    {
+        bool night = ctx.Time.IsNight;
+        string icon = night ? "🌙" : "☀️";
+        string phase = night ? "NUIT" : "JOUR";
+
+        int barLen = 24;
+        int filled = (int)Math.Round(ctx.Time.Progress01 * barLen);
+        filled = Math.Clamp(filled, 0, barLen);
+
+        string bar = "[" + new string('=', filled) + new string(' ', barLen - filled) + "]";
+
+        Console.WriteLine($"{icon} Temps: {phase} {bar}  {ctx.Time.TickInPhase}/{ctx.Time.PhaseLength}  (t={ctx.Time.Tick})");
     }
 }

@@ -31,4 +31,10 @@ public abstract class Character : Entity
     {
         Hp = Math.Min(MaxHp, Hp + Math.Max(0, amount));
     }
+
+    public void ModifyAttack(int delta)
+    {
+        Attack = Math.Max(1, Attack + delta);
+    }
+
 }
