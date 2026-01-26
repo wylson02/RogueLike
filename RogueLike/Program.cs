@@ -16,8 +16,8 @@ var ctx = new GameContext(
 );
 
 // Monstres
-ctx.Monsters.Add(new Monster("Slime", new Position(10, 3), 6, 2, new RandomWalkStrategy()));
-ctx.Monsters.Add(new Monster("Rat", new Position(14, 6), 5, 2, new RandomWalkStrategy()));
+ctx.Monsters.Add(new Monster("Slime", new Position(10, 3), 6, 5, new AggroWithinRangeStrategy(range: 3)));
+ctx.Monsters.Add(new Monster("Rat", new Position(14, 6), 5, 2, new AggroWithinRangeStrategy(range: 3)));
 
 while (true)
 {
