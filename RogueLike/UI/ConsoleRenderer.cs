@@ -1,8 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
-
-namespace RogueLike.UI;
+﻿namespace RogueLike.UI;
 
 using RogueLike.App;
 using RogueLike.Domain;
@@ -27,6 +23,9 @@ public static class ConsoleRenderer
                     _ => '.'
                 };
 
+                if (ctx.MonsterAt(p) is not null)
+                    c = 'M';
+
                 if (ctx.Player.Pos == p)
                     c = '@';
 
@@ -35,10 +34,7 @@ public static class ConsoleRenderer
             Console.WriteLine();
         }
 
-        Console.WriteLine(
-            $"State: {stateName} | PV: {ctx.Player.Hp}/{ctx.Player.MaxHp} | ATK: {ctx.Player.Attack}"
-        );
+        Console.WriteLine($"State: {stateName} | PV: {ctx.Player.Hp}/{ctx.Player.MaxHp} | ATK: {ctx.Player.Attack}");
         Console.WriteLine("Flèches ou ZQSD pour bouger.");
     }
 }
-
