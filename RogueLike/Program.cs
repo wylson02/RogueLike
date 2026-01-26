@@ -1,20 +1,28 @@
 ﻿using RogueLike.App;
 using RogueLike.App.States;
 using RogueLike.Domain;
+using RogueLike.Domain.AI;
 using RogueLike.Domain.Entities;
 using RogueLike.UI;
 
 Console.Clear();
 
 GameMap map = BuildMap1();
-var ctx = new GameContext(map, new Player(new Position(1, 1)));
 
-IGameState state = new ExplorationState();
+var ctx = new GameContext(
+    map,
+    new Player(new Position(1, 1)),
+    new ExplorationState()
+);
+
+// Monstres
+ctx.Monsters.Add(new Monster("Slime", new Position(10, 3), 6, 2, new RandomWalkStrategy()));
+ctx.Monsters.Add(new Monster("Rat", new Position(14, 6), 5, 2, new RandomWalkStrategy()));
 
 while (true)
 {
-    ConsoleRenderer.Draw(ctx, state.Name);
-    state.Update(ctx);
+    ConsoleRenderer.Draw(ctx, ctx.State.Name);
+    ctx.State.Update(ctx);
 }
 
 static GameMap BuildMap1()
