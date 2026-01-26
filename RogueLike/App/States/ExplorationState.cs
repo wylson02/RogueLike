@@ -26,6 +26,7 @@ public sealed class ExplorationState : IGameState
         }
 
         ctx.Player.SetPosition(next);
+        ctx.AdvanceTimeAfterPlayerMove();
         MonstersTurn(ctx);
     }
 
