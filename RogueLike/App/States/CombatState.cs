@@ -1,6 +1,8 @@
 ﻿namespace RogueLike.App.States;
 
 using RogueLike.App;
+using RogueLike.App.Combat;
+using RogueLike.App.Combat.Actions;
 using RogueLike.Domain.Entities;
 using RogueLike.UI;
 
@@ -9,16 +11,16 @@ public sealed class CombatState : IGameState
     public string Name => "Combat";
 
     private readonly Monster _enemy;
-    private readonly List<string> _log = new();
+    private CombatContext? _combat;
     private bool _entered;
 
-    private int _healsLeft = 2;
-    private int _healAmount = 8;
-
-    private int _dodgeTurnsLeft = 0;
-    private int _dodgeChancePercent = 40;
-
-    private int _fleeChancePercent = 55;
+    private readonly List<ICombatAction> _actions = new()
+    {
+        new AttackAction(),
+        new HealAction(),
+        new DodgeAction(),
+        new FleeAction(),
+    };
 
     public CombatState(Monster enemy)
     {
@@ -30,183 +32,90 @@ public sealed class CombatState : IGameState
         if (!_entered)
         {
             _entered = true;
+
+            _combat = new CombatContext(ctx.Player, _enemy, ctx.Rng);
             CombatTransition.Play($"COMBAT : {_enemy.Name} !");
-            _log.Add($"Un {_enemy.Name} surgit !");
-            _log.Add("Que vas-tu faire ?");
+            _combat.AddLog($"Un {_enemy.Name} surgit !");
+            _combat.AddLog("Que vas-tu faire ?");
         }
 
-        var action = ReadAction(ctx);
+        if (_combat == null) return;
 
-        bool combatEnded = ResolvePlayerAction(ctx, action);
-        if (combatEnded) return;
+        // Choix joueur (UI gère les touches)
+        var action = CombatScreen.ReadAction(_combat, _actions);
 
-        ResolveEnemyTurn(ctx);
+        var result = _combatActionExecute(_combat, action);
 
-        if (_dodgeTurnsLeft > 0) _dodgeTurnsLeft--;
-
-        if (ctx.Player.IsDead)
+        if (result.EndCombat || _combat.IsOver || _combat.PlayerFled)
         {
-            _log.Add("Tu t’effondres...");
-            CombatScreen.Draw(ctx.Player, _enemy, _log);
-            WaitEnter();
-            Console.Clear();
+            CombatScreen.Draw(_combat.Player, _combat.Enemy, _combat.Log);
+            CombatScreen.WaitEnter();
+
+            if (_combat.Player.IsDead)
+            {
+                ctx.State = new EndState(victory: false);
+                return;
+            }
+
+            ctx.State = new ExplorationState();
+            return;
+        }
+
+        // Tour ennemi
+        ResolveEnemyTurn(_combat);
+
+        // tick buff dodge (comme avant, mais dans ctx)
+        _combat.TickEndOfRound();
+
+        if (_combat.Player.IsDead)
+        {
+            _combat.AddLog("Tu t’effondres...");
+            CombatScreen.Draw(_combat.Player, _combat.Enemy, _combat.Log);
+            CombatScreen.WaitEnter();
             ctx.State = new EndState(victory: false);
         }
     }
 
-    private CombatAction ReadAction(GameContext ctx)
+    private static CombatActionResult _combatActionExecute(CombatContext combat, ICombatAction action)
     {
-        while (true)
+        if (!action.CanExecute(combat))
+            return new CombatActionResult { LogLine = "Action impossible." };
+
+        var res = action.Execute(combat);
+        if (!string.IsNullOrWhiteSpace(res.LogLine))
+            combat.AddLog(res.LogLine);
+
+        // victoire instant si monstre mort
+        if (combat.Enemy.IsDead)
         {
-            CombatScreen.Draw(ctx.Player, _enemy, BuildMenuLog(ctx));
-            ConsoleKey key = Console.ReadKey(true).Key;
-
-            switch (key)
-            {
-                case ConsoleKey.D1:
-                case ConsoleKey.NumPad1:
-                case ConsoleKey.A:
-                    return CombatAction.Attack;
-
-                case ConsoleKey.D2:
-                case ConsoleKey.NumPad2:
-                case ConsoleKey.H:
-                    return CombatAction.Heal;
-
-                case ConsoleKey.D3:
-                case ConsoleKey.NumPad3:
-                case ConsoleKey.E:
-                    return CombatAction.Dodge;
-
-                case ConsoleKey.D4:
-                case ConsoleKey.NumPad4:
-                case ConsoleKey.F:
-                    return CombatAction.Flee;
-
-                default:
-                    break;
-            }
+            combat.AddLog($"{combat.Enemy.Name} est vaincu !");
+            return new CombatActionResult { EndCombat = true };
         }
+
+        return res;
     }
 
-    private IReadOnlyList<string> BuildMenuLog(GameContext ctx)
+    private static void ResolveEnemyTurn(CombatContext combat)
     {
-        var lines = new List<string>(_log);
+        if (combat.Enemy.IsDead) return;
 
-        lines.Add("");
-        lines.Add("Actions :");
-        lines.Add("1) Attaquer   (A)");
-        lines.Add(_healsLeft > 0 ? $"2) Soigner x{_healsLeft} (H)" : "2) Soigner (H) [INDISPONIBLE]");
-        lines.Add(_dodgeTurnsLeft > 0
-            ? $"3) Esquiver (E) [BUFF actif {_dodgeTurnsLeft} tour(s)]"
-            : "3) Esquiver (E) [buff 2 tours]");
-        lines.Add("4) Fuir       (F)");
-        lines.Add("");
-        lines.Add("Choisis 1-4 (ou A/H/E/F).");
-
-        return lines;
-    }
-
-    private bool ResolvePlayerAction(GameContext ctx, CombatAction action)
-    {
-        switch (action)
+        if (combat.DodgeTurnsLeft > 0)
         {
-            case CombatAction.Attack:
-                PlayerAttack(ctx);
-                if (_enemy.IsDead)
-                {
-                    _log.Add($"{_enemy.Name} est vaincu !");
-                    CombatScreen.Draw(ctx.Player, _enemy, _log);
-                    WaitEnter();
-
-                    Console.Clear();
-                    ctx.State = new ExplorationState();
-                    return true;
-                }
-                return false;
-
-            case CombatAction.Heal:
-                if (_healsLeft <= 0)
-                {
-                    _log.Add("Tu n’as plus de soin !");
-                    return false;
-                }
-                _healsLeft--;
-                ctx.Player.Heal(_healAmount);
-                _log.Add($"Tu te soignes (+{_healAmount} PV).");
-                return false;
-
-            case CombatAction.Dodge:
-                _dodgeTurnsLeft = 2;
-                _log.Add($"Tu te mets en garde : +{_dodgeChancePercent}% d’esquive pendant 2 tours.");
-                return false;
-
-            case CombatAction.Flee:
-                bool success = Roll(ctx, _fleeChancePercent);
-                if (success)
-                {
-                    _log.Add("Tu prends la fuite !");
-                    CombatScreen.Draw(ctx.Player, _enemy, _log);
-                    WaitEnter();
-
-                    Console.Clear();
-                    ctx.State = new ExplorationState();
-                    return true;
-                }
-
-                _log.Add("Tu essaies de fuir... ÉCHEC !");
-                return false;
-
-            default:
-                return false;
-        }
-    }
-
-    private void PlayerAttack(GameContext ctx)
-    {
-        CombatAnimations.Flash(times: 1, delayMs: 45);
-
-        int dmg = Math.Max(1, ctx.Player.Attack);
-        _enemy.TakeDamage(dmg);
-
-        _log.Add($"Tu attaques : {_enemy.Name} perd {dmg} PV.");
-    }
-
-    private void ResolveEnemyTurn(GameContext ctx)
-    {
-        if (_enemy.IsDead) return;
-
-        if (_dodgeTurnsLeft > 0)
-        {
-            bool dodged = Roll(ctx, _dodgeChancePercent);
+            bool dodged = combat.Roll(combat.DodgeChancePercent);
             if (dodged)
             {
-                _log.Add($"{_enemy.Name} attaque... mais tu esquives !");
+                combat.AddLog($"{combat.Enemy.Name} attaque... mais tu esquives !");
                 return;
             }
-            _log.Add($"{_enemy.Name} attaque... tu n’arrives pas à esquiver !");
+            combat.AddLog($"{combat.Enemy.Name} attaque... tu n’arrives pas à esquiver !");
         }
 
-        int dmg = Math.Max(1, _enemy.Attack);
+        int dmg = Math.Max(1, combat.Enemy.Attack);
 
-        Console.Clear();
-        CombatScreen.Draw(ctx.Player, _enemy, _log);
-        CombatAnimations.Shake($"{_enemy.Name} frappe !", shakes: 6, delayMs: 20);
+        CombatScreen.Draw(combat.Player, combat.Enemy, combat.Log);
+        CombatAnimations.Shake($"{combat.Enemy.Name} frappe !", shakes: 6, delayMs: 20);
 
-        ctx.Player.TakeDamage(dmg);
-        _log.Add($"Tu perds {dmg} PV.");
-    }
-
-    private static bool Roll(GameContext ctx, int chancePercent)
-    {
-        int r = ctx.Rng.Next(0, 100);
-        return r < chancePercent;
-    }
-
-    private static void WaitEnter()
-    {
-        ConsoleKey k;
-        do { k = Console.ReadKey(true).Key; }
-        while (k != ConsoleKey.Enter);
+        combat.Player.TakeDamage(dmg);
+        combat.AddLog($"Tu perds {dmg} PV.");
     }
 }
