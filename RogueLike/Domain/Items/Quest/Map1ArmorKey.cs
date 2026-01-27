@@ -1,3 +1,5 @@
+namespace RogueLike.Domain.Items.Quest;
+
 using RogueLike.Domain.Entities;
 
 public sealed class Map1ArmorKey : KeyQuest

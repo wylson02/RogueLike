@@ -1,34 +1,24 @@
-﻿namespace RogueLike.Domain.Entities;
+﻿using System;
+using System.Collections.Generic;
+using System.Text;
 
-using RogueLike.Domain;
-using RogueLike.Domain.Items;
-
-public sealed class Door : Entity
+namespace RogueLike.Domain.Entities
 {
-    // Affichage : porte fermée ou ouverte
-    public override char Glyph => IsOpen ? '/' : '|';
 
-    // Quelle clé ouvre cette porte
-    public KeyQuestType RequiredKey { get; }
-
-    // Etat
-    public bool IsOpen { get; private set; }
-
-    public Door(Position pos, KeyQuestType requiredKey, bool isOpen = false)
-        : base(pos)
+    public abstract class Entity
     {
-        RequiredKey = requiredKey;
-        IsOpen = isOpen;
-    }
+        public Position Pos { get; protected set; }
 
-    public bool TryOpen(Func<KeyQuestType, bool> playerHasKey)
-    {
-        if (IsOpen) return true;
+        public abstract char Glyph { get; }
 
-        if (!playerHasKey(RequiredKey))
-            return false;
+        protected Entity(Position pos)
+        {
+            Pos = pos;
+        }
 
-        IsOpen = true;
-        return true;
+        public void SetPosition(Position pos)
+        {
+            Pos = pos;
+        }
     }
 }
