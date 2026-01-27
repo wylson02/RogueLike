@@ -1,5 +1,5 @@
 ﻿namespace RogueLike.App;
-
+using System.Collections.Generic;
 using RogueLike.Domain.AI;
 using RogueLike.Domain.Entities;
 using RogueLike.Domain;
@@ -14,6 +14,9 @@ public sealed class GameContext
     public Player Player { get; }
     public List<Monster> Monsters { get; } = new();
     public Random Rng { get; } = new();
+    public HashSet<Position> VisibleTiles { get; } = new();
+    public HashSet<Position> DiscoveredTiles { get; } = new();
+
     private const int MaxAliveMonsters = 10;  
     private const int MaxNightSpawnsPerNight = 2; 
     private int _nightSpawnedThisNight = 0;
@@ -44,6 +47,32 @@ public sealed class GameContext
 
     public void RemoveItem(Item item)
         => Items.Remove(item);
+
+
+    public void UpdateVision(int radius = 2)
+    {
+        VisibleTiles.Clear();
+
+        for (int dy = -radius; dy <= radius; dy++)
+            for (int dx = -radius; dx <= radius; dx++)
+            {
+                int x = Player.Pos.X + dx;
+                int y = Player.Pos.Y + dy;
+
+                if (dx * dx + dy * dy > radius * radius) continue;
+                if (x < 0 || y < 0 || x >= Map.Width || y >= Map.Height) continue;
+
+                var p = new Position(x, y);
+                VisibleTiles.Add(p);
+                DiscoveredTiles.Add(p);
+            }
+
+        // ✅ sécurité : le joueur est toujours visible/découvert
+        VisibleTiles.Add(Player.Pos);
+        DiscoveredTiles.Add(Player.Pos);
+    }
+
+
 
 
     public TimeSystem Time { get; } = new TimeSystem(phaseLength: 24);
