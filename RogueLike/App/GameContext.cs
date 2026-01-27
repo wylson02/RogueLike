@@ -1,13 +1,13 @@
 ﻿namespace RogueLike.App;
-using System.Collections.Generic;
 
 using RogueLike.App.Services;
+using RogueLike.App.States;
+using RogueLike.Domain;
 using RogueLike.Domain.AI;
 using RogueLike.Domain.Entities;
-using RogueLike.Domain;
-using System.Linq;
-using RogueLike.App.States;
 using RogueLike.Domain.Items;
+using System.Collections.Generic;
+
 
 public sealed class GameContext
 {
@@ -15,7 +15,7 @@ public sealed class GameContext
     public Player Player { get; }
 
     public List<Monster> Monsters { get; } = new();
-    public List<Item> Items { get; } = new();
+    public List<Item> GameItems { get; } = new();
 
     // ✅ Coffres
     public List<Chest> Chests { get; } = new();
@@ -41,10 +41,10 @@ public sealed class GameContext
         => Monsters.FirstOrDefault(m => !m.IsDead && m.Pos == p);
 
     public Item? ItemAt(Position pos)
-        => Items.FirstOrDefault(i => i.Position == pos);
+        => GameItems.FirstOrDefault(i => i.Position == pos);
 
     public void RemoveItem(Item item)
-        => Items.Remove(item);
+        => GameItems.Remove(item);
 
     public Chest? ChestAt(Position pos)
         => Chests.FirstOrDefault(c => !c.IsOpened && c.Pos == pos);
@@ -57,13 +57,6 @@ public sealed class GameContext
     }
 
     public List<Item> Items { get; } = new();
-
-    public Item? ItemAt(Position pos)
-        => Items.FirstOrDefault(i => i.Position == pos);
-
-    public void RemoveItem(Item item)
-        => Items.Remove(item);
-
 
     public void UpdateVision(int radius = 2)
     {
