@@ -11,6 +11,7 @@ public abstract class Character : Entity
     public int MaxHp { get; protected set; }
     public int Hp { get; protected set; }
     public int Attack { get; protected set; }
+    public int Armor { get; protected set; }
 
     public bool IsDead => Hp <= 0;
 
@@ -24,8 +25,21 @@ public abstract class Character : Entity
 
     public void TakeDamage(int amount)
     {
-        Hp -= Math.Max(0, amount);
+        int dmg = Math.Max(0, amount - Armor);
+        Hp -= dmg;
     }
+
+
+    public void AddAttack(int amount)
+    {
+        Attack += Math.Max(0, amount);
+    }
+
+    public void AddArmor(int amount)
+    {
+        Armor += Math.Max(0, amount);
+    }
+
 
     public void Heal(int amount)
     {

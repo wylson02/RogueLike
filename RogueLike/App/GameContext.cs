@@ -5,6 +5,8 @@ using RogueLike.Domain.Entities;
 using RogueLike.Domain;
 using System.Linq;
 using RogueLike.App.States;
+using RogueLike.Domain.Items;
+
 
 public sealed class GameContext
 {
@@ -35,9 +37,25 @@ public sealed class GameContext
         return false;
     }
 
+    public List<Item> Items { get; } = new();
+
+    public Item? ItemAt(Position pos)
+        => Items.FirstOrDefault(i => i.Position == pos);
+
+    public void RemoveItem(Item item)
+        => Items.Remove(item);
+
+
     public TimeSystem Time { get; } = new TimeSystem(phaseLength: 24);
 
     private bool _nightBuffApplied = false;
+
+    public string LastMessage { get; private set; } = "";
+
+    public void AddMessage(string msg)
+    {
+        LastMessage = msg;
+    }
 
     public void AdvanceTimeAfterPlayerMove()
     {
