@@ -42,6 +42,7 @@ public sealed class GameMap
                     '#' => TileType.Wall,
                     '.' => TileType.Floor,
                     'E' => TileType.Exit,
+                    '|' => TileType.DoorClosed,
                     _ => TileType.Floor, 
                 };
             }
@@ -61,6 +62,6 @@ public sealed class GameMap
         if (!InBounds(p)) return false;
 
         var t = GetTile(p);
-        return t == TileType.Floor || t == TileType.Exit;
+        return t == TileType.Floor || t == TileType.Exit || t == TileType.DoorOpen;
     }
 }

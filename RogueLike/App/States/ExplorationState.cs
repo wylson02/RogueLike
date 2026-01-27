@@ -43,6 +43,7 @@ public sealed class ExplorationState : IGameState
         }
 
         ctx.Player.SetPosition(next);
+        ctx.UpdateVision();
         ctx.AdvanceTimeAfterPlayerMove();
         MonstersTurn(ctx);
     }

@@ -16,6 +16,26 @@ public static class ConsoleRenderer
             {
                 var p = new Position(x, y);
 
+                // Toujours afficher le joueur (même dans le noir)
+                if (ctx.Player.Pos == p)
+                {
+                    Console.ForegroundColor = ConsoleColor.White;
+                    Console.Write('@');
+                    Console.ResetColor();
+                    continue;
+                }
+
+
+                bool visible = ctx.VisibleTiles.Contains(p);
+                bool discovered = ctx.DiscoveredTiles.Contains(p);
+
+                // Jamais découvert : ne rien afficher
+                if (!discovered)
+                {
+                    Console.Write(' ');
+                    continue;
+                }
+
                 char c = ctx.Map.GetTile(p) switch
                 {
                     TileType.Wall => '#',

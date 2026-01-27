@@ -14,6 +14,7 @@ var ctx = new GameContext(
     new ExplorationState()
 );
 
+ctx.UpdateVision(); //initialiser la vision
 ctx.Monsters.AddRange(level.Monsters);
 ctx.Items.AddRange(level.Items);
 ctx.Chests.AddRange(level.Chests);

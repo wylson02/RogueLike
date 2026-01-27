@@ -8,6 +8,8 @@ namespace RogueLike.Domain
     {
         Floor,
         Wall,
-        Exit
+        Exit,
+        DoorClosed,
+        DoorOpen
     }
 }
