@@ -1,7 +1,6 @@
 namespace RogueLike.Domain.Entities;
 
 using RogueLike.Domain;
-using RogueLike.Domain.Items;
 using RogueLike.Domain.Items.Quest;
 
 public sealed class Door : Entity

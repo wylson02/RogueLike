@@ -1,8 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
-
-namespace RogueLike.Domain.Entities
+﻿namespace RogueLike.Domain.Entities
 {
 
     public abstract class Entity
