@@ -16,7 +16,6 @@ public static class ConsoleRenderer
             {
                 var p = new Position(x, y);
 
-                // Toujours afficher le joueur (même dans le noir)
                 if (ctx.Player.Pos == p)
                 {
                     Console.ForegroundColor = ConsoleColor.White;
@@ -25,11 +24,9 @@ public static class ConsoleRenderer
                     continue;
                 }
 
-
                 bool visible = ctx.VisibleTiles.Contains(p);
                 bool discovered = ctx.DiscoveredTiles.Contains(p);
 
-                // Jamais découvert : ne rien afficher
                 if (!discovered)
                 {
                     Console.Write(' ');
@@ -63,7 +60,10 @@ public static class ConsoleRenderer
             Console.WriteLine();
         }
 
-        Console.WriteLine($"State: {stateName} | PV: {ctx.Player.Hp}/{ctx.Player.MaxHp} | ATK: {ctx.Player.Attack} | ARM: {ctx.Player.Armor}");
+        Console.WriteLine(
+            $"State: {stateName} | PV: {ctx.Player.Hp}/{ctx.Player.MaxHp} | ATK: {ctx.Player.Attack} | ARM: {ctx.Player.Armor} | GOLD: {ctx.Player.Gold}"
+        );
+
         DrawTimeBar(ctx);
         Console.WriteLine("Flèches ou ZQSD pour bouger.");
 

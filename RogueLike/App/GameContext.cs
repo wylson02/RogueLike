@@ -4,10 +4,10 @@ using RogueLike.App.Services;
 using RogueLike.App.States;
 using RogueLike.Domain;
 using RogueLike.Domain.AI;
+using RogueLike.Domain.Catalogs;
 using RogueLike.Domain.Entities;
 using RogueLike.Domain.Items;
 using System.Collections.Generic;
-
 
 public sealed class GameContext
 {
@@ -17,15 +17,14 @@ public sealed class GameContext
     public List<Monster> Monsters { get; } = new();
     public List<Item> GameItems { get; } = new();
 
-    // ✅ Coffres
     public List<Chest> Chests { get; } = new();
 
     public Random Rng { get; } = new();
     public HashSet<Position> VisibleTiles { get; } = new();
     public HashSet<Position> DiscoveredTiles { get; } = new();
 
-    private const int MaxAliveMonsters = 10;  
-    private const int MaxNightSpawnsPerNight = 2; 
+    private const int MaxAliveMonsters = 10;
+    private const int MaxNightSpawnsPerNight = 2;
     private int _nightSpawnedThisNight = 0;
 
     public IGameState State { get; set; }
@@ -76,13 +75,9 @@ public sealed class GameContext
                 DiscoveredTiles.Add(p);
             }
 
-        // ✅ sécurité : le joueur est toujours visible/découvert
         VisibleTiles.Add(Player.Pos);
         DiscoveredTiles.Add(Player.Pos);
     }
-
-
-
 
     public TimeSystem Time { get; } = new TimeSystem(phaseLength: 24);
 
@@ -94,7 +89,6 @@ public sealed class GameContext
     {
         LastMessage = msg;
     }
-
 
     public void OpenChest(Chest chest)
     {
@@ -149,7 +143,7 @@ public sealed class GameContext
         _nightBuffApplied = false;
 
         foreach (var m in Monsters.Where(m => !m.IsDead))
-            m.ModifyAttack(-1);
+            m.ModifyAttack(-2);
     }
 
     private void TrySpawnNightMonster()
@@ -167,7 +161,7 @@ public sealed class GameContext
             if (p == Player.Pos) continue;
             if (MonsterAt(p) is not null) continue;
 
-            Monsters.Add(new Monster("Night Slime", p, hp: 6, attack: 2, strategy: new AggroWithinRangeStrategy(3)));
+            Monsters.Add(MonsterCatalog.NightSlime(p));
             _nightSpawnedThisNight++;
             return;
         }

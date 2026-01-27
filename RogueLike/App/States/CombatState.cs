@@ -14,6 +14,8 @@ public sealed class CombatState : IGameState
     private CombatContext? _combat;
     private bool _entered;
 
+    private bool _rewardGiven;
+
     private readonly List<ICombatAction> _actions = new()
     {
         new AttackAction(),
@@ -41,10 +43,18 @@ public sealed class CombatState : IGameState
 
         if (_combat == null) return;
 
-        // Choix joueur (UI gère les touches)
         var action = CombatScreen.ReadAction(_combat, _actions);
 
         var result = _combatActionExecute(_combat, action);
+
+        if (_combat.Enemy.IsDead && !_rewardGiven && !_combat.PlayerFled)
+        {
+            _rewardGiven = true;
+            int gold = _enemy.RollGold(ctx.Rng);
+            ctx.Player.AddGold(gold);
+            _combat.AddLog($"+{gold} or !");
+            ctx.AddMessage($"+{gold} or !");
+        }
 
         if (result.EndCombat || _combat.IsOver || _combat.PlayerFled)
         {
@@ -61,10 +71,10 @@ public sealed class CombatState : IGameState
             return;
         }
 
-        // Tour ennemi
+
         ResolveEnemyTurn(_combat);
 
-        // tick buff dodge (comme avant, mais dans ctx)
+
         _combat.TickEndOfRound();
 
         if (_combat.Player.IsDead)
@@ -85,7 +95,7 @@ public sealed class CombatState : IGameState
         if (!string.IsNullOrWhiteSpace(res.LogLine))
             combat.AddLog(res.LogLine);
 
-        // victoire instant si monstre mort
+
         if (combat.Enemy.IsDead)
         {
             combat.AddLog($"{combat.Enemy.Name} est vaincu !");
