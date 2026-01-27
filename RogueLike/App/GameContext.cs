@@ -58,7 +58,7 @@ public sealed class GameContext
 
     public List<Item> Items { get; } = new();
 
-    public void UpdateVision(int radius = 2)
+    public void UpdateVision(int radius = 35)
     {
         VisibleTiles.Clear();
 
