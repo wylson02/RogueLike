@@ -8,8 +8,12 @@ public static class ConsoleRenderer
     public static void Draw(GameContext ctx, string stateName)
     {
         Console.CursorVisible = false;
-        Console.SetCursorPosition(0, 0);
 
+        // ✅ FIX AFFICHAGE : on efface l'écran à chaque frame
+        // sinon l'ancien texte (combat/logs) reste après les lignes plus courtes.
+        Console.Clear();
+
+        // --- MAP ---
         for (int y = 0; y < ctx.Map.Height; y++)
         {
             for (int x = 0; x < ctx.Map.Width; x++)
@@ -35,15 +39,20 @@ public static class ConsoleRenderer
 
                 Console.Write(c);
             }
+
             Console.WriteLine();
         }
 
+        // --- HUD ---
         Console.WriteLine($"State: {stateName} | PV: {ctx.Player.Hp}/{ctx.Player.MaxHp} | ATK: {ctx.Player.Attack} | ARM: {ctx.Player.Armor}");
-
         DrawTimeBar(ctx);
         Console.WriteLine("Flèches ou ZQSD pour bouger.");
-        Console.WriteLine(ctx.LastMessage);
 
+        // --- MESSAGE ---
+        if (!string.IsNullOrWhiteSpace(ctx.LastMessage))
+            Console.WriteLine(ctx.LastMessage);
+        else
+            Console.WriteLine();
     }
 
     private static void DrawTimeBar(GameContext ctx)

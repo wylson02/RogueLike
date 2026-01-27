@@ -18,6 +18,38 @@ public sealed class GameMap
         Width = tiles.GetLength(1);
     }
 
+    public static GameMap BuildFromRaw(string[] raw)
+    {
+        if (raw == null || raw.Length == 0)
+            throw new ArgumentException("Raw map cannot be null or empty.");
+
+        int height = raw.Length;
+        int width = raw[0].Length;
+
+        var tiles = new TileType[height, width];
+
+        for (int y = 0; y < height; y++)
+        {
+            if (raw[y].Length != width)
+                throw new ArgumentException("All map rows must have the same width.");
+
+            for (int x = 0; x < width; x++)
+            {
+                char c = raw[y][x];
+
+                tiles[y, x] = c switch
+                {
+                    '#' => TileType.Wall,
+                    '.' => TileType.Floor,
+                    'E' => TileType.Exit,
+                    _ => TileType.Floor, 
+                };
+            }
+        }
+
+        return new GameMap(tiles);
+    }
+
     public bool InBounds(Position p)
         => p.X >= 0 && p.Y >= 0 && p.X < Width && p.Y < Height;
 
@@ -32,4 +64,3 @@ public sealed class GameMap
         return t == TileType.Floor || t == TileType.Exit;
     }
 }
-
