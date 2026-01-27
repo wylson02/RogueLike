@@ -11,22 +11,29 @@ public sealed class ExplorationState : IGameState
 
     public void Update(GameContext ctx)
     {
-        Direction dir = ConsoleInput.ReadDirection();
+        var cmd = ConsoleInput.ReadExplorationCommand();
+
+        if (cmd.InventoryRequested)
+        {
+            ctx.State = new InventoryState(previous: this);
+            return;
+        }
+
+        var dir = cmd.Direction;
         if (dir == Direction.None) return;
 
         Position next = ctx.Player.Pos.Move(dir);
-
         if (!ctx.Map.IsWalkable(next)) return;
 
-        var item = ctx.ItemAt(ctx.Player.Pos);
-        if (item is not null)
+        var chest = ctx.ChestAt(next);
+        if (chest is not null)
         {
-            item.Apply(ctx.Player);
-            ctx.RemoveItem(item);
-            ctx.AddMessage($"Vous avez trouvé {item.Name} !");
+            ctx.Player.SetPosition(next);
+            ctx.OpenChest(chest);
+            ctx.AdvanceTimeAfterPlayerMove();
+            MonstersTurn(ctx);
+            return;
         }
-
-
 
         var enemy = ctx.MonsterAt(next);
         if (enemy is not null)
@@ -39,6 +46,7 @@ public sealed class ExplorationState : IGameState
         ctx.AdvanceTimeAfterPlayerMove();
         MonstersTurn(ctx);
     }
+
 
     private static void MonstersTurn(GameContext ctx)
     {

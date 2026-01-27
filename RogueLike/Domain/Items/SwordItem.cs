@@ -1,20 +1,28 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
-
-namespace RogueLike.Domain.Items;
+﻿namespace RogueLike.Domain.Items;
 
 using RogueLike.Domain.Entities;
 
-internal sealed class SwordItem : Item
+public sealed class SwordItem : Item, IEquipable
 {
-    public override char Glyph => '$';
-    public override string Name => "Sword";
+    public override char Glyph => 'S';
+    public override string Name => "Épée";
+    public override string Description => "Une lame simple mais fiable. Augmente l'attaque.";
+    public override bool AutoApplyOnPickup => false;
 
-    public SwordItem(Position pos) : base(pos) { }
+    public EquipSlot Slot => EquipSlot.Weapon;
 
-    public override void Apply(Player player)
+    private const int AttackBonus = 2;
+
+    public SwordItem(Position position) : base(position) { }
+
+    public override void Apply(Player player) => player.Equip(this);
+
+    public void OnEquip(Player player) => player.ModifyAttack(+AttackBonus);
+    public void OnUnequip(Player player) => player.ModifyAttack(-AttackBonus);
+
+    public override IEnumerable<string> GetStatsLines()
     {
-        player.AddAttack(5);
+        yield return $"+{AttackBonus} ATK";
+        yield return "Équipable (Arme)";
     }
 }

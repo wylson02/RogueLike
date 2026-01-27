@@ -16,6 +16,7 @@ var ctx = new GameContext(
 
 ctx.Monsters.AddRange(level.Monsters);
 ctx.Items.AddRange(level.Items);
+ctx.Chests.AddRange(level.Chests);
 
 while (true)
 {

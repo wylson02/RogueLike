@@ -2,7 +2,7 @@
 
 using RogueLike.Domain;
 using RogueLike.Domain.Catalogs;
-using RogueLike.Domain.Items;
+using RogueLike.Domain.Entities;
 
 public static class LevelCatalog
 {
@@ -19,11 +19,11 @@ public static class LevelCatalog
                 MonsterCatalog.Golem(new Position(14, 6))
             },
 
-            Items = new()
+            Chests = new()
             {
-                ItemCatalog.LifeGem(new Position(2, 1)),
-                ItemCatalog.Armor(new Position(5, 5)),
-                ItemCatalog.Sword(new Position(9, 7)),
+                new Chest(new Position(2, 2)),
+                new Chest(new Position(7, 6)),
+                new Chest(new Position(12, 2)),
             }
         };
     }

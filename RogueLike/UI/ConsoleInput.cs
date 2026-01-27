@@ -1,19 +1,17 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
+﻿namespace RogueLike.UI;
 
-namespace RogueLike.UI;
-
-using global::RogueLike.Domain;
 using RogueLike.Domain;
 
 public static class ConsoleInput
 {
-    public static Direction ReadDirection()
+    public static ExplorationCommand ReadExplorationCommand()
     {
         var key = Console.ReadKey(true).Key;
 
-        return key switch
+        if (key == ConsoleKey.I)
+            return ExplorationCommand.OpenInventory();
+
+        var dir = key switch
         {
             ConsoleKey.UpArrow => Direction.Up,
             ConsoleKey.DownArrow => Direction.Down,
@@ -27,6 +25,27 @@ public static class ConsoleInput
 
             _ => Direction.None
         };
+
+        return ExplorationCommand.Move(dir);
+    }
+
+    public static Direction ReadDirection()
+    {
+        return ReadExplorationCommand().Direction;
     }
 }
 
+public readonly struct ExplorationCommand
+{
+    public Direction Direction { get; }
+    public bool InventoryRequested { get; }
+
+    private ExplorationCommand(Direction direction, bool inventoryRequested)
+    {
+        Direction = direction;
+        InventoryRequested = inventoryRequested;
+    }
+
+    public static ExplorationCommand Move(Direction d) => new(d, false);
+    public static ExplorationCommand OpenInventory() => new(Direction.None, true);
+}
