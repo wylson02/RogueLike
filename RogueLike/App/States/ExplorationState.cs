@@ -18,6 +18,16 @@ public sealed class ExplorationState : IGameState
 
         if (!ctx.Map.IsWalkable(next)) return;
 
+        var item = ctx.ItemAt(ctx.Player.Pos);
+        if (item is not null)
+        {
+            item.Apply(ctx.Player);
+            ctx.RemoveItem(item);
+            ctx.AddMessage($"Vous avez trouvé {item.Name} !");
+        }
+
+
+
         var enemy = ctx.MonsterAt(next);
         if (enemy is not null)
         {

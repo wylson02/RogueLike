@@ -23,6 +23,10 @@ public static class ConsoleRenderer
                     _ => '.'
                 };
 
+                var item = ctx.ItemAt(p);
+                if (item is not null)
+                    c = item.Glyph;
+
                 if (ctx.MonsterAt(p) is not null)
                     c = 'M';
 
@@ -34,9 +38,12 @@ public static class ConsoleRenderer
             Console.WriteLine();
         }
 
-        Console.WriteLine($"State: {stateName} | PV: {ctx.Player.Hp}/{ctx.Player.MaxHp} | ATK: {ctx.Player.Attack}");
+        Console.WriteLine($"State: {stateName} | PV: {ctx.Player.Hp}/{ctx.Player.MaxHp} | ATK: {ctx.Player.Attack} | ARM: {ctx.Player.Armor}");
+
         DrawTimeBar(ctx);
-        Console.WriteLine("Flèches ou ZQSD pour bouger."); 
+        Console.WriteLine("Flèches ou ZQSD pour bouger.");
+        Console.WriteLine(ctx.LastMessage);
+
     }
 
     private static void DrawTimeBar(GameContext ctx)
