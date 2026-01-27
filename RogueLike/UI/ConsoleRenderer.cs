@@ -8,12 +8,8 @@ public static class ConsoleRenderer
     public static void Draw(GameContext ctx, string stateName)
     {
         Console.CursorVisible = false;
-
-        // ✅ FIX AFFICHAGE : on efface l'écran à chaque frame
-        // sinon l'ancien texte (combat/logs) reste après les lignes plus courtes.
         Console.Clear();
 
-        // --- MAP ---
         for (int y = 0; y < ctx.Map.Height; y++)
         {
             for (int x = 0; x < ctx.Map.Width; x++)
@@ -47,6 +43,10 @@ public static class ConsoleRenderer
                     _ => '.'
                 };
 
+                var chest = ctx.Chests.FirstOrDefault(ch => ch.Pos == p);
+                if (chest is not null)
+                    c = chest.Glyph;
+
                 var item = ctx.ItemAt(p);
                 if (item is not null)
                     c = item.Glyph;
@@ -63,12 +63,10 @@ public static class ConsoleRenderer
             Console.WriteLine();
         }
 
-        // --- HUD ---
         Console.WriteLine($"State: {stateName} | PV: {ctx.Player.Hp}/{ctx.Player.MaxHp} | ATK: {ctx.Player.Attack} | ARM: {ctx.Player.Armor}");
         DrawTimeBar(ctx);
         Console.WriteLine("Flèches ou ZQSD pour bouger.");
 
-        // --- MESSAGE ---
         if (!string.IsNullOrWhiteSpace(ctx.LastMessage))
             Console.WriteLine(ctx.LastMessage);
         else

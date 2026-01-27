@@ -14,6 +14,24 @@ public abstract class Character : Entity
     public int Armor { get; protected set; }
 
     public bool IsDead => Hp <= 0;
+    public int CritChancePercent { get; private set; } = 0;
+    public int LifeStealPercent { get; private set; } = 0;
+    public int CritMultiplierPercent { get; private set; } = 200; 
+
+    public void ModifyCritChance(int delta)
+    {
+        CritChancePercent = Math.Clamp(CritChancePercent + delta, 0, 100);
+    }
+
+    public void ModifyLifeSteal(int delta)
+    {
+        LifeStealPercent = Math.Clamp(LifeStealPercent + delta, 0, 100);
+    }
+
+    public void ModifyCritMultiplierPercent(int delta)
+    {
+        CritMultiplierPercent = Math.Clamp(CritMultiplierPercent + delta, 150, 400);
+    }
 
     protected Character(Position pos, int hp, int attack)
         : base(pos)
@@ -51,4 +69,8 @@ public abstract class Character : Entity
         Attack = Math.Max(1, Attack + delta);
     }
 
+    public void ModifyArmor(int delta)
+    {
+        Armor = Math.Max(0, Armor + delta);
+    }
 }
