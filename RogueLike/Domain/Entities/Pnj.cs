@@ -8,6 +8,7 @@ public sealed class Pnj : Entity
     public string Name { get; }
     public string Message { get; }
     public bool HasGivenGift { get; private set; }
+    public string GiftName { get; }
     public override char Glyph => 'p';
 
     public Pnj(Position pos, string name, string message, string giftName) : base(pos)

@@ -1,4 +1,4 @@
-﻿namespace RogueLike.Domain.Entities;
+namespace RogueLike.Domain.Entities;
 
 using RogueLike.Domain;
 using RogueLike.Domain.Items;
