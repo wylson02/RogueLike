@@ -7,20 +7,17 @@ public sealed class Player : Character
 {
     public override char Glyph => '@';
 
-    public int Gold { get; private set; } = 0;
-
+    // ===== INVENTAIRE / EQUIPEMENT =====
     public List<Item> Inventory { get; } = new();
 
     public Item? EquippedWeapon { get; private set; }
     public Item? EquippedArmor { get; private set; }
     public Item? EquippedAccessory { get; private set; }
 
-    public Player(Position pos) : base(pos, hp: 30, attack: 5)
-    {
-    }
+    // ===== GOLD =====
+    public int Gold { get; private set; } = 0;
 
-    public void AddGold(int amount)
-        => Gold += Math.Max(0, amount);
+    public void AddGold(int amount) => Gold += Math.Max(0, amount);
 
     public bool SpendGold(int amount)
     {
@@ -30,9 +27,68 @@ public sealed class Player : Character
         return true;
     }
 
+    // ===== XP / NIVEAUX =====
+    public int Level { get; private set; } = 1;
+    public int Xp { get; private set; } = 0;
+    public int StatPoints { get; private set; } = 0;
+    public int XpToNext => 20 + (Level - 1) * 10;
+
+    public Player(Position pos) : base(pos, hp: 30, attack: 5)
+    {
+    }
+
+    public void GainXp(int amount)
+    {
+        if (amount <= 0) return;
+
+        Xp += amount;
+
+        while (Xp >= XpToNext)
+        {
+            Xp -= XpToNext;
+            Level++;
+            StatPoints += 1;
+        }
+    }
+
+    public bool SpendStatPoint(StatType stat)
+    {
+        if (StatPoints <= 0) return false;
+
+        StatPoints--;
+
+        switch (stat)
+        {
+            case StatType.MaxHp:
+                MaxHp += 2;
+                Hp += 2;
+                break;
+
+            case StatType.Attack:
+                ModifyAttack(+1);
+                break;
+
+            case StatType.Armor:
+                ModifyArmor(+1);
+                break;
+
+            case StatType.CritChance:
+                ModifyCritChance(+2); // +2%
+                break;
+
+            case StatType.LifeSteal:
+                ModifyLifeSteal(+2); // +2%
+                break;
+        }
+
+        return true;
+    }
+
+    // ===== INVENTAIRE =====
     public void AddToInventory(Item item) => Inventory.Add(item);
     public void RemoveFromInventory(Item item) => Inventory.Remove(item);
 
+    // ===== EQUIPEMENT =====
     public void Equip(Item item)
     {
         if (item is not IEquipable eq)

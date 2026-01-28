@@ -11,6 +11,8 @@ public sealed class Monster : Character
 
     public int MinGoldReward { get; }
     public int MaxGoldReward { get; }
+    public int MinXpReward { get; }
+    public int MaxXpReward { get; }
 
     public Monster(
         string name,
@@ -19,7 +21,9 @@ public sealed class Monster : Character
         int attack,
         IMoveStrategy strategy,
         int minGoldReward,
-        int maxGoldReward)
+        int maxGoldReward,
+        int minXpReward,
+        int maxXpReward)
         : base(pos, hp, attack)
     {
         Name = name;
@@ -30,6 +34,12 @@ public sealed class Monster : Character
 
         MinGoldReward = Math.Max(0, minGoldReward);
         MaxGoldReward = Math.Max(0, maxGoldReward);
+
+        if (maxXpReward < minXpReward)
+            (minXpReward, maxXpReward) = (maxXpReward, minXpReward);
+
+        MinXpReward = Math.Max(0, minXpReward);
+        MaxXpReward = Math.Max(0, maxXpReward);
     }
 
     /// <summary>
@@ -39,5 +49,14 @@ public sealed class Monster : Character
     {
         if (MinGoldReward == MaxGoldReward) return MinGoldReward;
         return rng.Next(MinGoldReward, MaxGoldReward + 1);
+    }
+
+    /// <summary>
+    /// Roll inclusif : [Min..Max]
+    /// </summary>
+    public int RollXp(Random rng)
+    {
+        if (MinXpReward == MaxXpReward) return MinXpReward;
+        return rng.Next(MinXpReward, MaxXpReward + 1);
     }
 }

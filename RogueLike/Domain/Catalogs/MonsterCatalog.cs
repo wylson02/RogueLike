@@ -13,6 +13,7 @@ public static class MonsterCatalog
             .WithHp(6)
             .WithAttack(5)
             .WithGoldReward(min: 3, max: 7)
+            .WithXpReward(min: 6, max: 10)
             .WithAi(new AggroWithinRangeStrategy(range: 3))
             .Build();
 
@@ -23,6 +24,7 @@ public static class MonsterCatalog
             .WithHp(20)
             .WithAttack(1)
             .WithGoldReward(min: 10, max: 18)
+            .WithXpReward(min: 6, max: 10)
             .WithAi(new AggroWithinRangeStrategy(range: 3))
             .Build();
 
@@ -33,6 +35,7 @@ public static class MonsterCatalog
             .WithHp(6)
             .WithAttack(2)
             .WithGoldReward(min: 2, max: 5)
+            .WithXpReward(min: 6, max: 10)
             .WithAi(new AggroWithinRangeStrategy(range: 3))
             .Build();
 }

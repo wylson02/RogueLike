@@ -14,7 +14,7 @@ public sealed class CombatState : IGameState
     private CombatContext? _combat;
     private bool _entered;
 
-    private bool _rewardGiven;
+    private bool _rewardGiven = false;
 
     private readonly List<ICombatAction> _actions = new()
     {
@@ -50,10 +50,15 @@ public sealed class CombatState : IGameState
         if (_combat.Enemy.IsDead && !_rewardGiven && !_combat.PlayerFled)
         {
             _rewardGiven = true;
+
+            int xp = _enemy.RollXp(ctx.Rng);
             int gold = _enemy.RollGold(ctx.Rng);
+
+            ctx.Player.GainXp(xp);
             ctx.Player.AddGold(gold);
-            _combat.AddLog($"+{gold} or !");
-            ctx.AddMessage($"+{gold} or !");
+
+            _combat.AddLog($"+{xp} XP, +{gold} or !");
+            ctx.AddMessage($"+{xp} XP, +{gold} or !");
         }
 
         if (result.EndCombat || _combat.IsOver || _combat.PlayerFled)
@@ -71,9 +76,8 @@ public sealed class CombatState : IGameState
             return;
         }
 
-
+        // Tour ennemi
         ResolveEnemyTurn(_combat);
-
 
         _combat.TickEndOfRound();
 
@@ -94,7 +98,6 @@ public sealed class CombatState : IGameState
         var res = action.Execute(combat);
         if (!string.IsNullOrWhiteSpace(res.LogLine))
             combat.AddLog(res.LogLine);
-
 
         if (combat.Enemy.IsDead)
         {

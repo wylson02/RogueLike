@@ -11,6 +11,9 @@ public static class ConsoleInput
         if (key == ConsoleKey.I)
             return ExplorationCommand.OpenInventory();
 
+        if (key == ConsoleKey.P)
+            return ExplorationCommand.OpenProgression();
+
         var dir = key switch
         {
             ConsoleKey.UpArrow => Direction.Up,
@@ -28,24 +31,22 @@ public static class ConsoleInput
 
         return ExplorationCommand.Move(dir);
     }
-
-    public static Direction ReadDirection()
-    {
-        return ReadExplorationCommand().Direction;
-    }
 }
 
 public readonly struct ExplorationCommand
 {
     public Direction Direction { get; }
     public bool InventoryRequested { get; }
+    public bool ProgressionRequested { get; }
 
-    private ExplorationCommand(Direction direction, bool inventoryRequested)
+    private ExplorationCommand(Direction direction, bool inventoryRequested, bool progressionRequested)
     {
         Direction = direction;
         InventoryRequested = inventoryRequested;
+        ProgressionRequested = progressionRequested;
     }
 
-    public static ExplorationCommand Move(Direction d) => new(d, false);
-    public static ExplorationCommand OpenInventory() => new(Direction.None, true);
+    public static ExplorationCommand Move(Direction d) => new(d, false, false);
+    public static ExplorationCommand OpenInventory() => new(Direction.None, true, false);
+    public static ExplorationCommand OpenProgression() => new(Direction.None, false, true);
 }

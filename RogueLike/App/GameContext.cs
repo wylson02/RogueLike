@@ -28,6 +28,27 @@ public sealed class GameContext
     private int _nightSpawnedThisNight = 0;
 
     public IGameState State { get; set; }
+    public enum LogKind { Info, Loot, Combat, Warning, System }
+    public readonly record struct LogEntry(LogKind Kind, string Text);
+
+    private const int LogCapacity = 30;
+    private readonly List<LogEntry> _log = new();
+    public IReadOnlyList<LogEntry> LogEntries => _log;
+
+    public void PushLog(string text, LogKind kind = LogKind.Info)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return;
+
+        if (_log.Count > 0 && _log[^1].Text == text && _log[^1].Kind == kind)
+            return;
+
+        _log.Add(new LogEntry(kind, text));
+
+        if (_log.Count > LogCapacity)
+            _log.RemoveRange(0, _log.Count - LogCapacity);
+
+        LastMessage = text;
+    }
 
     public GameContext(GameMap map, Player player, IGameState initialState)
     {
@@ -87,7 +108,7 @@ public sealed class GameContext
 
     public void AddMessage(string msg)
     {
-        LastMessage = msg;
+        PushLog(msg, LogKind.Info);
     }
 
     public void OpenChest(Chest chest)

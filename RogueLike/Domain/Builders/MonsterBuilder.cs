@@ -14,6 +14,9 @@ public sealed class MonsterBuilder
     private int _goldMin = 0;
     private int _goldMax = 0;
 
+    private int _xpMin = 1;
+    private int _xpMax = 1;
+
     public MonsterBuilder Named(string name) { _name = name; return this; }
     public MonsterBuilder At(Position pos) { _pos = pos; return this; }
     public MonsterBuilder WithHp(int hp) { _hp = hp; return this; }
@@ -27,6 +30,13 @@ public sealed class MonsterBuilder
         return this;
     }
 
+    public MonsterBuilder WithXpReward(int min, int max)
+    {
+        _xpMin = min;
+        _xpMax = max;
+        return this;
+    }
+
     public Monster Build()
-        => new Monster(_name, _pos, _hp, _atk, _ai, _goldMin, _goldMax);
+        => new Monster(_name, _pos, _hp, _atk, _ai, _goldMin, _goldMax, _xpMin, _xpMax);
 }
