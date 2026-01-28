@@ -19,22 +19,32 @@ public sealed class ExplorationState : IGameState
             return;
         }
 
+        if (cmd.ProgressionRequested)
+        {
+            ctx.State = new ProgressionState(previous: this);
+            return;
+        }
+
         var dir = cmd.Direction;
         if (dir == Direction.None) return;
 
-        Position next = ctx.Player.Pos.Move(dir);
+        var next = ctx.Player.Pos.Move(dir);
         if (!ctx.Map.IsWalkable(next)) return;
 
+        // Coffre
         var chest = ctx.ChestAt(next);
         if (chest is not null)
         {
             ctx.Player.SetPosition(next);
             ctx.OpenChest(chest);
+
+            ctx.UpdateVision();
             ctx.AdvanceTimeAfterPlayerMove();
             MonstersTurn(ctx);
             return;
         }
 
+        // Combat
         var enemy = ctx.MonsterAt(next);
         if (enemy is not null)
         {
@@ -42,12 +52,12 @@ public sealed class ExplorationState : IGameState
             return;
         }
 
+        // Déplacement normal
         ctx.Player.SetPosition(next);
         ctx.UpdateVision();
         ctx.AdvanceTimeAfterPlayerMove();
         MonstersTurn(ctx);
     }
-
 
     private static void MonstersTurn(GameContext ctx)
     {
