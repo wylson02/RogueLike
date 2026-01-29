@@ -8,6 +8,10 @@ public static class ConsoleInput
     {
         var key = Console.ReadKey(true).Key;
 
+        // DEV
+        if (key == ConsoleKey.F3)
+            return ExplorationCommand.DevLoadLevel3();
+
         if (key == ConsoleKey.I)
             return ExplorationCommand.OpenInventory();
 
@@ -38,15 +42,19 @@ public readonly struct ExplorationCommand
     public Direction Direction { get; }
     public bool InventoryRequested { get; }
     public bool ProgressionRequested { get; }
+    public bool DevLoadLevel3Requested { get; }
 
-    private ExplorationCommand(Direction direction, bool inventoryRequested, bool progressionRequested)
+    private ExplorationCommand(Direction direction, bool inventoryRequested, bool progressionRequested, bool devLoadLevel3Requested)
     {
         Direction = direction;
         InventoryRequested = inventoryRequested;
         ProgressionRequested = progressionRequested;
+        DevLoadLevel3Requested = devLoadLevel3Requested;
     }
 
-    public static ExplorationCommand Move(Direction d) => new(d, false, false);
-    public static ExplorationCommand OpenInventory() => new(Direction.None, true, false);
-    public static ExplorationCommand OpenProgression() => new(Direction.None, false, true);
+    public static ExplorationCommand Move(Direction d) => new(d, false, false, false);
+    public static ExplorationCommand OpenInventory() => new(Direction.None, true, false, false);
+    public static ExplorationCommand OpenProgression() => new(Direction.None, false, true, false);
+
+    public static ExplorationCommand DevLoadLevel3() => new(Direction.None, false, false, true);
 }

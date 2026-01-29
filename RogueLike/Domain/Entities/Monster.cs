@@ -9,6 +9,8 @@ public sealed class Monster : Character
     public string Name { get; }
     public IMoveStrategy MoveStrategy { get; }
 
+    public MonsterRank Rank { get; }
+
     public int MinGoldReward { get; }
     public int MaxGoldReward { get; }
     public int MinXpReward { get; }
@@ -23,11 +25,13 @@ public sealed class Monster : Character
         int minGoldReward,
         int maxGoldReward,
         int minXpReward,
-        int maxXpReward)
+        int maxXpReward,
+        MonsterRank rank = MonsterRank.Normal)
         : base(pos, hp, attack)
     {
         Name = name;
         MoveStrategy = strategy;
+        Rank = rank;
 
         if (maxGoldReward < minGoldReward)
             (minGoldReward, maxGoldReward) = (maxGoldReward, minGoldReward);

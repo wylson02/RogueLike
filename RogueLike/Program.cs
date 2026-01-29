@@ -16,8 +16,11 @@ var ctx = new GameContext(
 
 ctx.UpdateVision(); //initialiser la vision
 ctx.Monsters.AddRange(level.Monsters);
-ctx.Items.AddRange(level.Items);
+ctx.GameItems.AddRange(level.Items);
 ctx.Chests.AddRange(level.Chests);
+ctx.Seals.AddRange(level.Seals);
+ctx.Merchant = level.Merchant;
+ctx.SetLevelIndex(1);
 
 while (true)
 {

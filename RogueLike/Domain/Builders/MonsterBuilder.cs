@@ -17,6 +17,8 @@ public sealed class MonsterBuilder
     private int _xpMin = 1;
     private int _xpMax = 1;
 
+    private MonsterRank _rank = MonsterRank.Normal;
+
     public MonsterBuilder Named(string name) { _name = name; return this; }
     public MonsterBuilder At(Position pos) { _pos = pos; return this; }
     public MonsterBuilder WithHp(int hp) { _hp = hp; return this; }
@@ -37,6 +39,12 @@ public sealed class MonsterBuilder
         return this;
     }
 
+    public MonsterBuilder WithRank(MonsterRank rank)
+    {
+        _rank = rank;
+        return this;
+    }
+
     public Monster Build()
-        => new Monster(_name, _pos, _hp, _atk, _ai, _goldMin, _goldMax, _xpMin, _xpMax);
+        => new Monster(_name, _pos, _hp, _atk, _ai, _goldMin, _goldMax, _xpMin, _xpMax, _rank);
 }
