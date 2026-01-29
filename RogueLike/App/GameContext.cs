@@ -3,7 +3,6 @@
 using RogueLike.App.Services;
 using RogueLike.App.States;
 using RogueLike.Domain;
-using RogueLike.Domain.AI;
 using RogueLike.Domain.Catalogs;
 using RogueLike.Domain.Entities;
 using RogueLike.Domain.Items;
@@ -12,29 +11,92 @@ using static RogueLike.Domain.Entities.Chest;
 
 public sealed class GameContext
 {
-    public GameMap Map { get; }
+    public GameMap Map { get; private set; }
     public Player Player { get; }
 
     public List<Monster> Monsters { get; } = new();
     public List<Item> GameItems { get; } = new();
-
     public List<Chest> Chests { get; } = new();
 
+    // ===== Map 3 : scénario =====
+    public List<Seal> Seals { get; } = new();
+    public Merchant? Merchant { get; set; }
+
+    public int SealsActivated { get; private set; } = 0;
+    public bool HasLegendarySword { get; private set; } = false;
+    public bool MiniBossDefeated { get; private set; } = false;
+
+    public void IncrementSealsActivated()
+        => SealsActivated = Math.Min(3, SealsActivated + 1);
+
+    public void MarkLegendarySwordPicked()
+        => HasLegendarySword = true;
+
+    public void MarkMiniBossDefeated()
+        => MiniBossDefeated = true;
+
+    // ===== Doors helpers (Map3Scripting) =====
+    public bool IsDoorClosed(Position pos)
+        => Map.InBounds(pos) && Map.GetTile(pos) == TileType.DoorClosed;
+
+    public void OpenDoor(Position pos)
+    {
+        if (!Map.InBounds(pos)) return;
+        if (Map.GetTile(pos) == TileType.DoorClosed)
+            Map.SetTile(pos, TileType.DoorOpen);
+    }
+
+    public void CloseDoor(Position pos)
+    {
+        if (!Map.InBounds(pos)) return;
+        if (Map.GetTile(pos) == TileType.DoorOpen)
+            Map.SetTile(pos, TileType.DoorClosed);
+    }
+
+    // ===== Generic queries =====
+    public Monster? MonsterAt(Position p)
+        => Monsters.FirstOrDefault(m => !m.IsDead && m.Pos == p);
+
+    public Item? ItemAt(Position p)
+        => GameItems.FirstOrDefault(i => i.Position == p);
+
+    public void RemoveItem(Item item)
+        => GameItems.Remove(item);
+
+    public Chest? ChestAt(Position p)
+        => Chests.FirstOrDefault(c => !c.IsOpened && c.Pos == p);
+
+    public Seal? SealAt(Position p)
+        => Seals.FirstOrDefault(s => !s.IsActivated && s.Pos == p);
+
+    public bool IsMerchantAt(Position p)
+        => Merchant is not null && Merchant.Pos == p;
+
+    public bool IsBlocked(Position p)
+    {
+        if (!Map.IsWalkable(p)) return true;
+        if (MonsterAt(p) is not null) return true;
+        return false;
+    }
+
+    // ✅ Alias pour ne pas casser l’existant : une seule liste !
+    public List<Item> Items => GameItems;
+
+    // ===== Engine / State / Log =====
     public Random Rng { get; } = new();
     public HashSet<Position> VisibleTiles { get; } = new();
     public HashSet<Position> DiscoveredTiles { get; } = new();
 
-    private const int MaxAliveMonsters = 10;
-    private const int MaxNightSpawnsPerNight = 2;
-    private int _nightSpawnedThisNight = 0;
-
     public IGameState State { get; set; }
+
     public enum LogKind { Info, Loot, Combat, Warning, System }
     public readonly record struct LogEntry(LogKind Kind, string Text);
 
     private const int LogCapacity = 30;
     private readonly List<LogEntry> _log = new();
     public IReadOnlyList<LogEntry> LogEntries => _log;
+
+    public string LastMessage { get; private set; } = "";
 
     public void PushLog(string text, LogKind kind = LogKind.Info)
     {
@@ -51,34 +113,46 @@ public sealed class GameContext
         LastMessage = text;
     }
 
-    public GameContext(GameMap map, Player player, IGameState initialState)
+    public void AddMessage(string msg) => PushLog(msg, LogKind.Info);
+
+    // ===== Progression maps =====
+    public int CurrentLevel { get; private set; } = 1;
+    public void SetLevelIndex(int level) => CurrentLevel = level;
+
+    public void LoadLevel(int level)
     {
-        Map = map;
-        Player = player;
-        State = initialState;
+        var data = LevelCatalog.CreateLevel(level);
+
+        Monsters.Clear();
+        GameItems.Clear();
+        Chests.Clear();
+        Seals.Clear();
+        Merchant = null;
+
+        VisibleTiles.Clear();
+        DiscoveredTiles.Clear();
+
+        SealsActivated = 0;
+        HasLegendarySword = false;
+        MiniBossDefeated = false;
+
+        Map = data.Map;
+        Player.SetPosition(data.PlayerStart);
+
+        Monsters.AddRange(data.Monsters);
+        GameItems.AddRange(data.Items);
+        Chests.AddRange(data.Chests);
+
+        Seals.AddRange(data.Seals);
+        Merchant = data.Merchant;
+
+        CurrentLevel = level;
+
+        PushLog($"Niveau {level} chargé.", LogKind.System);
+        UpdateVision();
     }
 
-    public Monster? MonsterAt(Position p)
-        => Monsters.FirstOrDefault(m => !m.IsDead && m.Pos == p);
-
-    public Item? ItemAt(Position pos)
-        => GameItems.FirstOrDefault(i => i.Position == pos);
-
-    public void RemoveItem(Item item)
-        => GameItems.Remove(item);
-
-    public Chest? ChestAt(Position pos)
-        => Chests.FirstOrDefault(c => !c.IsOpened && c.Pos == pos);
-
-    public bool IsBlocked(Position p)
-    {
-        if (!Map.IsWalkable(p)) return true;
-        if (MonsterAt(p) is not null) return true;
-        return false;
-    }
-
-    public List<Item> Items { get; } = new();
-
+    // ===== Vision =====
     public void UpdateVision()
     {
         // int radius = Player.VisionRadius;
@@ -104,50 +178,14 @@ public sealed class GameContext
         DiscoveredTiles.Add(Player.Pos);
     }
 
-
+    // ===== Time system (inchangé) =====
     public TimeSystem Time { get; } = new TimeSystem(phaseLength: 24);
 
+    private const int MaxAliveMonsters = 10;
+    private const int MaxNightSpawnsPerNight = 2;
+    private int _nightSpawnedThisNight = 0;
+
     private bool _nightBuffApplied = false;
-
-    public string LastMessage { get; private set; } = "";
-
-    public void AddMessage(string msg)
-    {
-        PushLog(msg, LogKind.Info);
-    }
-
-    public void OpenChest(Chest chest)
-    {
-        if (chest.IsOpened) return;
-
-        chest.Open();
-
-        var loot = chest.Type switch
-        {
-            ChestType.TorchOnly => LootTable.RollTorch(chest.Pos),
-            ChestType.Legendary => LootTable.Roll(Rng, chest.Pos), // si tu as
-            _ => LootTable.Roll(Rng, chest.Pos)
-        };
-
-
-        string chestLabel = chest.Type switch
-        {
-            ChestType.TorchOnly => "coffre de torche",
-            ChestType.Legendary => "COFFRE LÉGENDAIRE",
-            _ => "coffre"
-        };
-
-        if (loot.AutoApplyOnPickup)
-        {
-            loot.Apply(Player);
-            AddMessage($"Vous ouvrez un {chestLabel} ! Vous trouvez {loot.Name} (utilisé).");
-        }
-        else
-        {
-            Player.AddToInventory(loot);
-            AddMessage($"Vous ouvrez un {chestLabel} ! Vous trouvez {loot.Name} (inventaire).");
-        }
-    }
 
     public void AdvanceTimeAfterPlayerMove()
     {
@@ -155,10 +193,8 @@ public sealed class GameContext
 
         if (phaseChanged)
         {
-            if (Time.IsNight)
-                ApplyNightStart();
-            else
-                ApplyDayStart();
+            if (Time.IsNight) ApplyNightStart();
+            else ApplyDayStart();
         }
 
         if (Time.IsNight && Time.Tick % 10 == 0)
@@ -204,5 +240,45 @@ public sealed class GameContext
             _nightSpawnedThisNight++;
             return;
         }
+    }
+
+    // ===== Chests =====
+    public void OpenChest(Chest chest)
+    {
+        if (chest.IsOpened) return;
+
+        chest.Open();
+
+        var loot = chest.Type switch
+        {
+            ChestType.TorchOnly => LootTable.RollTorch(chest.Pos),
+            ChestType.Legendary => LootTable.Roll(Rng, chest.Pos),
+            _ => LootTable.Roll(Rng, chest.Pos)
+        };
+
+        string chestLabel = chest.Type switch
+        {
+            ChestType.TorchOnly => "coffre de torche",
+            ChestType.Legendary => "COFFRE LÉGENDAIRE",
+            _ => "coffre"
+        };
+
+        if (loot.AutoApplyOnPickup)
+        {
+            loot.Apply(Player);
+            AddMessage($"Vous ouvrez un {chestLabel} ! Vous trouvez {loot.Name} (utilisé).");
+        }
+        else
+        {
+            Player.AddToInventory(loot);
+            AddMessage($"Vous ouvrez un {chestLabel} ! Vous trouvez {loot.Name} (inventaire).");
+        }
+    }
+
+    public GameContext(GameMap map, Player player, IGameState initialState)
+    {
+        Map = map;
+        Player = player;
+        State = initialState;
     }
 }

@@ -7,7 +7,7 @@ using static RogueLike.App.GameContext;
 public static class ConsoleRenderer
 {
     private const int HudHeight = 9;
-    private const int Gap = 2; 
+    private const int Gap = 2;
 
     public static void Draw(GameContext ctx, string stateName)
     {
@@ -48,38 +48,90 @@ public static class ConsoleRenderer
             {
                 var p = new Position(x, y);
 
+                // Fog / undiscovered
+                if (!ctx.DiscoveredTiles.Contains(p) && ctx.Player.Pos != p)
+                {
+                    Console.Write(' ');
+                    continue;
+                }
+
+                // ===== Overlay priority =====
                 if (ctx.Player.Pos == p)
                 {
                     WriteColored('@', ConsoleColor.White, ConsoleColor.DarkBlue);
                     continue;
                 }
 
-                if (!ctx.DiscoveredTiles.Contains(p))
+                // Monsters
+                if (ctx.MonsterAt(p) is not null)
                 {
-                    Console.Write(' ');
+                    WriteColored('M', ConsoleColor.Red);
                     continue;
                 }
 
-                char c = ctx.Map.GetTile(p) switch
+                // Seals (Map 3)
+                // (ctx.Seals peut être vide sur les autres maps => ok)
+                var seal = ctx.SealAt(p);
+                if (seal is not null)
+                {
+                    if (seal.IsActivated) WriteColored('s', ConsoleColor.DarkGray);
+                    else WriteColored('S', ConsoleColor.Magenta);
+                    continue;
+                }
+                else
+                {
+                    // si le sceau est déjà activé, SealAt ne le renvoie plus
+                    // on veut quand même afficher un 's' sur la case correspondante
+                    var anySeal = ctx.Seals.FirstOrDefault(s => s.Pos == p);
+                    if (anySeal is not null)
+                    {
+                        WriteColored(anySeal.IsActivated ? 's' : 'S', anySeal.IsActivated ? ConsoleColor.DarkGray : ConsoleColor.Magenta);
+                        continue;
+                    }
+                }
+
+                // Merchant
+                if (ctx.Merchant is not null && ctx.Merchant.Pos == p)
+                {
+                    // '¢' peut être problématique selon font/console => '$' robuste
+                    WriteColored('$', ConsoleColor.Blue);
+                    continue;
+                }
+
+                // Chest
+                var chest = ctx.Chests.FirstOrDefault(ch => ch.Pos == p);
+                if (chest is not null)
+                {
+                    WriteColored(chest.Glyph, ConsoleColor.Yellow);
+                    continue;
+                }
+
+                // Item on ground
+                var item = ctx.ItemAt(p);
+                if (item is not null)
+                {
+                    // garde le glyph propre à l'item (L pour LegendarySword etc)
+                    WriteColored(item.Glyph, ConsoleColor.Cyan);
+                    continue;
+                }
+
+                // ===== Tile fallback =====
+                var tile = ctx.Map.GetTile(p);
+
+                char c = tile switch
                 {
                     TileType.Wall => '#',
                     TileType.Exit => 'E',
+                    TileType.DoorClosed => '|',
+                    TileType.DoorOpen => '+',
                     _ => '.'
                 };
-
-                var chest = ctx.Chests.FirstOrDefault(ch => ch.Pos == p);
-                if (chest is not null) c = chest.Glyph;
-
-                var item = ctx.ItemAt(p);
-                if (item is not null) c = item.Glyph;
-
-                if (ctx.MonsterAt(p) is not null) c = 'M';
 
                 if (c == '#') WriteColored('#', ConsoleColor.DarkGray);
                 else if (c == '.') WriteColored('.', ConsoleColor.DarkGray);
                 else if (c == 'E') WriteColored('E', ConsoleColor.Green);
-                else if (c == 'M') WriteColored('M', ConsoleColor.Red);
-                else if (c == 'C') WriteColored('C', ConsoleColor.Yellow);
+                else if (c == '|') WriteColored('|', ConsoleColor.DarkYellow);
+                else if (c == '+') WriteColored('+', ConsoleColor.DarkYellow);
                 else WriteColored(c, ConsoleColor.Cyan);
             }
         }
@@ -193,7 +245,6 @@ public static class ConsoleRenderer
         Console.ResetColor();
     }
 
-
     // ===================== BOX HELPERS =====================
 
     private static void BoxTop(int x, int y, int w, string title)
@@ -268,7 +319,6 @@ public static class ConsoleRenderer
         Console.ResetColor();
     }
 
-
     private static void BoxKeyValues(
         int x, int y, int w,
         (string k, string v, ConsoleColor col) a,
@@ -285,7 +335,6 @@ public static class ConsoleRenderer
         Console.ResetColor();
 
         int innerW = w - 2;
-
         int colW = innerW / 3;
 
         WriteKV(part1, colW, a.col);

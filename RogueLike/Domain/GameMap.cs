@@ -39,7 +39,7 @@ public sealed class GameMap
                     '.' => TileType.Floor,
                     'E' => TileType.Exit,
                     '|' => TileType.DoorClosed,
-                    _ => TileType.Floor, 
+                    _ => TileType.Floor,
                 };
             }
         }
@@ -52,6 +52,15 @@ public sealed class GameMap
 
     public TileType GetTile(Position p)
         => _tiles[p.Y, p.X];
+
+    public void SetTile(Position p, TileType tile)
+    {
+        if (!InBounds(p)) return;
+        _tiles[p.Y, p.X] = tile;
+    }
+
+    public void SetTile(int x, int y, TileType tile)
+        => SetTile(new Position(x, y), tile);
 
     public bool IsWalkable(Position p)
     {
