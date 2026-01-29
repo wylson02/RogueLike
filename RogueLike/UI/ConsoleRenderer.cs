@@ -14,7 +14,6 @@ public static class ConsoleRenderer
         Console.CursorVisible = false;
 
         Console.SetCursorPosition(0, 0);
-        //Console.Clear();
 
         int mapW = ctx.Map.Width;
         int mapH = ctx.Map.Height;
@@ -139,7 +138,6 @@ public static class ConsoleRenderer
     }
 
     // ===================== HUD =====================
-
     private static void DrawHud(GameContext ctx, string stateName, int ox, int oy, int width)
     {
         width = Math.Max(28, width);

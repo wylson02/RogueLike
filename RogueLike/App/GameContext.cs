@@ -158,7 +158,9 @@ public sealed class GameContext
     // ===== Vision =====
     public void UpdateVision()
     {
-        int radius = Player.VisionRadius;
+        // int radius = Player.VisionRadius;
+        int radius = 30;
+
         VisibleTiles.Clear();
 
         for (int dy = -radius; dy <= radius; dy++)

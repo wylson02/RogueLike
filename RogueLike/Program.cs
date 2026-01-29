@@ -4,8 +4,25 @@ using RogueLike.App.States;
 using RogueLike.Domain.Entities;
 using RogueLike.UI;
 
+// === CONFIG CONSOLE (AVANT TOUT) ===
+Console.CursorVisible = false;
+
+if (OperatingSystem.IsWindows())
+{
+    try
+    {
+        Console.SetWindowSize(120, 40);
+        Console.SetBufferSize(120, 40);
+    }
+    catch
+    {
+        // Ignore si la taille n'est pas supportée
+    }
+}
+
 Console.Clear();
 
+// === INIT JEU ===
 var level = LevelCatalog.CreateLevel1();
 
 var ctx = new GameContext(
@@ -14,7 +31,7 @@ var ctx = new GameContext(
     new ExplorationState()
 );
 
-ctx.UpdateVision(); //initialiser la vision
+ctx.UpdateVision(); // initialiser la vision
 ctx.Monsters.AddRange(level.Monsters);
 ctx.GameItems.AddRange(level.Items);
 ctx.Chests.AddRange(level.Chests);
@@ -22,6 +39,7 @@ ctx.Seals.AddRange(level.Seals);
 ctx.Merchant = level.Merchant;
 ctx.SetLevelIndex(1);
 
+// === BOUCLE PRINCIPALE ===
 while (true)
 {
     ConsoleRenderer.Draw(ctx, ctx.State.Name);
