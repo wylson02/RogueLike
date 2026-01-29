@@ -3,6 +3,7 @@
 using RogueLike.Domain;
 using RogueLike.Domain.Catalogs;
 using RogueLike.Domain.Entities;
+using static RogueLike.Domain.Entities.Chest;
 
 public static class LevelCatalog
 {
@@ -21,10 +22,11 @@ public static class LevelCatalog
 
             Chests = new()
             {
-                new Chest(new Position(2, 2)),
-                new Chest(new Position(7, 6)),
-                new Chest(new Position(12, 2)),
-            }
+                new Chest(new Position(2, 2), ChestType.TorchOnly),
+                new Chest(new Position(7, 6), ChestType.Normal),
+                new Chest(new Position(12, 2), ChestType.Legendary),
+            },
+
         };
     }
 }

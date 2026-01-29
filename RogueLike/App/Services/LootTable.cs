@@ -3,6 +3,8 @@
 using RogueLike.Domain;
 using RogueLike.Domain.Items;
 
+
+
 public static class LootTable
 {
 
@@ -18,6 +20,7 @@ public static class LootTable
         pos => ItemCatalog.VampRing(pos),
 
         pos => ItemCatalog.LegendarySword(pos),
+        
     };
 
     public static Item Roll(Random rng, Position spawnPos)
@@ -25,4 +28,10 @@ public static class LootTable
         int i = rng.Next(0, _pool.Length);
         return _pool[i](spawnPos);
     }
+
+    public static Item RollTorch(Position pos)
+    {
+        return ItemCatalog.Torch(pos);
+    }
+
 }
