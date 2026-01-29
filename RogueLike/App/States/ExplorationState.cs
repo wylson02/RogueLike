@@ -57,6 +57,11 @@ public sealed class ExplorationState : IGameState
             ctx.Player.SetPosition(next);
             seal.Activate();
             ctx.IncrementSealsActivated();
+            if (ctx.CurrentLevel == 3 && ctx.SealsActivated == 2 && !ctx.Map3LastSealHintShown)
+            {
+                ctx.ShowMap3LastSealHintOnce();
+                ctx.PushLog("Le dernier sceau résonne faiblement… quelque part dans le temple.", GameContext.LogKind.System);
+            }
             ctx.PushLog($"Sceau {seal.Id} activé ({ctx.SealsActivated}/3).", GameContext.LogKind.System);
 
             // 3/3 => ouvrir l'accès à la salle centrale
@@ -136,6 +141,8 @@ public sealed class ExplorationState : IGameState
             if (ctx.CurrentLevel == 3 && item is LegendarySwordItem)
             {
                 ctx.MarkLegendarySwordPicked();
+                ctx.GrantLegendaryEmpower();
+                ctx.PushLog("Une chaleur traverse vos bras. Votre prochain coup sera béni.", GameContext.LogKind.System);
 
                 RogueLike.UI.ScreenFX.BigShake(ctx, stateName: "Exploration", shakes: 10, delayMs: 18);
                 RogueLike.UI.ScreenFX.Banner("LA LAME S'ÉVEILLE...", ConsoleColor.DarkRed, ms: 450);

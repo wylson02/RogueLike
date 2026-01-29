@@ -62,8 +62,18 @@ public static class Map3Scripting
         // Spawn miniboss derrière : case précédente si possible, sinon adjacente
         var spawn = FindSpawnBehind(ctx, fromPos);
 
-        var warden = MonsterCatalog.SealWardenMiniBoss(spawn);
+        bool enraged = ctx.Rng.Next(0, 100) < 10;
+        var warden = enraged
+            ? MonsterCatalog.SealWardenMiniBossEnraged(spawn)
+            : MonsterCatalog.SealWardenMiniBoss(spawn);
+
         ctx.Monsters.Add(warden);
+
+        if (enraged)
+        {
+            ctx.PushLog("Le sol se fissure. Le Gardien hurle : il est ENRAGÉ.", GameContext.LogKind.System);
+        }
+
 
         ctx.PushLog("Une silhouette se détache des ombres : le Gardien des Sceaux.", GameContext.LogKind.Combat);
         ctx.PushLog("\"Rends-la... ou sois le dernier à tomber ici.\"", GameContext.LogKind.System);
@@ -83,6 +93,14 @@ public static class Map3Scripting
 
         ctx.PushLog("Le Gardien s'effondre, et les verrous se relâchent.", GameContext.LogKind.System);
         ctx.PushLog("Les portes se rouvrent. Le chemin est libre.", GameContext.LogKind.System);
+        // Respiration : petit heal + bloque spawns nocturnes un moment
+        int heal = 4;
+        ctx.Player.Heal(heal);
+        ctx.BlockNightSpawnsForTicks(30);
+
+        ctx.PushLog($"Vous reprenez votre souffle. +{heal} PV.", GameContext.LogKind.Info);
+        ctx.PushLog("Le temple se tait… pour l’instant.", GameContext.LogKind.System);
+
     }
 
     private static Position FindSpawnBehind(GameContext ctx, Position preferred)

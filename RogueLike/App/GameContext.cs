@@ -128,6 +128,9 @@ public sealed class GameContext
         Chests.Clear();
         Seals.Clear();
         Merchant = null;
+        LegendaryEmpowerNextFight = false;
+        Map3LastSealHintShown = false;
+        _noNightSpawnTicks = 0;
 
         VisibleTiles.Clear();
         DiscoveredTiles.Clear();
@@ -221,6 +224,11 @@ public sealed class GameContext
 
     private void TrySpawnNightMonster()
     {
+        if (_noNightSpawnTicks > 0)
+        {
+            _noNightSpawnTicks--;
+            return;
+        }
         int alive = Monsters.Count(m => !m.IsDead);
         if (alive >= MaxAliveMonsters) return;
 
@@ -291,5 +299,24 @@ public sealed class GameContext
         }
         return false;
     }
+
+    public bool LegendaryEmpowerNextFight { get; private set; } = false;
+    public bool Map3LastSealHintShown { get; private set; } = false;
+
+    // Bloque le spawn nocturne temporairement (après miniboss par ex.)
+    private int _noNightSpawnTicks = 0;
+
+    public void GrantLegendaryEmpower()
+        => LegendaryEmpowerNextFight = true;
+
+    public void ConsumeLegendaryEmpower()
+        => LegendaryEmpowerNextFight = false;
+
+    public void ShowMap3LastSealHintOnce()
+        => Map3LastSealHintShown = true;
+
+    public void BlockNightSpawnsForTicks(int ticks)
+        => _noNightSpawnTicks = Math.Max(_noNightSpawnTicks, Math.Max(0, ticks));
+
 
 }
