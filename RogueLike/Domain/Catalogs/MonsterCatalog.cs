@@ -38,4 +38,16 @@ public static class MonsterCatalog
             .WithXpReward(min: 6, max: 10)
             .WithAi(new AggroWithinRangeStrategy(range: 3))
             .Build();
+
+    public static Monster SealWardenMiniBoss(Position pos)
+        => new MonsterBuilder()
+            .Named("Gardien des Sceaux")
+            .At(pos)
+            .WithHp(32)
+            .WithAttack(7)
+            .WithGoldReward(min: 30, max: 55)
+            .WithXpReward(min: 25, max: 40)
+            .WithRank(MonsterRank.MiniBoss)
+            .WithAi(new AggroWithinRangeStrategy(range: 6, fallback: new RandomWalkStrategy()))
+            .Build();
 }

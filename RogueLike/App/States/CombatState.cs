@@ -3,6 +3,7 @@
 using RogueLike.App;
 using RogueLike.App.Combat;
 using RogueLike.App.Combat.Actions;
+using RogueLike.App.Services;
 using RogueLike.Domain.Entities;
 using RogueLike.UI;
 
@@ -59,6 +60,10 @@ public sealed class CombatState : IGameState
 
             _combat.AddLog($"+{xp} XP, +{gold} or !");
             ctx.AddMessage($"+{xp} XP, +{gold} or !");
+
+            // Hooks scénario (Map 3)
+            if (_enemy.Rank == MonsterRank.MiniBoss)
+                Map3Scripting.OnMiniBossDefeated(ctx);
         }
 
         if (result.EndCombat || _combat.IsOver || _combat.PlayerFled)
