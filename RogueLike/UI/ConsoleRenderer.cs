@@ -138,7 +138,6 @@ public static class ConsoleRenderer
     }
 
     // ===================== HUD =====================
-
     private static void DrawHud(GameContext ctx, string stateName, int ox, int oy, int width)
     {
         width = Math.Max(28, width);

@@ -14,7 +14,8 @@ public sealed class CombatState : IGameState
     private readonly Monster _enemy;
     private CombatContext? _combat;
     private bool _entered;
-
+    private bool _empowerApplied = false;
+    private int _empowerAtkBonus = 2;
     private bool _rewardGiven = false;
 
     private readonly List<ICombatAction> _actions = new()
@@ -39,7 +40,15 @@ public sealed class CombatState : IGameState
             _combat = new CombatContext(ctx.Player, _enemy, ctx.Rng);
             CombatTransition.Play($"COMBAT : {_enemy.Name} !");
             _combat.AddLog($"Un {_enemy.Name} surgit !");
+            if (ctx.LegendaryEmpowerNextFight)
+            {
+                ctx.ConsumeLegendaryEmpower();
+                ctx.Player.ModifyAttack(_empowerAtkBonus);
+                _empowerApplied = true;
+                _combat.AddLog("La lame pulse : vos coups sont renforcés !");
+            }
             _combat.AddLog("Que vas-tu faire ?");
+
         }
 
         if (_combat == null) return;
@@ -75,6 +84,11 @@ public sealed class CombatState : IGameState
             {
                 ctx.State = new EndState(victory: false);
                 return;
+            }
+            if (_empowerApplied)
+            {
+                ctx.Player.ModifyAttack(-_empowerAtkBonus);
+                _empowerApplied = false;
             }
 
             ctx.State = new ExplorationState();

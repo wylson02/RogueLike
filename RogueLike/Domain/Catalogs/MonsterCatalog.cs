@@ -50,4 +50,18 @@ public static class MonsterCatalog
             .WithRank(MonsterRank.MiniBoss)
             .WithAi(new AggroWithinRangeStrategy(range: 6, fallback: new RandomWalkStrategy()))
             .Build();
+
+    public static Monster SealWardenMiniBossEnraged(Position pos)
+        => new MonsterBuilder()
+            .Named("Gardien des Sceaux (ENRAGÉ)")
+            .At(pos)
+            .WithHp(44)
+            .WithAttack(8)
+            .WithGoldReward(min: 45, max: 80)
+            .WithXpReward(min: 35, max: 55)
+            .WithRank(MonsterRank.MiniBoss)
+            .WithAi(new AggroWithinRangeStrategy(range: 7, fallback: new RandomWalkStrategy()))
+            .Build();
+
+
 }
