@@ -11,8 +11,9 @@ public static class LevelCatalog
     {
         return new LevelData
         {
-            Map = MapCatalog.Level1(),
-            PlayerStart = new Position(1, 1),
+            Map = MapCatalog.Level2(),
+            // PlayerStart = new Position(1, 1),
+            PlayerStart = new Position(1, 11),
 
             Monsters = new()
             {

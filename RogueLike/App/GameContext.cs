@@ -81,7 +81,8 @@ public sealed class GameContext
 
     public void UpdateVision()
     {
-        int radius = Player.VisionRadius;
+        // int radius = Player.VisionRadius;
+        int radius = 30;
 
         VisibleTiles.Clear();
 

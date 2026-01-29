@@ -14,7 +14,6 @@ public static class ConsoleRenderer
         Console.CursorVisible = false;
 
         Console.SetCursorPosition(0, 0);
-        Console.Clear();
 
         int mapW = ctx.Map.Width;
         int mapH = ctx.Map.Height;
@@ -135,8 +134,6 @@ public static class ConsoleRenderer
     {
         width = Math.Max(40, width);
         int w = Math.Min(width, Console.WindowWidth - 1);
-
-        int boxH = 5;
 
         Console.SetCursorPosition(ox, oy);
         Console.ForegroundColor = ConsoleColor.DarkGray;
