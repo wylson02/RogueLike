@@ -1,10 +1,11 @@
 ﻿namespace RogueLike.App.States;
 
-using System.Linq;
 using RogueLike.App;
 using RogueLike.App.Services;
 using RogueLike.Domain;
+using RogueLike.Domain.Items;
 using RogueLike.UI;
+using System.Linq;
 
 public sealed class ExplorationState : IGameState
 {
@@ -104,7 +105,7 @@ public sealed class ExplorationState : IGameState
         // Déplacement normal
         ctx.Player.SetPosition(next);
 
-        // Pickup item au sol
+        //pick-up des items
         var item = ctx.ItemAt(next);
         if (item is not null)
         {
@@ -118,16 +119,31 @@ public sealed class ExplorationState : IGameState
             else
             {
                 ctx.Player.AddToInventory(item);
-                ctx.PushLog($"Vous ramassez {item.Name} (inventaire).", GameContext.LogKind.Loot);
+
+                //Auto-equip épée légendaire (moment scénarisé)
+                if (item is LegendarySwordItem)
+                {
+                    ctx.Player.Equip(item);
+                    ctx.PushLog("La lame se lie à votre main. (Équipée automatiquement)", GameContext.LogKind.System);
+                }
+                else
+                {
+                    ctx.PushLog($"Vous ramassez {item.Name} (inventaire).", GameContext.LogKind.Loot);
+                }
             }
 
             // Script Map 3 : épée de légende
-            if (ctx.CurrentLevel == 3 && item is RogueLike.Domain.Items.LegendarySwordItem)
+            if (ctx.CurrentLevel == 3 && item is LegendarySwordItem)
             {
                 ctx.MarkLegendarySwordPicked();
+
+                RogueLike.UI.ScreenFX.BigShake(ctx, stateName: "Exploration", shakes: 10, delayMs: 18);
+                RogueLike.UI.ScreenFX.Banner("LA LAME S'ÉVEILLE...", ConsoleColor.DarkRed, ms: 450);
+
                 Map3Scripting.TriggerLegendarySwordEvent(ctx, fromPos: prev);
             }
         }
+
 
         // Exit (changement de niveau)
         if (ctx.Map.GetTile(next) == TileType.Exit)

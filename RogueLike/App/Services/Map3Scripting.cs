@@ -5,13 +5,8 @@ using RogueLike.Domain;
 using RogueLike.Domain.Catalogs;
 using RogueLike.Domain.Entities;
 
-/// <summary>
-/// Scripts légers (sans moteur de quêtes) pour Map 3.
-/// Tout est hardcodé par positions pour garder l'archi simple.
-/// </summary>
 public static class Map3Scripting
 {
-    // ===== Positions (doivent matcher MapCatalog.Level3) =====
     // Portes de la salle centrale
     private static readonly Position[] CentralDoors =
     {
@@ -24,8 +19,8 @@ public static class Map3Scripting
     // Portes de sortie (marchand + boss)
     private static readonly Position[] ExitDoors =
     {
-        new Position(35, 7),  // vers marchand
-        new Position(35, 11), // vers boss
+        new Position(35, 7),
+        new Position(35, 11),
     };
 
     public static void OpenCentralDoors(GameContext ctx)
@@ -57,15 +52,16 @@ public static class Map3Scripting
         if (ctx.CurrentLevel != 3) return;
         if (!ctx.HasLegendarySword) return;
 
-        // Fermer les portes de la salle + sorties
+        // verrouille
         CloseCentralDoors(ctx);
         CloseExitDoors(ctx);
 
         ctx.PushLog("Quand vos doigts se referment sur la garde, la pierre gronde...", GameContext.LogKind.System);
-        ctx.PushLog("Les portes claquent derrière vous. Un froid ancien traverse la salle.", GameContext.LogKind.System);
+        ctx.PushLog("Les portes claquent. Un froid ancien traverse la salle.", GameContext.LogKind.System);
 
-        // Spawn miniboss "derrière" : on tente la case d'où le joueur vient, sinon adjacent.
+        // Spawn miniboss derrière : case précédente si possible, sinon adjacente
         var spawn = FindSpawnBehind(ctx, fromPos);
+
         var warden = MonsterCatalog.SealWardenMiniBoss(spawn);
         ctx.Monsters.Add(warden);
 
@@ -81,6 +77,7 @@ public static class Map3Scripting
         if (!ctx.HasLegendarySword) return;
 
         ctx.MarkMiniBossDefeated();
+
         OpenCentralDoors(ctx);
         OpenExitDoors(ctx);
 
@@ -93,7 +90,6 @@ public static class Map3Scripting
         if (ctx.Map.IsWalkable(preferred) && ctx.MonsterAt(preferred) is null && preferred != ctx.Player.Pos)
             return preferred;
 
-        // fallback : autour du joueur
         var around = new[]
         {
             ctx.Player.Pos.Move(Direction.Left),

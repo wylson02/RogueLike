@@ -229,7 +229,7 @@ public sealed class GameContext
         for (int tries = 0; tries < 60; tries++)
         {
             var p = new Position(Rng.Next(1, Map.Width - 1), Rng.Next(1, Map.Height - 1));
-
+            if (IsSafeZone(p)) continue;
             if (!Map.IsWalkable(p)) continue;
             if (p == Player.Pos) continue;
             if (MonsterAt(p) is not null) continue;
@@ -279,4 +279,17 @@ public sealed class GameContext
         Player = player;
         State = initialState;
     }
+
+    public bool IsSafeZone(Position p)
+    {
+        // Safe zone merchant room (doit matcher MapCatalog.Level3)
+        // Salle marchand : x 35..42, y 5..10 (murs inclus)
+        if (CurrentLevel == 3)
+        {
+            if (p.X >= 35 && p.X <= 42 && p.Y >= 5 && p.Y <= 10)
+                return true;
+        }
+        return false;
+    }
+
 }

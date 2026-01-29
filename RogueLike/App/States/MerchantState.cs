@@ -43,11 +43,9 @@ public sealed class MerchantState : IGameState
         Console.CursorVisible = false;
 
         Console.ForegroundColor = ConsoleColor.Yellow;
-        Console.WriteLine($"== {_merchant.Name} ==");
-        Console.ResetColor();
-        Console.WriteLine("(B) Acheter   (V) Vendre   (Échap) Retour");
-        Console.WriteLine($"Or : {ctx.Player.Gold}");
-        Console.WriteLine();
+        DrawMerchantHeader(ctx);
+        DrawMerchantStatsPanel(ctx);
+
 
         var key = Console.ReadKey(true).Key;
 
@@ -112,18 +110,22 @@ public sealed class MerchantState : IGameState
             Console.WriteLine("Choisissez un objet (1-9) ou Échap pour revenir.");
             Console.WriteLine();
 
-            var inv = ctx.Player.Inventory;
-            if (inv.Count == 0)
+            // Filtre : objets vendables uniquement
+            var sellable = ctx.Player.Inventory
+                .Where(it => it is not LegendarySwordItem)
+                .ToList();
+
+            if (sellable.Count == 0)
             {
-                Console.WriteLine("Inventaire vide.");
+                Console.WriteLine("Rien à vendre.");
                 Console.ReadKey(true);
                 return;
             }
 
-            int shown = Math.Min(9, inv.Count);
+            int shown = Math.Min(9, sellable.Count);
             for (int i = 0; i < shown; i++)
             {
-                var it = inv[i];
+                var it = sellable[i];
                 int price = SellPrice(it);
                 Console.WriteLine($"{i + 1}. {it.Name}  ->  +{price} gold");
             }
@@ -134,15 +136,18 @@ public sealed class MerchantState : IGameState
             int idx = KeyToIndex(k);
             if (idx < 0 || idx >= shown) continue;
 
-            var item = inv[idx];
+            var item = sellable[idx];
             int p = SellPrice(item);
 
+            // On retire du vrai inventaire
             ctx.Player.RemoveFromInventory(item);
             ctx.Player.AddGold(p);
+
             ctx.PushLog($"Vente : {item.Name} (+{p} gold).", GameContext.LogKind.Loot);
             return;
         }
     }
+
 
     private static int KeyToIndex(ConsoleKey k)
         => k switch
@@ -173,4 +178,73 @@ public sealed class MerchantState : IGameState
             _ => 6
         };
     }
+    private static void DrawMerchantHeader(GameContext ctx)
+    {
+        string title = "MARCHAND";
+        string line = $"Or : {ctx.Player.Gold}    B: Acheter   V: Vendre   Échap: Retour";
+
+        int w = Math.Min(Console.WindowWidth - 1, Math.Max(44, Math.Max(title.Length + 6, line.Length + 4)));
+        w = Math.Max(30, w);
+
+        Console.ForegroundColor = ConsoleColor.DarkGray;
+        Console.WriteLine("┌" + new string('─', w - 2) + "┐");
+
+        Console.Write("│ ");
+        Console.ForegroundColor = ConsoleColor.Yellow;
+        Console.Write(title);
+        Console.ForegroundColor = ConsoleColor.DarkGray;
+        Console.WriteLine(new string(' ', Math.Max(0, w - 3 - title.Length)) + "│");
+
+        Console.WriteLine("├" + new string('─', w - 2) + "┤");
+
+        Console.Write("│ ");
+        Console.ResetColor();
+        string inner = line;
+        if (inner.Length > w - 4) inner = inner[..(w - 5)] + "…";
+        Console.Write(inner);
+        Console.ForegroundColor = ConsoleColor.DarkGray;
+        Console.WriteLine(new string(' ', Math.Max(0, w - 3 - inner.Length)) + "│");
+
+        Console.WriteLine("└" + new string('─', w - 2) + "┘");
+        Console.ResetColor();
+        Console.WriteLine();
+    }
+
+    private static void DrawMerchantStatsPanel(GameContext ctx)
+    {
+        int w = Math.Min(Console.WindowWidth - 1, 60);
+        w = Math.Max(44, w);
+
+        string l1 = $"Build : ATK {ctx.Player.Attack}  |  ARM {ctx.Player.Armor}  |  CRIT {ctx.Player.CritChancePercent}%  |  VOL {ctx.Player.LifeStealPercent}%";
+        string l2 = $"Inventaire : {ctx.Player.Inventory.Count} objets   |   PV : {ctx.Player.Hp}/{ctx.Player.MaxHp}   |   Niveau : {ctx.Player.Level}";
+
+        Console.ForegroundColor = ConsoleColor.DarkGray;
+        Console.WriteLine("╔" + new string('═', w - 2) + "╗");
+
+        Console.Write("║ ");
+        Console.ForegroundColor = ConsoleColor.Cyan;
+        WriteFit(l1, w - 4);
+        Console.ForegroundColor = ConsoleColor.DarkGray;
+        Console.WriteLine(" ║");
+
+        Console.Write("║ ");
+        Console.ForegroundColor = ConsoleColor.Gray;
+        WriteFit(l2, w - 4);
+        Console.ForegroundColor = ConsoleColor.DarkGray;
+        Console.WriteLine(" ║");
+
+        Console.WriteLine("╚" + new string('═', w - 2) + "╝");
+        Console.ResetColor();
+        Console.WriteLine();
+    }
+
+    private static void WriteFit(string s, int w)
+    {
+        if (w <= 0) return;
+        if (s.Length <= w) Console.Write(s.PadRight(w));
+        else Console.Write(s[..(w - 1)] + "…");
+    }
+
+
+
 }
