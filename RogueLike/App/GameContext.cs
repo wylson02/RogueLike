@@ -8,6 +8,7 @@ using RogueLike.Domain.Catalogs;
 using RogueLike.Domain.Entities;
 using RogueLike.Domain.Items;
 using System.Collections.Generic;
+using static RogueLike.Domain.Entities.Chest;
 
 public sealed class GameContext
 {
@@ -78,8 +79,10 @@ public sealed class GameContext
 
     public List<Item> Items { get; } = new();
 
-    public void UpdateVision(int radius = 2)
+    public void UpdateVision()
     {
+        int radius = Player.VisionRadius;
+
         VisibleTiles.Clear();
 
         for (int dy = -radius; dy <= radius; dy++)
@@ -100,6 +103,7 @@ public sealed class GameContext
         DiscoveredTiles.Add(Player.Pos);
     }
 
+
     public TimeSystem Time { get; } = new TimeSystem(phaseLength: 24);
 
     private bool _nightBuffApplied = false;
@@ -117,17 +121,30 @@ public sealed class GameContext
 
         chest.Open();
 
-        var loot = LootTable.Roll(Rng, chest.Pos);
+        var loot = chest.Type switch
+        {
+            ChestType.TorchOnly => LootTable.RollTorch(chest.Pos),
+            ChestType.Legendary => LootTable.Roll(Rng, chest.Pos), // si tu as
+            _ => LootTable.Roll(Rng, chest.Pos)
+        };
+
+
+        string chestLabel = chest.Type switch
+        {
+            ChestType.TorchOnly => "coffre de torche",
+            ChestType.Legendary => "COFFRE LÉGENDAIRE",
+            _ => "coffre"
+        };
 
         if (loot.AutoApplyOnPickup)
         {
             loot.Apply(Player);
-            AddMessage($"Coffre ouvert ! Tu trouves {loot.Name} (utilisé).");
+            AddMessage($"Vous ouvrez un {chestLabel} ! Vous trouvez {loot.Name} (utilisé).");
         }
         else
         {
             Player.AddToInventory(loot);
-            AddMessage($"Coffre ouvert ! Tu trouves {loot.Name} (inventaire).");
+            AddMessage($"Vous ouvrez un {chestLabel} ! Vous trouvez {loot.Name} (inventaire).");
         }
     }
 
