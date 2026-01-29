@@ -14,7 +14,6 @@ public static class ConsoleRenderer
         Console.CursorVisible = false;
 
         Console.SetCursorPosition(0, 0);
-        //Console.Clear();
 
         int mapW = ctx.Map.Width;
         int mapH = ctx.Map.Height;
