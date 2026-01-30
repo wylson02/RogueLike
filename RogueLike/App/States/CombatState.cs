@@ -18,6 +18,15 @@ public sealed class CombatState : IGameState
     private int _empowerAtkBonus = 2;
     private bool _rewardGiven = false;
 
+    // Boss finale : phase 2
+    private bool _bossPhase2 = false;
+    private int _bossPhase2AtkBonus = 5;
+    private int _bossPhase2ArmBonus = 2;
+    private int _bossPhase2CritBonus = 15;
+    private int _bossPhase2CritMulBonus = 50; // +50% => 250%->300% etc
+    private int _bossPhase2Heal = 18;
+    private bool _phase2Triggered = false;
+
     private readonly List<ICombatAction> _actions = new()
     {
         new AttackAction(),
@@ -35,8 +44,20 @@ public sealed class CombatState : IGameState
             _entered = true;
 
             _combat = new CombatContext(ctx.Player, _enemy, ctx.Rng);
-            CombatTransition.Play($"COMBAT : {_enemy.Name} !");
-            _combat.AddLog($"Un {_enemy.Name} surgit !");
+
+            // Intro plus épique si Boss
+            if (_enemy.Rank == MonsterRank.Boss)
+            {
+                CombatTransition.Play($"BOSS : {_enemy.Name.ToUpper()} !");
+                _combat.AddLog("L'air se déchire. Un pas. Puis un autre.");
+                _combat.AddLog($"{_enemy.Name} se lève de son trône.");
+                _combat.AddLog("Le temple retient son souffle…");
+            }
+            else
+            {
+                CombatTransition.Play($"COMBAT : {_enemy.Name} !");
+                _combat.AddLog($"Un {_enemy.Name} surgit !");
+            }
 
             if (ctx.LegendaryEmpowerNextFight)
             {
@@ -45,14 +66,34 @@ public sealed class CombatState : IGameState
                 _empowerApplied = true;
                 _combat.AddLog("La lame pulse : vos coups sont renforcés !");
             }
-
-            // ⚠️ plus besoin d’ajouter le prompt ici : CombatScreen le gère proprement
         }
 
         if (_combat == null) return;
 
         var action = CombatScreen.ReadAction(_combat, _actions);
         var result = CombatActionExecute(_combat, action);
+
+        // ===================== BOSS PHASE 2 =====================
+        if (_combat.Enemy.Rank == MonsterRank.Boss && !_bossPhase2 && !_combat.Enemy.IsDead)
+        {
+            if (_combat.Enemy.Hp <= _combat.Enemy.MaxHp / 2)
+            {
+                _bossPhase2 = true;
+
+                CombatTransition.Play("PHASE 2 : L'ABÎME S'ÉVEILLE");
+                CombatScreen.FxLine("⚠  L'ABÎME DÉCHAÎNE SA FUREUR !");
+
+                _combat.Enemy.Heal(_bossPhase2Heal);
+                _combat.Enemy.ModifyAttack(_bossPhase2AtkBonus);
+                _combat.Enemy.AddArmor(_bossPhase2ArmBonus);
+                _combat.Enemy.ModifyCritChance(_bossPhase2CritBonus);
+                _combat.Enemy.ModifyCritMultiplierPercent(_bossPhase2CritMulBonus);
+
+                _combat.AddLog("Le trône se fissure… des ombres s'enroulent autour du roi.");
+                _combat.AddLog($"{_combat.Enemy.Name} rugit : \"Je suis le dernier sceau.\"");
+                _combat.AddLog("Ses coups deviennent plus rapides. Plus lourds.");
+            }
+        }
 
         if (_combat.Enemy.IsDead && !_rewardGiven && !_combat.PlayerFled)
         {
@@ -69,6 +110,12 @@ public sealed class CombatState : IGameState
 
             if (_enemy.Rank == MonsterRank.MiniBoss)
                 Map3Scripting.OnMiniBossDefeated(ctx);
+
+            if (_enemy.Rank == MonsterRank.Boss)
+            {
+                _combat.AddLog("Le silence tombe… puis la lumière revient.");
+                ctx.PushLog("Le boss est vaincu !", GameContext.LogKind.System);
+            }
         }
 
         if (result.EndCombat || _combat.IsOver || _combat.PlayerFled)
@@ -76,7 +123,6 @@ public sealed class CombatState : IGameState
             CombatScreen.Draw(_combat.Player, _combat.Enemy, _combat.Log);
             CombatScreen.WaitEnter();
 
-            // ✅ reset hard pour éviter superposition en retour exploration
             Console.ResetColor();
             Console.Clear();
             Console.SetCursorPosition(0, 0);
@@ -84,6 +130,19 @@ public sealed class CombatState : IGameState
             if (_combat.Player.IsDead)
             {
                 ctx.State = new EndState(victory: false);
+                return;
+            }
+
+            // ✅ Boss final : victoire = écran de fin
+            if (_combat.Enemy.IsDead && _combat.Enemy.Rank == MonsterRank.Boss)
+            {
+                if (_empowerApplied)
+                {
+                    ctx.Player.ModifyAttack(-_empowerAtkBonus);
+                    _empowerApplied = false;
+                }
+
+                ctx.State = new EndState(victory: true);
                 return;
             }
 
@@ -96,7 +155,7 @@ public sealed class CombatState : IGameState
             ctx.State = new ExplorationState();
             return;
         }
-
+        TryTriggerPhase2(ctx);
         ResolveEnemyTurn(_combat);
         _combat.TickEndOfRound();
 
@@ -156,4 +215,30 @@ public sealed class CombatState : IGameState
         combat.Player.TakeDamage(dmg);
         combat.AddLog($"Tu perds {dmg} PV.");
     }
+    private void TryTriggerPhase2(GameContext ctx)
+    {
+        if (_combat is null) return;
+        if (_phase2Triggered) return;
+
+        // uniquement boss
+        if (_enemy.Rank != MonsterRank.Boss) return;
+
+        // seuil 50%
+        if (_enemy.MaxHp <= 0) return;
+        if (_enemy.Hp > (_enemy.MaxHp / 2)) return;
+
+        _phase2Triggered = true;
+
+        // Cinématique
+        BossPhase2CinematicScreen.Play(_enemy.Name.ToUpperInvariant());
+
+        // Buff boss (simple, efficace)
+        _enemy.ModifyAttack(+2);
+        _enemy.AddArmor(1);
+        _enemy.ModifyCritChance(+10);
+
+        _combat.AddLog("Le Roi de l'Abîme se brise… et renaît plus violent.");
+        _combat.AddLog("PHASE II — ses coups deviennent implacables !");
+    }
+
 }

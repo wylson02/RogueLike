@@ -3,89 +3,140 @@
 using RogueLike.App;
 using RogueLike.Domain;
 using RogueLike.Domain.Catalogs;
-using System.Linq;
+using RogueLike.Domain.Entities;
 
 public sealed class MonsterSpawnService
 {
-    private const int MaxAliveMonsters = 10;
-    private const int MaxNightSpawnsPerNight = 2;
+    private readonly SafeZoneService _safeZones;
 
-    private int _nightSpawnedThisNight = 0;
-    private bool _nightBuffApplied = false;
-    private int _noNightSpawnTicks = 0;
+    private int _nightSpawnBlockUntilTick = 0;
 
-    private readonly SafeZoneService _safeZone;
-
-    public MonsterSpawnService(SafeZoneService safeZone) => _safeZone = safeZone;
+    public MonsterSpawnService(SafeZoneService safeZones)
+    {
+        _safeZones = safeZones;
+    }
 
     public void ResetForNewLevel()
     {
-        _nightSpawnedThisNight = 0;
-        _nightBuffApplied = false;
-        _noNightSpawnTicks = 0;
+        _nightSpawnBlockUntilTick = 0;
     }
 
     public void BlockNightSpawnsForTicks(int ticks)
-        => _noNightSpawnTicks = Math.Max(_noNightSpawnTicks, Math.Max(0, ticks));
+    {
+        // compat: si appelé sans ctx, noop (géré dans la surcharge avec ctx si besoin)
+    }
 
+    public void BlockNightSpawnsForTicks(int ticks, GameContext ctx)
+    {
+        _nightSpawnBlockUntilTick = Math.Max(_nightSpawnBlockUntilTick, ctx.Time.Tick + Math.Max(0, ticks));
+    }
+
+    /// <summary>
+    /// IMPORTANT : ici on NE touche PAS au TimeSystem (pas de TickOnce),
+    /// parce que ton GameContext gère déjà le tick dans AdvanceTimeAfterPlayerMove().
+    /// Ce service ne fait que réagir à l'état actuel (jour/nuit) + spawn.
+    /// </summary>
     public void AdvanceTimeAfterPlayerMove(GameContext ctx)
     {
-        bool phaseChanged = ctx.Time.Advance();
-
-        if (phaseChanged)
+        // buff nocturne (à chaque move)
+        if (ctx.Time.IsNight)
         {
-            if (ctx.Time.IsNight) ApplyNightStart(ctx);
-            else ApplyDayStart(ctx);
+            foreach (var m in ctx.Monsters)
+            {
+                if (!m.IsDead) m.ModifyAttack(+1);
+            }
         }
 
-        if (ctx.Time.IsNight && ctx.Time.Tick % 10 == 0)
-            TrySpawnNightMonster(ctx);
+        // spawn nocturne
+        TryNightSpawn(ctx);
     }
 
-    private void ApplyNightStart(GameContext ctx)
+    private void TryNightSpawn(GameContext ctx)
     {
-        _nightSpawnedThisNight = 0;
-
-        if (_nightBuffApplied) return;
-        _nightBuffApplied = true;
-
-        foreach (var m in ctx.Monsters.Where(m => !m.IsDead))
-            m.ModifyAttack(+2);
-    }
-
-    private void ApplyDayStart(GameContext ctx)
-    {
-        if (!_nightBuffApplied) return;
-        _nightBuffApplied = false;
-
-        foreach (var m in ctx.Monsters.Where(m => !m.IsDead))
-            m.ModifyAttack(-2);
-    }
-
-    private void TrySpawnNightMonster(GameContext ctx)
-    {
-        if (_noNightSpawnTicks > 0)
-        {
-            _noNightSpawnTicks--;
-            return;
-        }
+        if (!ctx.Time.IsNight) return;
+        if (ctx.Time.Tick < _nightSpawnBlockUntilTick) return;
 
         int alive = ctx.Monsters.Count(m => !m.IsDead);
-        if (alive >= MaxAliveMonsters) return;
-        if (_nightSpawnedThisNight >= MaxNightSpawnsPerNight) return;
+        if (alive >= 10) return;
 
-        for (int tries = 0; tries < 60; tries++)
+        // 20% chance
+        if (ctx.Rng.Next(0, 100) > 20) return;
+
+        var pos = FindSpawnCell(ctx);
+        if (pos is null) return;
+
+        var mob = MonsterCatalog.NightSlime(pos.Value);
+
+        ctx.Monsters.Add(mob);
+        ctx.PushLog("Une présence nocturne se matérialise…", GameContext.LogKind.Warning);
+    }
+
+    // ===================== SPAWN SAFETY =====================
+
+    private Position? FindSpawnCell(GameContext ctx)
+    {
+        // marge: empêche les spawns collés aux bords
+        const int margin = 1;
+
+        for (int i = 0; i < 80; i++)
         {
-            var p = new Position(ctx.Rng.Next(1, ctx.Map.Width - 1), ctx.Rng.Next(1, ctx.Map.Height - 1));
+            int x = ctx.Rng.Next(margin, ctx.Map.Width - margin);
+            int y = ctx.Rng.Next(margin, ctx.Map.Height - margin);
+            var p = new Position(x, y);
 
-            if (_safeZone.IsSafeZone(ctx, p)) continue;
-            if (!ctx.Map.IsWalkable(p)) continue;
-            if (p == ctx.Player.Pos) continue;
-            if (ctx.MonsterAt(p) is not null) continue;
+            if (!IsValidSpawnCell(ctx, p)) continue;
 
-            ctx.Monsters.Add(MonsterCatalog.NightSlime(p));
-            _nightSpawnedThisNight++;
-            return;
+            return p;
         }
+
+        // fallback scan sûr
+        for (int y = margin; y < ctx.Map.Height - margin; y++)
+        {
+            for (int x = margin; x < ctx.Map.Width - margin; x++)
+            {
+                var p = new Position(x, y);
+                if (IsValidSpawnCell(ctx, p)) return p;
+            }
+        }
+
+        return null;
+    }
+
+    private bool IsValidSpawnCell(GameContext ctx, Position p)
+    {
+        if (!ctx.Map.IsWalkable(p)) return false;
+        if (p == ctx.Player.Pos) return false;
+
+        if (ctx.MonsterAt(p) is not null) return false;
+        if (ctx.ItemAt(p) is not null) return false;
+        if (ctx.ChestAt(p) is not null) return false;
+        if (ctx.SealAt(p) is not null) return false;
+        if (ctx.IsMerchantAt(p)) return false;
+
+        if (_safeZones.IsSafeZone(ctx, p)) return false;
+
+        // évite les cases collées aux murs
+        if (TouchesWall(ctx, p)) return false;
+
+        return true;
+    }
+
+    private bool TouchesWall(GameContext ctx, Position p)
+    {
+        var n = new[]
+        {
+            new Position(p.X+1, p.Y),
+            new Position(p.X-1, p.Y),
+            new Position(p.X, p.Y+1),
+            new Position(p.X, p.Y-1),
+        };
+
+        foreach (var q in n)
+        {
+            if (q.X < 0 || q.Y < 0 || q.X >= ctx.Map.Width || q.Y >= ctx.Map.Height) return true;
+            if (ctx.Map.GetTile(q) == TileType.Wall) return true;
+        }
+
+        return false;
     }
 }

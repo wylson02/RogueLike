@@ -89,7 +89,7 @@ public static class EndScreen
         w = Math.Max(48, w);
         int x = (Console.WindowWidth - w) / 2;
 
-        int hpShown = Math.Max(0, ctx.Player.Hp); // ✅ pas de PV négatifs affichés
+        int hpShown = Math.Max(0, ctx.Player.Hp); 
         string[] lines =
         {
             $"Niveau : {ctx.Player.Level}".PadRight(w - 4),

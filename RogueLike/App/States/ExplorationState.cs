@@ -5,7 +5,6 @@ using RogueLike.App.Services;
 using RogueLike.Domain;
 using RogueLike.Domain.Entities;
 using RogueLike.Domain.Items;
-using RogueLike.Domain.Items.Quest;
 using RogueLike.UI;
 using System.Linq;
 
@@ -48,27 +47,12 @@ public sealed class ExplorationState : IGameState
         // Porte fermée
         if (ctx.IsDoorClosed(next))
         {
-            bool hasKey = ctx.Player.Inventory.OfType<Map1ToMap2KeyItem>().Any();
-
-            if (!hasKey)
-            {
-                ctx.PushLog("🔒 La porte est verrouillée. Il vous faut une clé.", GameContext.LogKind.Warning);
-                return;
-            }
-
-            // ✅ On a la clé => on ouvre la porte
-            ctx.OpenDoor(next);
-            ctx.PushLog("🔓 Vous utilisez la clé. La porte s'ouvre.", GameContext.LogKind.System);
+            ctx.PushLog("La porte est scellée.", GameContext.LogKind.Warning);
+            return;
         }
 
-            //if (ctx.IsDoorClosed(next))
-            //{
-            //    ctx.PushLog("La porte est scellée.", GameContext.LogKind.Warning);
-            //    return;
-            //}
-
-            // Sceau (Map 3)
-            var seal = ctx.SealAt(next);
+        // Sceau (Map 3)
+        var seal = ctx.SealAt(next);
         if (seal is not null)
         {
             ctx.Player.SetPosition(next);
@@ -135,21 +119,12 @@ public sealed class ExplorationState : IGameState
             ctx.PushLog($"{pnj.Name} : {pnj.Talk()}", GameContext.LogKind.System);
 
             var giftName = pnj.GiveGift();
-            if (!string.IsNullOrWhiteSpace(giftName))
+            if (giftName is not null)
             {
-                var gift = ItemCatalog.Create(giftName, next); // ✅ utilise l'id du PNJ
+                var gift = ItemCatalog.LifeGem(next);
                 ctx.Player.AddToInventory(gift);
                 ctx.PushLog($"Vous recevez : {gift.Name}", GameContext.LogKind.Loot);
             }
-
-
-            //var giftName = pnj.GiveGift();
-            //if (giftName is not null)
-            //{
-            //    var gift = ItemCatalog.LifeGem(next);
-            //    ctx.Player.AddToInventory(gift);
-            //    ctx.PushLog($"Vous recevez : {gift.Name}", GameContext.LogKind.Loot);
-            //}
         }
 
         // Pick-up des items
@@ -163,13 +138,17 @@ public sealed class ExplorationState : IGameState
             {
                 ctx.MarkLegendarySwordPicked();
                 ctx.GrantLegendaryEmpower();
-                ctx.PushLog("Une chaleur traverse vos bras. Votre prochain coup sera béni.", GameContext.LogKind.System);
 
-                ScreenFX.BigShake(ctx, stateName: "Exploration", shakes: 10, delayMs: 18);
+                // CINÉ FULLSCREEN
+                LegendarySwordCinematicScreen.Play("ÉPÉE DE LÉGENDE");
+
+                // petit rappel in-game (court)
                 ctx.ShowToast("LA LAME S'ÉVEILLE…", ConsoleColor.Black, ConsoleColor.DarkRed, durationTicks: 10);
+                ctx.PushLog("Tu arraches la lame du socle. Le temple gronde.", GameContext.LogKind.System);
 
                 Map3Scripting.TriggerLegendarySwordEvent(ctx, fromPos: prev);
             }
+
         }
 
         // Exit (changement de niveau)
@@ -181,6 +160,13 @@ public sealed class ExplorationState : IGameState
             {
                 ctx.State = new EndState(victory: true);
                 return;
+            }
+
+            // Transition spéciale : Map 3 -> Boss final
+            if (ctx.CurrentLevel == 3 && nextLevel == 4)
+            {
+                ctx.PushLog("La dernière porte s'ouvre…", GameContext.LogKind.System);
+                BossIntroScreen.Play(ctx.Player, bossName: "Roi de l'Abîme");
             }
 
             ctx.PushLog($"Vous passez la sortie... (Niveau {nextLevel})", GameContext.LogKind.System);
@@ -207,7 +193,7 @@ public sealed class ExplorationState : IGameState
             var next = m.Pos.Move(dir);
             if (!ctx.Map.IsWalkable(next)) continue;
             if (ctx.MonsterAt(next) is not null) continue;
-            if (next == ctx.Player.Pos) continue; 
+            if (next == ctx.Player.Pos) continue;
 
             m.SetPosition(next);
         }
