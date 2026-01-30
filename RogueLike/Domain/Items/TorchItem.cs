@@ -12,6 +12,8 @@ public sealed class TorchItem : Item
 
     public override void Apply(Player player)
     {
-        player.IncreaseVision(2); // 2 -> 4 si tu pars à 2
+        if (player.LightBonus >= 5) return;
+        player.SetLightBonus(1);
+        // 2 -> 4 si tu pars à 2
     }
 }

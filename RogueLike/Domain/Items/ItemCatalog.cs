@@ -13,8 +13,7 @@ public static class ItemCatalog
     public static Item VampRing(Position pos) => new VampRingItem(pos);
     public static Item Torch(Position pos) => new TorchItem(pos);
     public static Item Map1ToMap2Key(Position pos) => new Map1ToMap2KeyItem(pos);
-
-
+    public static Item Lantern(Position pos) => new LanternItem(pos);
 
     public static Item Create(string id, Position pos)
     {
@@ -28,6 +27,8 @@ public static class ItemCatalog
             "VampRing" => VampRing(pos),
             "Torch" => Torch(pos),
             "Map1ToMap2Key" => Map1ToMap2Key(pos),
+            "Lantern" => Lantern(pos),
+
 
 
             _ => throw new ArgumentException($"Item inconnu: {id}")

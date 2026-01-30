@@ -39,6 +39,7 @@ public static class LevelCatalog
             Chests = new()
             {
                 new Chest(new Position(2, 2), ChestType.TorchOnly),
+                new Chest(new Position(3, 3), ChestType.LanternChest),
                 new Chest(new Position(7, 6), ChestType.Normal),
                 new Chest(new Position(12, 2), ChestType.Legendary),
             },

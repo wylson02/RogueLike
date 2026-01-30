@@ -47,7 +47,7 @@ public sealed class ExplorationState : IGameState
         var prev = ctx.Player.Pos;
         var next = ctx.Player.Pos.Move(dir);
 
-        ctx.PushLog($"DEBUG tile next = {ctx.Map.GetTile(next)}", GameContext.LogKind.System);
+        //ctx.PushLog($"DEBUG tile next = {ctx.Map.GetTile(next)}", GameContext.LogKind.System);
 
         //if (!ctx.Map.IsWalkable(next)) return;
 
