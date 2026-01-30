@@ -9,6 +9,7 @@ public sealed class LevelData
     public GameMap Map { get; init; } = null!;
     public Position PlayerStart { get; init; }
 
+    public List<Pnj> Pnjs { get; set; } = new();
     public List<Monster> Monsters { get; init; } = new();
     public List<Item> Items { get; init; } = new();
     public List<Chest> Chests { get; init; } = new();

@@ -69,6 +69,13 @@ public static class ConsoleRenderer
                     continue;
                 }
 
+                if (ctx.PnjAt(p) is not null)
+                {
+                    WriteColored('p', ConsoleColor.Green);
+                    continue;
+                }
+
+
                 // Seals (Map 3)
                 // (ctx.Seals peut être vide sur les autres maps => ok)
                 var seal = ctx.SealAt(p);

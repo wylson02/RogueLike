@@ -76,6 +76,9 @@ public sealed class ExplorationState : IGameState
             MonstersTurn(ctx);
             return;
         }
+        //PNJ Talk
+
+
 
         // Marchand
         if (ctx.IsMerchantAt(next) && ctx.Merchant is not null)
@@ -109,6 +112,19 @@ public sealed class ExplorationState : IGameState
 
         // Déplacement normal
         ctx.Player.SetPosition(next);
+        var pnj = ctx.PnjAt(next);
+        if (pnj is not null)
+        {
+            ctx.PushLog($"{pnj.Name} : {pnj.Talk()}", GameContext.LogKind.System);
+
+            var giftName = pnj.GiveGift();
+            if (giftName is not null)
+            {
+                var gift = ItemCatalog.LifeGem(next);
+                ctx.Player.AddToInventory(gift);
+                ctx.PushLog($"Vous recevez : {gift.Name}", GameContext.LogKind.Loot);
+            }
+        }
 
         //pick-up des items
         var item = ctx.ItemAt(next);
