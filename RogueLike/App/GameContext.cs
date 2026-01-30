@@ -13,6 +13,7 @@ public sealed class GameContext
 {
     public GameMap Map { get; private set; }
     public Player Player { get; }
+    public List<Pnj> Pnjs { get; private set; } = new();
 
     public List<Monster> Monsters { get; } = new();
     public List<Item> GameItems { get; } = new();
@@ -65,6 +66,10 @@ public sealed class GameContext
 
     public Chest? ChestAt(Position p)
         => Chests.FirstOrDefault(c => !c.IsOpened && c.Pos == p);
+
+    public Pnj? PnjAt(Position p)
+    => Pnjs.FirstOrDefault(n => n.Pos == p);
+
 
     public Seal? SealAt(Position p)
         => Seals.FirstOrDefault(s => !s.IsActivated && s.Pos == p);
@@ -122,7 +127,7 @@ public sealed class GameContext
     public void LoadLevel(int level)
     {
         var data = LevelCatalog.CreateLevel(level);
-
+        Pnjs.Clear();
         Monsters.Clear();
         GameItems.Clear();
         Chests.Clear();
@@ -145,6 +150,7 @@ public sealed class GameContext
         Monsters.AddRange(data.Monsters);
         GameItems.AddRange(data.Items);
         Chests.AddRange(data.Chests);
+        Pnjs.AddRange(data.Pnjs);
 
         Seals.AddRange(data.Seals);
         Merchant = data.Merchant;

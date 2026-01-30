@@ -36,6 +36,20 @@ public static class LevelCatalog
                 new Chest(new Position(7, 6), ChestType.Normal),
                 new Chest(new Position(12, 2), ChestType.Legendary),
             },
+
+            Pnjs = new()
+            {
+                new Pnj(
+                    new Position(5, 10),
+                    "Elya",
+                    "Bonjour aventurier ! Prends cette gemme de vie.",
+                    "LifeGem"
+                )
+            },
+
+
+
+
         };
     }
 
@@ -72,6 +86,16 @@ public static class LevelCatalog
             {
                 new Chest(new Position(8, 13), ChestType.Normal),
                 new Chest(new Position(28, 13), ChestType.Legendary),
+            },
+
+            Pnjs = new()
+            {
+                new Pnj(
+                    new Position(10, 8),
+                    "Elya",
+                    "Bonjour aventurier ! Prends cette gemme de vie.",
+                    "LifeGem"
+                )
             },
         };
     }
