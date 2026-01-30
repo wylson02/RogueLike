@@ -40,7 +40,8 @@ public sealed class Player : Character
     public int StatPoints { get; private set; } = 0;
     public int XpToNext => 20 + (Level - 1) * 10;
 
-    public int VisionRadius { get; private set; } = 2;
+    //public int VisionRadius { get; private set; } = 2;
+    public int VisionRadius { get; private set; } = 20;
     public int LightBonus { get; private set; } = 0;
 
     public void SetLightBonus(int bonus) => LightBonus = bonus;

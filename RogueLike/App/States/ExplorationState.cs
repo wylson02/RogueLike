@@ -146,29 +146,55 @@ public sealed class ExplorationState : IGameState
         // Déplacement normal
         ctx.Player.SetPosition(next);
 
-        // PNJ talk
         var pnj = ctx.PnjAt(next);
         if (pnj is not null)
         {
             ctx.PushLog($"{pnj.Name} : {pnj.Talk()}", GameContext.LogKind.System);
 
+            // ✅ CONDITION POUR WYLSON
+            if (ctx.CurrentLevel == 1 && pnj.Name == "Wylson")
+            {
+                bool allMonstersDead = !ctx.Monsters.Any(m => !m.IsDead);
+
+                if (!allMonstersDead)
+                {
+                    ctx.PushLog("Reviens quand t'auras tué tous les monstres.", GameContext.LogKind.Warning);
+                    return;
+                }
+            }
+
             var giftName = pnj.GiveGift();
             if (!string.IsNullOrWhiteSpace(giftName))
             {
-                var gift = ItemCatalog.Create(giftName, next); // ✅ utilise l'id du PNJ
+                var gift = ItemCatalog.Create(giftName, next);
                 ctx.Player.AddToInventory(gift);
                 ctx.PushLog($"Vous recevez : {gift.Name}", GameContext.LogKind.Loot);
             }
-
-
-            //var giftName = pnj.GiveGift();
-            //if (giftName is not null)
-            //{
-            //    var gift = ItemCatalog.LifeGem(next);
-            //    ctx.Player.AddToInventory(gift);
-            //    ctx.PushLog($"Vous recevez : {gift.Name}", GameContext.LogKind.Loot);
-            //}
         }
+
+        // PNJ talk
+        //var pnj = ctx.PnjAt(next);
+        //if (pnj is not null)
+        //{
+        //    ctx.PushLog($"{pnj.Name} : {pnj.Talk()}", GameContext.LogKind.System);
+
+        //    var giftName = pnj.GiveGift();
+        //    if (!string.IsNullOrWhiteSpace(giftName))
+        //    {
+        //        var gift = ItemCatalog.Create(giftName, next); // ✅ utilise l'id du PNJ
+        //        ctx.Player.AddToInventory(gift);
+        //        ctx.PushLog($"Vous recevez : {gift.Name}", GameContext.LogKind.Loot);
+        //    }
+
+
+        //    //var giftName = pnj.GiveGift();
+        //    //if (giftName is not null)
+        //    //{
+        //    //    var gift = ItemCatalog.LifeGem(next);
+        //    //    ctx.Player.AddToInventory(gift);
+        //    //    ctx.PushLog($"Vous recevez : {gift.Name}", GameContext.LogKind.Loot);
+        //    //}
+        //}
 
         // Pick-up des items
         var item = ctx.ItemAt(next);
