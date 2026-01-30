@@ -32,7 +32,7 @@ public static class ConsoleRenderer
             DrawHud(ctx, stateName, 0, mapH + 1, width: Math.Min(Console.WindowWidth - 1, 60));
             DrawFooter(ctx, 0, mapH + HudHeight + 2, Math.Min(Console.WindowWidth - 1, 60));
         }
-
+        DrawToast(ctx);
         Console.ResetColor();
     }
 
@@ -431,4 +431,36 @@ public static class ConsoleRenderer
         if (max <= 1) return s[..max];
         return (s[..(max - 1)] + "…");
     }
+
+    private static void DrawToast(GameContext ctx)
+    {
+        if (ctx.ActiveToast is null) return;
+
+        string text = " " + ctx.ActiveToast.Text + " ";
+        int w = Math.Min(text.Length + 4, Math.Max(24, Console.WindowWidth - 2));
+        int x = Math.Max(0, Console.WindowWidth - w - 1);
+        int y = 1; // en haut à droite, hors HUD
+
+        // box
+        Console.SetCursorPosition(x, y);
+        Console.ForegroundColor = ConsoleColor.DarkGray;
+        Console.Write("┌" + new string('─', w - 2) + "┐");
+
+        Console.SetCursorPosition(x, y + 1);
+        Console.Write("│");
+        Console.BackgroundColor = ctx.ActiveToast.Bg;
+        Console.ForegroundColor = ctx.ActiveToast.Fg;
+
+        string inner = text.Length > (w - 2) ? text[..(w - 3)] + "…" : text;
+        Console.Write(inner.PadRight(w - 2));
+
+        Console.ResetColor();
+        Console.ForegroundColor = ConsoleColor.DarkGray;
+        Console.Write("│");
+
+        Console.SetCursorPosition(x, y + 2);
+        Console.Write("└" + new string('─', w - 2) + "┘");
+        Console.ResetColor();
+    }
+
 }

@@ -26,10 +26,7 @@ public sealed class CombatState : IGameState
         new FleeAction(),
     };
 
-    public CombatState(Monster enemy)
-    {
-        _enemy = enemy;
-    }
+    public CombatState(Monster enemy) => _enemy = enemy;
 
     public void Update(GameContext ctx)
     {
@@ -40,6 +37,7 @@ public sealed class CombatState : IGameState
             _combat = new CombatContext(ctx.Player, _enemy, ctx.Rng);
             CombatTransition.Play($"COMBAT : {_enemy.Name} !");
             _combat.AddLog($"Un {_enemy.Name} surgit !");
+
             if (ctx.LegendaryEmpowerNextFight)
             {
                 ctx.ConsumeLegendaryEmpower();
@@ -47,15 +45,14 @@ public sealed class CombatState : IGameState
                 _empowerApplied = true;
                 _combat.AddLog("La lame pulse : vos coups sont renforcés !");
             }
-            _combat.AddLog("Que vas-tu faire ?");
 
+            // ⚠️ plus besoin d’ajouter le prompt ici : CombatScreen le gère proprement
         }
 
         if (_combat == null) return;
 
         var action = CombatScreen.ReadAction(_combat, _actions);
-
-        var result = _combatActionExecute(_combat, action);
+        var result = CombatActionExecute(_combat, action);
 
         if (_combat.Enemy.IsDead && !_rewardGiven && !_combat.PlayerFled)
         {
@@ -70,7 +67,6 @@ public sealed class CombatState : IGameState
             _combat.AddLog($"+{xp} XP, +{gold} or !");
             ctx.AddMessage($"+{xp} XP, +{gold} or !");
 
-            // Hooks scénario (Map 3)
             if (_enemy.Rank == MonsterRank.MiniBoss)
                 Map3Scripting.OnMiniBossDefeated(ctx);
         }
@@ -80,11 +76,17 @@ public sealed class CombatState : IGameState
             CombatScreen.Draw(_combat.Player, _combat.Enemy, _combat.Log);
             CombatScreen.WaitEnter();
 
+            // ✅ reset hard pour éviter superposition en retour exploration
+            Console.ResetColor();
+            Console.Clear();
+            Console.SetCursorPosition(0, 0);
+
             if (_combat.Player.IsDead)
             {
                 ctx.State = new EndState(victory: false);
                 return;
             }
+
             if (_empowerApplied)
             {
                 ctx.Player.ModifyAttack(-_empowerAtkBonus);
@@ -95,9 +97,7 @@ public sealed class CombatState : IGameState
             return;
         }
 
-        // Tour ennemi
         ResolveEnemyTurn(_combat);
-
         _combat.TickEndOfRound();
 
         if (_combat.Player.IsDead)
@@ -105,11 +105,16 @@ public sealed class CombatState : IGameState
             _combat.AddLog("Tu t’effondres...");
             CombatScreen.Draw(_combat.Player, _combat.Enemy, _combat.Log);
             CombatScreen.WaitEnter();
+
+            Console.ResetColor();
+            Console.Clear();
+            Console.SetCursorPosition(0, 0);
+
             ctx.State = new EndState(victory: false);
         }
     }
 
-    private static CombatActionResult _combatActionExecute(CombatContext combat, ICombatAction action)
+    private static CombatActionResult CombatActionExecute(CombatContext combat, ICombatAction action)
     {
         if (!action.CanExecute(combat))
             return new CombatActionResult { LogLine = "Action impossible." };
@@ -145,7 +150,8 @@ public sealed class CombatState : IGameState
         int dmg = Math.Max(1, combat.Enemy.Attack);
 
         CombatScreen.Draw(combat.Player, combat.Enemy, combat.Log);
-        CombatAnimations.Shake($"{combat.Enemy.Name} frappe !", shakes: 6, delayMs: 20);
+
+        CombatScreen.FxLine($"{combat.Enemy.Name} frappe !");
 
         combat.Player.TakeDamage(dmg);
         combat.AddLog($"Tu perds {dmg} PV.");

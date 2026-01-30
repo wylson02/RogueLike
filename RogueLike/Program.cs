@@ -1,6 +1,8 @@
 ﻿using RogueLike.App;
 using RogueLike.App.Services;
 using RogueLike.App.States;
+using RogueLike.Domain;
+using RogueLike.Domain.Catalogs;
 using RogueLike.Domain.Entities;
 using RogueLike.UI;
 
@@ -23,23 +25,14 @@ if (OperatingSystem.IsWindows())
 Console.Clear();
 
 // === INIT JEU ===
-var level = LevelCatalog.CreateLevel1();
-
 var ctx = new GameContext(
-    level.Map,
-    new Player(level.PlayerStart),
+    MapCatalog.Level1(),
+    new Player(new Position(14, 8)),
     new ExplorationState()
 );
 
-ctx.UpdateVision(); // initialiser la vision
-ctx.Monsters.AddRange(level.Monsters);
-ctx.GameItems.AddRange(level.Items);
-ctx.Chests.AddRange(level.Chests);
-ctx.Seals.AddRange(level.Seals);
-ctx.Merchant = level.Merchant;
-ctx.SetLevelIndex(1);
+ctx.LoadLevel(1);
 
-// === BOUCLE PRINCIPALE ===
 while (true)
 {
     ConsoleRenderer.Draw(ctx, ctx.State.Name);

@@ -1,14 +1,11 @@
 ﻿namespace RogueLike.App.States;
 
 using RogueLike.App;
-using RogueLike.Domain.Items;
 using RogueLike.Domain.Entities;
+using RogueLike.Domain.Items;
 using RogueLike.Domain;
+using System.Linq;
 
-/// <summary>
-/// Interface simple d'achat/vente en console.
-/// (Ajout progressif : minimal, sans casser l'HUD.)
-/// </summary>
 public sealed class MerchantState : IGameState
 {
     public string Name => "Marchand";
@@ -25,7 +22,6 @@ public sealed class MerchantState : IGameState
         _previous = previous;
         _merchant = merchant;
 
-        // Stock fixe (facile à équilibrer plus tard)
         _stock = new()
         {
             new StockLine("Épée (+ATK)", () => new SwordItem(new Position(-1,-1)), 18),
@@ -42,10 +38,8 @@ public sealed class MerchantState : IGameState
         Console.Clear();
         Console.CursorVisible = false;
 
-        Console.ForegroundColor = ConsoleColor.Yellow;
         DrawMerchantHeader(ctx);
         DrawMerchantStatsPanel(ctx);
-
 
         var key = Console.ReadKey(true).Key;
 
@@ -110,9 +104,8 @@ public sealed class MerchantState : IGameState
             Console.WriteLine("Choisissez un objet (1-9) ou Échap pour revenir.");
             Console.WriteLine();
 
-            // Filtre : objets vendables uniquement
             var sellable = ctx.Player.Inventory
-                .Where(it => it is not LegendarySwordItem)
+                .Where(it => it.CanSell)
                 .ToList();
 
             if (sellable.Count == 0)
@@ -139,7 +132,6 @@ public sealed class MerchantState : IGameState
             var item = sellable[idx];
             int p = SellPrice(item);
 
-            // On retire du vrai inventaire
             ctx.Player.RemoveFromInventory(item);
             ctx.Player.AddGold(p);
 
@@ -147,7 +139,6 @@ public sealed class MerchantState : IGameState
             return;
         }
     }
-
 
     private static int KeyToIndex(ConsoleKey k)
         => k switch
@@ -166,7 +157,6 @@ public sealed class MerchantState : IGameState
 
     private static int SellPrice(Item item)
     {
-        // Prix simple : basé sur le type (peut évoluer vers rareté + loot pondéré)
         return item switch
         {
             LegendarySwordItem => 50,
@@ -178,6 +168,7 @@ public sealed class MerchantState : IGameState
             _ => 6
         };
     }
+
     private static void DrawMerchantHeader(GameContext ctx)
     {
         string title = "MARCHAND";
@@ -244,7 +235,4 @@ public sealed class MerchantState : IGameState
         if (s.Length <= w) Console.Write(s.PadRight(w));
         else Console.Write(s[..(w - 1)] + "…");
     }
-
-
-
 }
