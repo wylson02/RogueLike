@@ -3,6 +3,7 @@
 using RogueLike.App;
 using RogueLike.App.Services;
 using RogueLike.Domain;
+using RogueLike.Domain.Entities;
 using RogueLike.Domain.Items;
 using RogueLike.UI;
 using System.Linq;
@@ -43,7 +44,7 @@ public sealed class ExplorationState : IGameState
         var next = ctx.Player.Pos.Move(dir);
         if (!ctx.Map.IsWalkable(next)) return;
 
-        // Porte fermée (tile DoorClosed)
+        // Porte fermée
         if (ctx.IsDoorClosed(next))
         {
             ctx.PushLog("La porte est scellée.", GameContext.LogKind.Warning);
@@ -66,7 +67,6 @@ public sealed class ExplorationState : IGameState
 
             ctx.PushLog($"Sceau {seal.Id} activé ({ctx.SealsActivated}/3).", GameContext.LogKind.System);
 
-            // 3/3 => ouvrir l'accès à la salle centrale
             if (ctx.SealsActivated >= 3)
             {
                 Map3Scripting.OpenCentralDoors(ctx);
@@ -101,7 +101,7 @@ public sealed class ExplorationState : IGameState
             return;
         }
 
-        // Combat
+        // Combat (SEULEMENT si le joueur marche sur la case du monstre ✅)
         var enemy = ctx.MonsterAt(next);
         if (enemy is not null)
         {
@@ -127,14 +127,13 @@ public sealed class ExplorationState : IGameState
             }
         }
 
-        // Pick-up des items (délégué à ItemService)
+        // Pick-up des items
         var item = ctx.ItemAt(next);
         if (item is not null)
         {
             bool picked = ctx.ItemService.TryPickup(ctx, next);
             if (!picked) return;
 
-            // Script Map 3 : épée de légende
             if (ctx.CurrentLevel == 3 && item is LegendarySwordItem)
             {
                 ctx.MarkLegendarySwordPicked();
@@ -144,7 +143,6 @@ public sealed class ExplorationState : IGameState
                 ScreenFX.BigShake(ctx, stateName: "Exploration", shakes: 10, delayMs: 18);
                 ctx.ShowToast("LA LAME S'ÉVEILLE…", ConsoleColor.Black, ConsoleColor.DarkRed, durationTicks: 10);
 
-
                 Map3Scripting.TriggerLegendarySwordEvent(ctx, fromPos: prev);
             }
         }
@@ -152,13 +150,10 @@ public sealed class ExplorationState : IGameState
         // Exit (changement de niveau)
         if (ctx.Map.GetTile(next) == TileType.Exit)
         {
-            // Map 1 -> 2 -> 3
             int nextLevel = ctx.CurrentLevel + 1;
 
             if (!LevelCatalog.HasLevel(nextLevel))
             {
-                // Pour l’instant, fin après Map3 (boss plus tard)
-                ctx.PushLog("Vous sentez l’air changer… (fin de la démo)", GameContext.LogKind.System);
                 ctx.State = new EndState(victory: true);
                 return;
             }
@@ -169,7 +164,6 @@ public sealed class ExplorationState : IGameState
             return;
         }
 
-
         ctx.UpdateVision();
         ctx.AdvanceTimeAfterPlayerMove();
         MonstersTurn(ctx);
@@ -179,13 +173,16 @@ public sealed class ExplorationState : IGameState
     {
         foreach (var m in ctx.Monsters.Where(m => !m.IsDead))
         {
+            int dist = Math.Abs(m.Pos.X - ctx.Player.Pos.X) + Math.Abs(m.Pos.Y - ctx.Player.Pos.Y);
+            if (dist <= 1) continue;
+
             var dir = m.MoveStrategy.ChooseMove(m, ctx);
             if (dir == Direction.None) continue;
 
             var next = m.Pos.Move(dir);
             if (!ctx.Map.IsWalkable(next)) continue;
             if (ctx.MonsterAt(next) is not null) continue;
-            if (next == ctx.Player.Pos) continue;
+            if (next == ctx.Player.Pos) continue; 
 
             m.SetPosition(next);
         }

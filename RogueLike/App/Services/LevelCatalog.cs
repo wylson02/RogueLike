@@ -46,7 +46,7 @@ new Chest(new Position(12, 2), ChestType.Legendary),
             Pnjs = new()
 {
 new Pnj(
-new Position(5, 10),
+new Position(6, 10),
 "Elya",
 "Bonjour aventurier ! Prends cette gemme de vie.",
 "LifeGem"

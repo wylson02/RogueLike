@@ -171,7 +171,7 @@ public sealed class GameContext
     public void LoadLevel(int level)
     {
         var data = LevelCatalog.CreateLevel(level);
-
+        ClearLog();
         Pnjs.Clear();
         Monsters.Clear();
         GameItems.Clear();
@@ -203,7 +203,78 @@ public sealed class GameContext
         CurrentLevel = level;
         MonsterSpawner.ResetForNewLevel();
 
+        Console.ResetColor();
+        Console.Clear();
+        Console.SetCursorPosition(0, 0);
+
         PushLog(Text.T("level.loaded", ("level", level.ToString())), LogKind.System);
         UpdateVision();
     }
+    // ===== Progression helpers (avoid touching Player internals) =====
+    public bool TrySpendStatPoint()
+    {
+        // StatPoints setter est privé => on demande à Player d’exposer un moyen de consommer
+        // Si ton Player a déjà une méthode SpendStatPoint() utilise-la ici.
+        // Sinon fallback: on ne peut pas.
+        var mi = Player.GetType().GetMethod("SpendStatPoint");
+        if (mi is not null)
+        {
+            var ok = (bool)(mi.Invoke(Player, Array.Empty<object>()) ?? false);
+            return ok;
+        }
+
+        // fallback: si StatPoints a un getter public, on check au moins
+        if (Player.StatPoints <= 0) return false;
+
+        // si pas de méthode => on ne modifie pas (setter privé)
+        return false;
+    }
+
+    public void ApplyUpgrade(int index)
+    {
+        // 0 PV max (+2), 1 ATK (+1), 2 ARM (+1), 3 CRIT (+2), 4 VOL (+2)
+        // On évite les noms spécifiques => reflection sur méthodes existantes.
+        switch (index)
+        {
+            case 0:
+                InvokePlayerIntMethod(new[] { "IncreaseMaxHp", "AddMaxHp", "IncreaseHpMax", "UpgradeMaxHp" }, 2);
+                break;
+
+            case 1:
+                InvokePlayerIntMethod(new[] { "ModifyAttack", "AddAttack", "IncreaseAttack", "UpgradeAttack" }, 1);
+                break;
+
+            case 2:
+                InvokePlayerIntMethod(new[] { "ModifyArmor", "AddArmor", "IncreaseArmor", "UpgradeArmor" }, 1);
+                break;
+
+            case 3:
+                InvokePlayerIntMethod(new[] { "ModifyCrit", "AddCrit", "IncreaseCrit", "UpgradeCritChance" }, 2);
+                break;
+
+            case 4:
+                InvokePlayerIntMethod(new[] { "ModifyLifeSteal", "AddLifeSteal", "IncreaseLifeSteal", "UpgradeLifeSteal" }, 2);
+                break;
+        }
+    }
+
+    private void InvokePlayerIntMethod(string[] names, int value)
+    {
+        foreach (var name in names)
+        {
+            var mi = Player.GetType().GetMethod(name, new[] { typeof(int) });
+            if (mi is null) continue;
+            mi.Invoke(Player, new object[] { value });
+            return;
+        }
+
+        // Si aucune méthode trouvée => log clair
+        PushLog($"[DEV] Méthode Player introuvable pour appliquer upgrade ({value}).", LogKind.Warning);
+    }
+    public void ClearLog()
+    {
+        _log.Clear();
+        LastMessage = "";
+    }
+
 }

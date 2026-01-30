@@ -26,6 +26,13 @@ public sealed class Player : Character
         Gold -= amount;
         return true;
     }
+    public bool SpendStatPoint()
+    {
+        if (StatPoints <= 0) return false;
+        StatPoints--;
+        return true;
+    }
+
 
     // ===== XP / NIVEAUX =====
     public int Level { get; private set; } = 1;
@@ -33,7 +40,7 @@ public sealed class Player : Character
     public int StatPoints { get; private set; } = 0;
     public int XpToNext => 20 + (Level - 1) * 10;
 
-    public int VisionRadius { get; private set; } = 30;
+    public int VisionRadius { get; private set; } = 3;
 
     public void IncreaseVision(int amount)
     {
@@ -41,7 +48,7 @@ public sealed class Player : Character
     }
 
 
-    public Player(Position pos) : base(pos, hp: 30, attack: 50)
+    public Player(Position pos) : base(pos, hp: 30, attack: 5)
     {
     }
 
