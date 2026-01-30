@@ -57,11 +57,13 @@ public sealed class ExplorationState : IGameState
             ctx.Player.SetPosition(next);
             seal.Activate();
             ctx.IncrementSealsActivated();
+
             if (ctx.CurrentLevel == 3 && ctx.SealsActivated == 2 && !ctx.Map3LastSealHintShown)
             {
                 ctx.ShowMap3LastSealHintOnce();
                 ctx.PushLog("Le dernier sceau résonne faiblement… quelque part dans le temple.", GameContext.LogKind.System);
             }
+
             ctx.PushLog($"Sceau {seal.Id} activé ({ctx.SealsActivated}/3).", GameContext.LogKind.System);
 
             // 3/3 => ouvrir l'accès à la salle centrale
@@ -76,9 +78,6 @@ public sealed class ExplorationState : IGameState
             MonstersTurn(ctx);
             return;
         }
-        //PNJ Talk
-
-
 
         // Marchand
         if (ctx.IsMerchantAt(next) && ctx.Merchant is not null)
@@ -112,6 +111,8 @@ public sealed class ExplorationState : IGameState
 
         // Déplacement normal
         ctx.Player.SetPosition(next);
+
+        // PNJ talk
         var pnj = ctx.PnjAt(next);
         if (pnj is not null)
         {
@@ -126,32 +127,12 @@ public sealed class ExplorationState : IGameState
             }
         }
 
-        //pick-up des items
+        // Pick-up des items (délégué à ItemService)
         var item = ctx.ItemAt(next);
         if (item is not null)
         {
-            ctx.RemoveItem(item);
-
-            if (item.AutoApplyOnPickup)
-            {
-                item.Apply(ctx.Player);
-                ctx.PushLog($"Vous ramassez {item.Name} (utilisé).", GameContext.LogKind.Loot);
-            }
-            else
-            {
-                ctx.Player.AddToInventory(item);
-
-                //Auto-equip épée légendaire (moment scénarisé)
-                if (item is LegendarySwordItem)
-                {
-                    ctx.Player.Equip(item);
-                    ctx.PushLog("La lame se lie à votre main. (Équipée automatiquement)", GameContext.LogKind.System);
-                }
-                else
-                {
-                    ctx.PushLog($"Vous ramassez {item.Name} (inventaire).", GameContext.LogKind.Loot);
-                }
-            }
+            bool picked = ctx.ItemService.TryPickup(ctx, next);
+            if (!picked) return;
 
             // Script Map 3 : épée de légende
             if (ctx.CurrentLevel == 3 && item is LegendarySwordItem)
@@ -160,28 +141,38 @@ public sealed class ExplorationState : IGameState
                 ctx.GrantLegendaryEmpower();
                 ctx.PushLog("Une chaleur traverse vos bras. Votre prochain coup sera béni.", GameContext.LogKind.System);
 
-                RogueLike.UI.ScreenFX.BigShake(ctx, stateName: "Exploration", shakes: 10, delayMs: 18);
-                RogueLike.UI.ScreenFX.Banner("LA LAME S'ÉVEILLE...", ConsoleColor.DarkRed, ms: 450);
+                ScreenFX.BigShake(ctx, stateName: "Exploration", shakes: 10, delayMs: 18);
+                ctx.ShowToast("LA LAME S'ÉVEILLE…", ConsoleColor.Black, ConsoleColor.DarkRed, durationTicks: 10);
+
 
                 Map3Scripting.TriggerLegendarySwordEvent(ctx, fromPos: prev);
             }
         }
 
-
         // Exit (changement de niveau)
         if (ctx.Map.GetTile(next) == TileType.Exit)
         {
-            ctx.PushLog("Vous passez la sortie...", GameContext.LogKind.System);
-            ctx.LoadLevel(ctx.CurrentLevel + 1);
+            // Map 1 -> 2 -> 3
+            int nextLevel = ctx.CurrentLevel + 1;
+
+            if (!LevelCatalog.HasLevel(nextLevel))
+            {
+                // Pour l’instant, fin après Map3 (boss plus tard)
+                ctx.PushLog("Vous sentez l’air changer… (fin de la démo)", GameContext.LogKind.System);
+                ctx.State = new EndState(victory: true);
+                return;
+            }
+
+            ctx.PushLog($"Vous passez la sortie... (Niveau {nextLevel})", GameContext.LogKind.System);
+            ctx.LoadLevel(nextLevel);
             ctx.State = new ExplorationState();
             return;
         }
 
+
         ctx.UpdateVision();
         ctx.AdvanceTimeAfterPlayerMove();
         MonstersTurn(ctx);
-
-
     }
 
     private static void MonstersTurn(GameContext ctx)

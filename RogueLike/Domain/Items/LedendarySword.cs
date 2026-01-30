@@ -11,6 +11,9 @@ public sealed class LegendarySwordItem : Item, IEquipable
 
     public override bool AutoApplyOnPickup => false;
 
+    public override bool CanSell => false;
+    public override bool AutoEquipOnPickup => true;
+
     public EquipSlot Slot => EquipSlot.Weapon;
 
     private const int AttackBonus = 6;

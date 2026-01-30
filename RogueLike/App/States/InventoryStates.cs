@@ -10,10 +10,7 @@ public sealed class InventoryState : IGameState
     private readonly IGameState _previous;
     private int _selectedIndex = 0;
 
-    public InventoryState(IGameState previous)
-    {
-        _previous = previous;
-    }
+    public InventoryState(IGameState previous) => _previous = previous;
 
     public void Update(GameContext ctx)
     {
@@ -22,6 +19,10 @@ public sealed class InventoryState : IGameState
 
         if (res.Action == InventoryAction.Close)
         {
+            Console.ResetColor();
+            Console.Clear();
+            Console.SetCursorPosition(0, 0);
+
             ctx.State = _previous;
             return;
         }
@@ -39,6 +40,5 @@ public sealed class InventoryState : IGameState
 
             ctx.AddMessage($"{item.Name} équipé/utilisé !");
         }
-
     }
 }

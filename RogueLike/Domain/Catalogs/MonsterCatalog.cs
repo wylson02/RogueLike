@@ -62,6 +62,4 @@ public static class MonsterCatalog
             .WithRank(MonsterRank.MiniBoss)
             .WithAi(new AggroWithinRangeStrategy(range: 7, fallback: new RandomWalkStrategy()))
             .Build();
-
-
 }

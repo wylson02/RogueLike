@@ -7,16 +7,14 @@ using RogueLike.Domain.Entities;
 
 public static class Map3Scripting
 {
-    // Portes de la salle centrale
     private static readonly Position[] CentralDoors =
     {
-        new Position(18, 6), // Ouest
-        new Position(25, 6), // Est
-        new Position(21, 4), // Nord
-        new Position(21, 9), // Sud
+        new Position(18, 6),
+        new Position(25, 6),
+        new Position(21, 4),
+        new Position(21, 9),
     };
 
-    // Portes de sortie (marchand + boss)
     private static readonly Position[] ExitDoors =
     {
         new Position(35, 7),
@@ -52,14 +50,12 @@ public static class Map3Scripting
         if (ctx.CurrentLevel != 3) return;
         if (!ctx.HasLegendarySword) return;
 
-        // verrouille
         CloseCentralDoors(ctx);
         CloseExitDoors(ctx);
 
         ctx.PushLog("Quand vos doigts se referment sur la garde, la pierre gronde...", GameContext.LogKind.System);
         ctx.PushLog("Les portes claquent. Un froid ancien traverse la salle.", GameContext.LogKind.System);
 
-        // Spawn miniboss derrière : case précédente si possible, sinon adjacente
         var spawn = FindSpawnBehind(ctx, fromPos);
 
         bool enraged = ctx.Rng.Next(0, 100) < 10;
@@ -70,10 +66,7 @@ public static class Map3Scripting
         ctx.Monsters.Add(warden);
 
         if (enraged)
-        {
             ctx.PushLog("Le sol se fissure. Le Gardien hurle : il est ENRAGÉ.", GameContext.LogKind.System);
-        }
-
 
         ctx.PushLog("Une silhouette se détache des ombres : le Gardien des Sceaux.", GameContext.LogKind.Combat);
         ctx.PushLog("\"Rends-la... ou sois le dernier à tomber ici.\"", GameContext.LogKind.System);
@@ -93,14 +86,13 @@ public static class Map3Scripting
 
         ctx.PushLog("Le Gardien s'effondre, et les verrous se relâchent.", GameContext.LogKind.System);
         ctx.PushLog("Les portes se rouvrent. Le chemin est libre.", GameContext.LogKind.System);
-        // Respiration : petit heal + bloque spawns nocturnes un moment
+
         int heal = 4;
         ctx.Player.Heal(heal);
         ctx.BlockNightSpawnsForTicks(30);
 
         ctx.PushLog($"Vous reprenez votre souffle. +{heal} PV.", GameContext.LogKind.Info);
         ctx.PushLog("Le temple se tait… pour l’instant.", GameContext.LogKind.System);
-
     }
 
     private static Position FindSpawnBehind(GameContext ctx, Position preferred)
