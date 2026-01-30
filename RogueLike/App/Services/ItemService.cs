@@ -49,6 +49,7 @@ public sealed class ItemService
         var loot = chest.Type switch
         {
             ChestType.TorchOnly => LootTable.RollTorch(chest.Pos),
+            ChestType.LanternChest => LootTable.RollLantern(chest.Pos),
             ChestType.Legendary => LootTable.Roll(ctx.Rng, chest.Pos),
             _ => LootTable.Roll(ctx.Rng, chest.Pos)
         };
@@ -57,6 +58,7 @@ public sealed class ItemService
         {
             ChestType.TorchOnly => "coffre de torche",
             ChestType.Legendary => "COFFRE LÉGENDAIRE",
+            ChestType.LanternChest => "coffre de lanterne",
             _ => "coffre"
         };
 

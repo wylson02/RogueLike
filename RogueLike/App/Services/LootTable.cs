@@ -20,7 +20,7 @@ public static class LootTable
         pos => ItemCatalog.VampRing(pos),
 
         pos => ItemCatalog.LegendarySword(pos),
-        
+
     };
 
     public static Item Roll(Random rng, Position spawnPos)
@@ -34,4 +34,9 @@ public static class LootTable
         return ItemCatalog.Torch(pos);
     }
 
+    public static Item RollLantern(Position pos)
+    {
+        return ItemCatalog.Lantern(pos);
+
+    }
 }

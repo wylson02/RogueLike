@@ -7,7 +7,7 @@ public sealed class VisionService
 {
     public void Update(GameContext ctx)
     {
-        int radius = Math.Max(1, ctx.Player.VisionRadius);
+        int radius = Math.Max(1, ctx.Player.VisionRadius + ctx.Player.LightBonus);
 
         ctx.VisibleTiles.Clear();
 

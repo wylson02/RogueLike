@@ -10,7 +10,8 @@ public sealed class Chest
     {
         Normal,
         TorchOnly,
-        Legendary
+        Legendary,
+        LanternChest
     }
     public Position Pos { get; private set; }
     public bool IsOpened { get; private set; }
