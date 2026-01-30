@@ -152,6 +152,7 @@ public sealed class GameContext
     public void OpenChest(Chest chest) => ItemService.OpenChest(this, chest);
 
     // Doors
+
     public bool IsDoorClosed(Position pos) => Doors.IsDoorClosed(this, pos);
     public void OpenDoor(Position pos) => Doors.OpenDoor(this, pos);
     public void CloseDoor(Position pos) => Doors.CloseDoor(this, pos);

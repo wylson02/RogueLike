@@ -6,6 +6,9 @@ using RogueLike.Domain;
 using RogueLike.Domain.Entities;
 using RogueLike.Domain.Items;
 using RogueLike.UI;
+using RogueLike.App.Services; 
+
+
 using System.Linq;
 
 public sealed class ExplorationState : IGameState
@@ -42,7 +45,10 @@ public sealed class ExplorationState : IGameState
 
         var prev = ctx.Player.Pos;
         var next = ctx.Player.Pos.Move(dir);
-        if (!ctx.Map.IsWalkable(next)) return;
+
+        //ctx.PushLog($"DEBUG tile next = {ctx.Map.GetTile(next)}", GameContext.LogKind.System);
+
+        //if (!ctx.Map.IsWalkable(next)) return;
 
         // Porte fermée
         if (ctx.IsDoorClosed(next))
@@ -50,6 +56,29 @@ public sealed class ExplorationState : IGameState
             ctx.PushLog("La porte est scellée.", GameContext.LogKind.Warning);
             return;
         }
+
+            ctx.OpenDoor(next); // DoorClosed -> DoorOpen
+            ctx.PushLog("🔓 Vous utilisez la clé. La porte s'ouvre.", GameContext.LogKind.System);
+
+            // Optionnel : passer tout de suite après ouverture
+            if (ctx.Map.IsWalkable(next))
+            {
+                ctx.Player.SetPosition(next);
+                ctx.UpdateVision();
+                ctx.AdvanceTimeAfterPlayerMove();
+                MonstersTurn(ctx);
+            }
+            return;
+        }
+
+        // ✅ Maintenant seulement on bloque les murs, etc.
+        if (!ctx.Map.IsWalkable(next)) return;
+
+        //if (ctx.IsDoorClosed(next))
+        //{
+        //    ctx.PushLog("La porte est scellée.", GameContext.LogKind.Warning);
+        //    return;
+        //}
 
         // Sceau (Map 3)
         var seal = ctx.SealAt(next);
@@ -112,20 +141,55 @@ public sealed class ExplorationState : IGameState
         // Déplacement normal
         ctx.Player.SetPosition(next);
 
-        // PNJ talk
         var pnj = ctx.PnjAt(next);
         if (pnj is not null)
         {
             ctx.PushLog($"{pnj.Name} : {pnj.Talk()}", GameContext.LogKind.System);
 
+            // ✅ CONDITION POUR WYLSON
+            if (ctx.CurrentLevel == 1 && pnj.Name == "Wylson")
+            {
+                bool allMonstersDead = !ctx.Monsters.Any(m => !m.IsDead);
+
+                if (!allMonstersDead)
+                {
+                    ctx.PushLog("Reviens quand t'auras tué tous les monstres.", GameContext.LogKind.Warning);
+                    return;
+                }
+            }
+
             var giftName = pnj.GiveGift();
             if (giftName is not null)
             {
-                var gift = ItemCatalog.LifeGem(next);
+                var gift = ItemCatalog.Create(giftName, next);
                 ctx.Player.AddToInventory(gift);
                 ctx.PushLog($"Vous recevez : {gift.Name}", GameContext.LogKind.Loot);
             }
         }
+
+        // PNJ talk
+        //var pnj = ctx.PnjAt(next);
+        //if (pnj is not null)
+        //{
+        //    ctx.PushLog($"{pnj.Name} : {pnj.Talk()}", GameContext.LogKind.System);
+
+        //    var giftName = pnj.GiveGift();
+        //    if (!string.IsNullOrWhiteSpace(giftName))
+        //    {
+        //        var gift = ItemCatalog.Create(giftName, next); // ✅ utilise l'id du PNJ
+        //        ctx.Player.AddToInventory(gift);
+        //        ctx.PushLog($"Vous recevez : {gift.Name}", GameContext.LogKind.Loot);
+        //    }
+
+
+        //    //var giftName = pnj.GiveGift();
+        //    //if (giftName is not null)
+        //    //{
+        //    //    var gift = ItemCatalog.LifeGem(next);
+        //    //    ctx.Player.AddToInventory(gift);
+        //    //    ctx.PushLog($"Vous recevez : {gift.Name}", GameContext.LogKind.Loot);
+        //    //}
+        //}
 
         // Pick-up des items
         var item = ctx.ItemAt(next);
