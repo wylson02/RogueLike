@@ -7,6 +7,9 @@ using RogueLike.Domain.Entities;
 using RogueLike.Domain.Items;
 using RogueLike.Domain.Items.Quest;
 using RogueLike.UI;
+using RogueLike.App.Services; 
+
+
 using System.Linq;
 
 public sealed class ExplorationState : IGameState
@@ -43,7 +46,10 @@ public sealed class ExplorationState : IGameState
 
         var prev = ctx.Player.Pos;
         var next = ctx.Player.Pos.Move(dir);
-        if (!ctx.Map.IsWalkable(next)) return;
+
+        ctx.PushLog($"DEBUG tile next = {ctx.Map.GetTile(next)}", GameContext.LogKind.System);
+
+        //if (!ctx.Map.IsWalkable(next)) return;
 
         // Porte fermée
         if (ctx.IsDoorClosed(next))
@@ -56,19 +62,31 @@ public sealed class ExplorationState : IGameState
                 return;
             }
 
-            // ✅ On a la clé => on ouvre la porte
-            ctx.OpenDoor(next);
+            ctx.OpenDoor(next); // DoorClosed -> DoorOpen
             ctx.PushLog("🔓 Vous utilisez la clé. La porte s'ouvre.", GameContext.LogKind.System);
+
+            // Optionnel : passer tout de suite après ouverture
+            if (ctx.Map.IsWalkable(next))
+            {
+                ctx.Player.SetPosition(next);
+                ctx.UpdateVision();
+                ctx.AdvanceTimeAfterPlayerMove();
+                MonstersTurn(ctx);
+            }
+            return;
         }
 
-            //if (ctx.IsDoorClosed(next))
-            //{
-            //    ctx.PushLog("La porte est scellée.", GameContext.LogKind.Warning);
-            //    return;
-            //}
+        // ✅ Maintenant seulement on bloque les murs, etc.
+        if (!ctx.Map.IsWalkable(next)) return;
 
-            // Sceau (Map 3)
-            var seal = ctx.SealAt(next);
+        //if (ctx.IsDoorClosed(next))
+        //{
+        //    ctx.PushLog("La porte est scellée.", GameContext.LogKind.Warning);
+        //    return;
+        //}
+
+        // Sceau (Map 3)
+        var seal = ctx.SealAt(next);
         if (seal is not null)
         {
             ctx.Player.SetPosition(next);
