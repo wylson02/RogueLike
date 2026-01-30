@@ -26,6 +26,7 @@ public static class MapCatalog
 
             .DrawRect(1, 10, 5, 1, TileType.Wall)
             .DrawRect(5, 10, 1, 7, TileType.Wall)
+            .SetTile(5, 13, TileType.DoorClosed)
             .SetTile(29, 8, TileType.Exit)
             .Build();
 

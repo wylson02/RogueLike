@@ -5,6 +5,7 @@ using RogueLike.App.Services;
 using RogueLike.Domain;
 using RogueLike.Domain.Entities;
 using RogueLike.Domain.Items;
+using RogueLike.Domain.Items.Quest;
 using RogueLike.UI;
 using System.Linq;
 
@@ -47,12 +48,27 @@ public sealed class ExplorationState : IGameState
         // Porte fermée
         if (ctx.IsDoorClosed(next))
         {
-            ctx.PushLog("La porte est scellée.", GameContext.LogKind.Warning);
-            return;
+            bool hasKey = ctx.Player.Inventory.OfType<Map1ToMap2KeyItem>().Any();
+
+            if (!hasKey)
+            {
+                ctx.PushLog("🔒 La porte est verrouillée. Il vous faut une clé.", GameContext.LogKind.Warning);
+                return;
+            }
+
+            // ✅ On a la clé => on ouvre la porte
+            ctx.OpenDoor(next);
+            ctx.PushLog("🔓 Vous utilisez la clé. La porte s'ouvre.", GameContext.LogKind.System);
         }
 
-        // Sceau (Map 3)
-        var seal = ctx.SealAt(next);
+            //if (ctx.IsDoorClosed(next))
+            //{
+            //    ctx.PushLog("La porte est scellée.", GameContext.LogKind.Warning);
+            //    return;
+            //}
+
+            // Sceau (Map 3)
+            var seal = ctx.SealAt(next);
         if (seal is not null)
         {
             ctx.Player.SetPosition(next);
@@ -119,12 +135,21 @@ public sealed class ExplorationState : IGameState
             ctx.PushLog($"{pnj.Name} : {pnj.Talk()}", GameContext.LogKind.System);
 
             var giftName = pnj.GiveGift();
-            if (giftName is not null)
+            if (!string.IsNullOrWhiteSpace(giftName))
             {
-                var gift = ItemCatalog.LifeGem(next);
+                var gift = ItemCatalog.Create(giftName, next); // ✅ utilise l'id du PNJ
                 ctx.Player.AddToInventory(gift);
                 ctx.PushLog($"Vous recevez : {gift.Name}", GameContext.LogKind.Loot);
             }
+
+
+            //var giftName = pnj.GiveGift();
+            //if (giftName is not null)
+            //{
+            //    var gift = ItemCatalog.LifeGem(next);
+            //    ctx.Player.AddToInventory(gift);
+            //    ctx.PushLog($"Vous recevez : {gift.Name}", GameContext.LogKind.Loot);
+            //}
         }
 
         // Pick-up des items

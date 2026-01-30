@@ -31,27 +31,34 @@ public static class LevelCatalog
             PlayerStart = new Position(14, 8),
 
             Monsters = new()
-{
-MonsterCatalog.Slime(new Position(10, 3)),
-MonsterCatalog.Golem(new Position(14, 6))
-},
+            {
+                MonsterCatalog.Slime(new Position(10, 3)),
+                MonsterCatalog.Golem(new Position(14, 6))
+            },
 
             Chests = new()
-{
-new Chest(new Position(2, 2), ChestType.TorchOnly),
-new Chest(new Position(7, 6), ChestType.Normal),
-new Chest(new Position(12, 2), ChestType.Legendary),
-},
+            {
+                new Chest(new Position(2, 2), ChestType.TorchOnly),
+                new Chest(new Position(7, 6), ChestType.Normal),
+                new Chest(new Position(12, 2), ChestType.Legendary),
+            },
 
             Pnjs = new()
-{
-new Pnj(
-new Position(6, 10),
-"Elya",
-"Bonjour aventurier ! Prends cette gemme de vie.",
-"LifeGem"
-)
-},
+            {
+                new Pnj(
+                    new Position(10, 8),
+                    "Elya",
+                    "Bonjour aventurier ! Prends cette gemme de vie.",
+                    "LifeGem"
+                       ),
+
+                new Pnj(
+                    new Position(6, 11),
+                    "Wylson",
+                    "Wshh mon gars ! Prends cette clé et me casse pas la tête.",
+                    "Map1ToMap2Key" 
+                        )
+            },
         };
     }
 
