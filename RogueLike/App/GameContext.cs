@@ -193,6 +193,7 @@ public sealed class GameContext
 
         Map = data.Map;
         Player.SetPosition(data.PlayerStart);
+        Player.HealToFull();
 
         Monsters.AddRange(data.Monsters);
         GameItems.AddRange(data.Items);
@@ -209,6 +210,14 @@ public sealed class GameContext
         Console.SetCursorPosition(0, 0);
 
         PushLog(Text.T("level.loaded", ("level", level.ToString())), LogKind.System);
+        // FIX CONNECTIVITÉ : surtout important pour Level 4 (boss) mais safe pour tous
+        ConnectivityFixService.EnsureAllExitsReachable(this, Player.Pos);
+        // Fix boss (si niveau boss)
+        if (level >= 4)
+        {
+            BossSpawnFixService.EnsureBossReachable(this);
+        }
+
         UpdateVision();
     }
     // ===== Progression helpers (avoid touching Player internals) =====

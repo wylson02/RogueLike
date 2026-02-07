@@ -52,7 +52,7 @@ public sealed class Player : Character
     }
 
 
-    public Player(Position pos) : base(pos, hp: 30, attack: 5)
+    public Player(Position pos) : base(pos, hp: 200, attack: 20)
     {
     }
 

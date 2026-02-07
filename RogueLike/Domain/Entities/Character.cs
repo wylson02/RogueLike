@@ -73,4 +73,15 @@ public abstract class Character : Entity
     {
         Armor = Math.Max(0, Armor + delta);
     }
+    public void HealToFull()
+    {
+        Hp = MaxHp;
+    }
+
+    public void ClampHp()
+    {
+        if (Hp < 0) Hp = 0;
+        if (Hp > MaxHp) Hp = MaxHp;
+    }
+
 }

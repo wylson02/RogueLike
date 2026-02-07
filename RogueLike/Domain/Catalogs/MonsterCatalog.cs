@@ -62,4 +62,26 @@ public static class MonsterCatalog
             .WithRank(MonsterRank.MiniBoss)
             .WithAi(new AggroWithinRangeStrategy(range: 7, fallback: new RandomWalkStrategy()))
             .Build();
+
+    // ===================== FINAL BOSS =====================
+    public static Monster AbyssKingBoss(Position pos)
+    {
+        var m = new MonsterBuilder()
+            .Named("Roi de l'Abîme")
+            .At(pos)
+            .WithHp(95)
+            .WithAttack(10)
+            .WithGoldReward(min: 160, max: 220)
+            .WithXpReward(min: 110, max: 160)
+            .WithRank(MonsterRank.Boss)
+            .WithAi(new AggroWithinRangeStrategy(range: 9, fallback: new RandomWalkStrategy()))
+            .Build();
+
+        // petit spice
+        m.AddArmor(2);
+        m.ModifyCritChance(12);
+        m.ModifyCritMultiplierPercent(50);
+
+        return m;
+    }
 }
