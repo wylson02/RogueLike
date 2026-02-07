@@ -1,15 +1,14 @@
 ﻿namespace RogueLike.App.States;
 
+using System;
+using System.Linq;
+
 using RogueLike.App;
 using RogueLike.App.Services;
 using RogueLike.Domain;
 using RogueLike.Domain.Entities;
 using RogueLike.Domain.Items;
 using RogueLike.UI;
-using RogueLike.App.Services; 
-
-
-using System.Linq;
 
 public sealed class ExplorationState : IGameState
 {
@@ -46,17 +45,9 @@ public sealed class ExplorationState : IGameState
         var prev = ctx.Player.Pos;
         var next = ctx.Player.Pos.Move(dir);
 
-        //ctx.PushLog($"DEBUG tile next = {ctx.Map.GetTile(next)}", GameContext.LogKind.System);
-
-        //if (!ctx.Map.IsWalkable(next)) return;
-
         // Porte fermée
         if (ctx.IsDoorClosed(next))
         {
-            ctx.PushLog("La porte est scellée.", GameContext.LogKind.Warning);
-            return;
-        }
-
             ctx.OpenDoor(next); // DoorClosed -> DoorOpen
             ctx.PushLog("🔓 Vous utilisez la clé. La porte s'ouvre.", GameContext.LogKind.System);
 
@@ -68,17 +59,12 @@ public sealed class ExplorationState : IGameState
                 ctx.AdvanceTimeAfterPlayerMove();
                 MonstersTurn(ctx);
             }
+
             return;
         }
 
         // ✅ Maintenant seulement on bloque les murs, etc.
         if (!ctx.Map.IsWalkable(next)) return;
-
-        //if (ctx.IsDoorClosed(next))
-        //{
-        //    ctx.PushLog("La porte est scellée.", GameContext.LogKind.Warning);
-        //    return;
-        //}
 
         // Sceau (Map 3)
         var seal = ctx.SealAt(next);
@@ -91,15 +77,24 @@ public sealed class ExplorationState : IGameState
             if (ctx.CurrentLevel == 3 && ctx.SealsActivated == 2 && !ctx.Map3LastSealHintShown)
             {
                 ctx.ShowMap3LastSealHintOnce();
-                ctx.PushLog("Le dernier sceau résonne faiblement… quelque part dans le temple.", GameContext.LogKind.System);
+                ctx.PushLog(
+                    "Le dernier sceau résonne faiblement… quelque part dans le temple.",
+                    GameContext.LogKind.System
+                );
             }
 
-            ctx.PushLog($"Sceau {seal.Id} activé ({ctx.SealsActivated}/3).", GameContext.LogKind.System);
+            ctx.PushLog(
+                $"Sceau {seal.Id} activé ({ctx.SealsActivated}/3).",
+                GameContext.LogKind.System
+            );
 
             if (ctx.SealsActivated >= 3)
             {
                 Map3Scripting.OpenCentralDoors(ctx);
-                ctx.PushLog("Les verrous anciens cèdent... les portes de la salle centrale s'ouvrent.", GameContext.LogKind.System);
+                ctx.PushLog(
+                    "Les verrous anciens cèdent... les portes de la salle centrale s'ouvrent.",
+                    GameContext.LogKind.System
+                );
             }
 
             ctx.UpdateVision();
@@ -130,7 +125,7 @@ public sealed class ExplorationState : IGameState
             return;
         }
 
-        // Combat (SEULEMENT si le joueur marche sur la case du monstre ✅)
+        // Combat (SEULEMENT si le joueur marche sur la case du monstre)
         var enemy = ctx.MonsterAt(next);
         if (enemy is not null)
         {
@@ -141,19 +136,23 @@ public sealed class ExplorationState : IGameState
         // Déplacement normal
         ctx.Player.SetPosition(next);
 
+        // PNJ
         var pnj = ctx.PnjAt(next);
         if (pnj is not null)
         {
             ctx.PushLog($"{pnj.Name} : {pnj.Talk()}", GameContext.LogKind.System);
 
-            // ✅ CONDITION POUR WYLSON
+            // CONDITION POUR WYLSON
             if (ctx.CurrentLevel == 1 && pnj.Name == "Wylson")
             {
                 bool allMonstersDead = !ctx.Monsters.Any(m => !m.IsDead);
 
                 if (!allMonstersDead)
                 {
-                    ctx.PushLog("Reviens quand t'auras tué tous les monstres.", GameContext.LogKind.Warning);
+                    ctx.PushLog(
+                        "Reviens quand t'auras tué tous les monstres.",
+                        GameContext.LogKind.Warning
+                    );
                     return;
                 }
             }
@@ -166,30 +165,6 @@ public sealed class ExplorationState : IGameState
                 ctx.PushLog($"Vous recevez : {gift.Name}", GameContext.LogKind.Loot);
             }
         }
-
-        // PNJ talk
-        //var pnj = ctx.PnjAt(next);
-        //if (pnj is not null)
-        //{
-        //    ctx.PushLog($"{pnj.Name} : {pnj.Talk()}", GameContext.LogKind.System);
-
-        //    var giftName = pnj.GiveGift();
-        //    if (!string.IsNullOrWhiteSpace(giftName))
-        //    {
-        //        var gift = ItemCatalog.Create(giftName, next); // ✅ utilise l'id du PNJ
-        //        ctx.Player.AddToInventory(gift);
-        //        ctx.PushLog($"Vous recevez : {gift.Name}", GameContext.LogKind.Loot);
-        //    }
-
-
-        //    //var giftName = pnj.GiveGift();
-        //    //if (giftName is not null)
-        //    //{
-        //    //    var gift = ItemCatalog.LifeGem(next);
-        //    //    ctx.Player.AddToInventory(gift);
-        //    //    ctx.PushLog($"Vous recevez : {gift.Name}", GameContext.LogKind.Loot);
-        //    //}
-        //}
 
         // Pick-up des items
         var item = ctx.ItemAt(next);
@@ -206,13 +181,21 @@ public sealed class ExplorationState : IGameState
                 // CINÉ FULLSCREEN
                 LegendarySwordCinematicScreen.Play("ÉPÉE DE LÉGENDE");
 
-                // petit rappel in-game (court)
-                ctx.ShowToast("LA LAME S'ÉVEILLE…", ConsoleColor.Black, ConsoleColor.DarkRed, durationTicks: 10);
-                ctx.PushLog("Tu arraches la lame du socle. Le temple gronde.", GameContext.LogKind.System);
+                // petit rappel in-game
+                ctx.ShowToast(
+                    "LA LAME S'ÉVEILLE…",
+                    ConsoleColor.Black,
+                    ConsoleColor.DarkRed,
+                    durationTicks: 10
+                );
+
+                ctx.PushLog(
+                    "Tu arraches la lame du socle. Le temple gronde.",
+                    GameContext.LogKind.System
+                );
 
                 Map3Scripting.TriggerLegendarySwordEvent(ctx, fromPos: prev);
             }
-
         }
 
         // Exit (changement de niveau)
@@ -233,7 +216,11 @@ public sealed class ExplorationState : IGameState
                 BossIntroScreen.Play(ctx.Player, bossName: "Roi de l'Abîme");
             }
 
-            ctx.PushLog($"Vous passez la sortie... (Niveau {nextLevel})", GameContext.LogKind.System);
+            ctx.PushLog(
+                $"Vous passez la sortie... (Niveau {nextLevel})",
+                GameContext.LogKind.System
+            );
+
             ctx.LoadLevel(nextLevel);
             ctx.State = new ExplorationState();
             return;
@@ -248,7 +235,10 @@ public sealed class ExplorationState : IGameState
     {
         foreach (var m in ctx.Monsters.Where(m => !m.IsDead))
         {
-            int dist = Math.Abs(m.Pos.X - ctx.Player.Pos.X) + Math.Abs(m.Pos.Y - ctx.Player.Pos.Y);
+            int dist =
+                Math.Abs(m.Pos.X - ctx.Player.Pos.X)
+                + Math.Abs(m.Pos.Y - ctx.Player.Pos.Y);
+
             if (dist <= 1) continue;
 
             var dir = m.MoveStrategy.ChooseMove(m, ctx);
