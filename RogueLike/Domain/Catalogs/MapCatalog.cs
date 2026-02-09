@@ -26,8 +26,12 @@ public static class MapCatalog
 
             .DrawRect(1, 10, 5, 1, TileType.Wall)
             .DrawRect(5, 10, 1, 7, TileType.Wall)
+
             .SetTile(29, 8, TileType.Exit)
             .Build();
+
+        // ✅ Porte verrouillée vers la petite salle bas-gauche
+        map.SetTile(5, 13, TileType.DoorClosed);
 
         return map;
     }
@@ -131,33 +135,27 @@ public static class MapCatalog
     // ===================== LEVEL 4 (BOSS) =====================
     public static GameMap Level4_BossArena()
     {
-        // Arène cinématique : couloir -> arche -> trône
         const int W = 44;
         const int H = 19;
 
         var b = new MapBuilder(W, H)
             .DrawBorder(TileType.Wall);
 
-        // Couloir
         b.DrawRect(1, 7, 18, 1, TileType.Wall);
         b.DrawRect(1, 11, 18, 1, TileType.Wall);
         b.DrawRect(18, 8, 1, 3, TileType.Wall);
 
-        // Arche centrale
         DrawRoom(b, x: 18, y: 6, w: 10, h: 7);
         b.SetTile(18, 9, TileType.Floor);
         b.SetTile(27, 9, TileType.Floor);
 
-        // Salle trône
         DrawRoom(b, x: 29, y: 4, w: 14, h: 11);
 
-        // Colonnes décor
         b.DrawRect(32, 6, 1, 2, TileType.Wall);
         b.DrawRect(39, 6, 1, 2, TileType.Wall);
         b.DrawRect(32, 11, 1, 2, TileType.Wall);
         b.DrawRect(39, 11, 1, 2, TileType.Wall);
 
-        // Trône
         b.DrawRect(40, 8, 2, 3, TileType.Wall);
 
         return b.Build();

@@ -12,8 +12,11 @@ public static class ItemCatalog
     public static Item CritCharm(Position pos) => new CritCharmItem(pos);
     public static Item VampRing(Position pos) => new VampRingItem(pos);
     public static Item Torch(Position pos) => new TorchItem(pos);
-    public static Item Map1ToMap2Key(Position pos) => new Map1ToMap2KeyItem(pos);
     public static Item Lantern(Position pos) => new LanternItem(pos);
+
+    // Quêtes
+    public static Item Map1ToMap2Key(Position pos) => new Map1ToMap2KeyItem(pos);
+    public static Item Map1ArmoryKey(Position pos) => new Map1ArmoryKeyItem(pos);
 
     public static Item Create(string id, Position pos)
     {
@@ -26,14 +29,12 @@ public static class ItemCatalog
             "CritCharm" => CritCharm(pos),
             "VampRing" => VampRing(pos),
             "Torch" => Torch(pos),
-            "Map1ToMap2Key" => Map1ToMap2Key(pos),
             "Lantern" => Lantern(pos),
 
-
+            "Map1ToMap2Key" => Map1ToMap2Key(pos),
+            "Map1ArmoryKey" => Map1ArmoryKey(pos),
 
             _ => throw new ArgumentException($"Item inconnu: {id}")
         };
     }
-
-
 }
