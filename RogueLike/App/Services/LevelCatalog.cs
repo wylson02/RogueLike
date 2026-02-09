@@ -37,22 +37,42 @@ public static class LevelCatalog
                 MonsterCatalog.Golem(new Position(14, 6))
             },
 
+            Items = new()
+            {
+                ItemCatalog.Armor(new Position(2, 13)),
+                ItemCatalog.CritCharm(new Position(3, 14)),
+            },
+
             Chests = new()
             {
-                new Chest(new Position(2, 2), ChestType.TorchOnly),
-                new Chest(new Position(3, 3), ChestType.LanternChest),
                 new Chest(new Position(7, 6), ChestType.Normal),
                 new Chest(new Position(12, 2), ChestType.Legendary),
             },
 
             Pnjs = new()
             {
+                // 1) Donne une épée
                 new Pnj(
-                    new Position(6, 10),
-                    "Elya",
-                    "Bonjour aventurier ! Prends cette gemme de vie.",
-                    "LifeGem"
-                )
+                    new Position(12, 6),
+                    "Kael",
+                    "Tiens. Prends cette épée. Ici, la faiblesse tue.",
+                    "Sword"
+                ),
+
+                // 2) Effrayée -> donne clé armurerie après nettoyage
+                new Pnj(
+                    new Position(6, 12),
+                    "Lysa",
+                    "N-non… je ne peux pas… Ils sont partout…",
+                    "Map1ArmoryKey"
+                ),
+
+                // 3) ✅ Placé DEVANT la sortie (Exit est en (29,8), on met (28,8))
+                new Pnj(
+                    new Position(28, 8),
+                    "Sentinelle",
+                    "Halte. Aucun passage sans arme. Reviens avec une arme."
+                ),
             },
         };
     }
@@ -83,8 +103,7 @@ public static class LevelCatalog
                 new Pnj(
                     new Position(6, 19),
                     "Orin",
-                    "La nuit ici mord fort… prépare-toi.",
-                    ""
+                    "La nuit ici mord fort… prépare-toi."
                 )
             },
         };
@@ -128,14 +147,12 @@ public static class LevelCatalog
                 new Pnj(
                     new Position(10, 8),
                     "Elya",
-                    "On se retrouve encore… Tu vas au bout, cette fois.",
-                    ""
+                    "On se retrouve encore… Tu vas au bout, cette fois."
                 )
             },
         };
     }
 
-    // ===================== LEVEL 4 : BOSS FINAL =====================
     public static LevelData CreateLevel4()
     {
         return new LevelData
@@ -148,14 +165,12 @@ public static class LevelCatalog
                 MonsterCatalog.AbyssKingBoss(new Position(34, 9)),
             },
 
-            // petit cameo / tension
             Pnjs = new()
             {
                 new Pnj(
                     new Position(6, 9),
                     "Vesna",
-                    "Je t’ai suivi… Cette porte n’aurait jamais dû s’ouvrir. Reviens vivant.",
-                    ""
+                    "Je t’ai suivi… Cette porte n’aurait jamais dû s’ouvrir. Reviens vivant."
                 )
             }
         };

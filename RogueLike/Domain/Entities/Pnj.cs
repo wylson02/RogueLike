@@ -1,12 +1,11 @@
 namespace RogueLike.Domain.Entities;
 
-using System.Reflection.Metadata.Ecma335;
 using RogueLike.Domain;
 
 public sealed class Pnj : Entity
 {
     public string Name { get; }
-    public string Message { get; }
+    public string Message { get; private set; }
     public bool HasGivenGift { get; private set; }
     public string GiftName { get; }
     public override char Glyph => 'p';
@@ -15,19 +14,23 @@ public sealed class Pnj : Entity
     {
         Name = name;
         Message = message;
-        GiftName = giftName;
+        GiftName = giftName ?? "";
         HasGivenGift = false;
     }
 
-    public string Talk()
+    // ✅ Overload pratique si le PNJ n’a pas de cadeau
+    public Pnj(Position pos, string name, string message) : this(pos, name, message, "")
     {
-        return Message;
     }
+
+    public string Talk() => Message;
+
+    public void SetMessage(string message) => Message = message;
 
     public string? GiveGift()
     {
-        if (HasGivenGift)
-            return null;
+        if (HasGivenGift) return null;
+        if (string.IsNullOrWhiteSpace(GiftName)) return null;
 
         HasGivenGift = true;
         return GiftName;
