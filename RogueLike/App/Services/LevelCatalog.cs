@@ -101,7 +101,7 @@ public static class LevelCatalog
             Pnjs = new()
             {
                 new Pnj(
-                    new Position(6, 19),
+                    new Position(6, 18),
                     "Orin",
                     "La nuit ici mord fort… prépare-toi."
                 )
