@@ -103,9 +103,9 @@ public static class MapCatalog
             .DrawBorder(TileType.Wall);
 
         // Salle marchand (haut droite)
-        DrawRoom(b, x: 35, y: 5, w: 8, h: 6);
+        DrawRoom(b, x: 35, y: 5, w: 9, h: 6);
         // Salle boss (bas droite)
-        DrawRoom(b, x: 35, y: 10, w: 8, h: 6);
+        DrawRoom(b, x: 35, y: 10, w: 9, h: 6);
 
         // Portes sortie
         b.SetTile(35, 7, TileType.DoorClosed);
@@ -128,6 +128,7 @@ public static class MapCatalog
         b.DrawRect(10, 12, 6, 1, TileType.Wall);
         b.DrawRect(28, 12, 3, 1, TileType.Wall);
         b.DrawRect(28, 3, 3, 1, TileType.Wall);
+        //b.DrawRect(34, 8, 1, 2, TileType.Wall);
 
         return b.Build();
     }
