@@ -50,35 +50,7 @@ public sealed class ExplorationState : IGameState
 
         if (!ctx.Map.InBounds(next)) return;
 
-        // ===== PNJ "Sentinelle" qui bloque la sortie (Map1) =====
-        var pnjAtNext = ctx.PnjAt(next);
-        if (pnjAtNext is not null && ctx.CurrentLevel == 1 && pnjAtNext.Name == Map1GuardName)
-        {
-            if (!HasAnyWeapon(ctx.Player))
-            {
-                ctx.PushLog("Sentinelle : Halte. Aucun passage sans arme.", GameContext.LogKind.Warning);
-                return;
-            }
-
-            // ✅ Tu es armé => elle se décale pour te laisser passer (et une seule fois)
-            ctx.PushLog("Sentinelle : Tu es armé. Passe.", GameContext.LogKind.System);
-
-            if (TryMoveGuardAside(ctx, pnjAtNext, playerFrom: prev))
-            {
-                ctx.ShowToast("La Sentinelle s'écarte.", ConsoleColor.Black, ConsoleColor.Green, durationTicks: 8);
-            }
-            else
-            {
-                // fallback si impossible de bouger (rare)
-                ctx.PushLog("Sentinelle : ...je ne peux pas bouger d’ici. Passe par la sortie.", GameContext.LogKind.Warning);
-            }
-
-            // On ne marche pas sur lui ce tour-là
-            ctx.UpdateVision();
-            return;
-        }
-
-        // ===== Door closed handling =====
+        // ===== Door closed first (blocks movement) =====
         if (ctx.IsDoorClosed(next))
         {
             if (ctx.CurrentLevel == 1 && next == Map1ArmoryDoorPos)
@@ -93,6 +65,7 @@ public sealed class ExplorationState : IGameState
                 ctx.OpenDoor(next);
                 ctx.PushLog("🔓 La clé tourne… la porte de l’armurerie s’ouvre.", GameContext.LogKind.System);
 
+                // maintenant walkable => on bouge
                 ctx.Player.SetPosition(next);
                 ctx.UpdateVision();
                 ctx.AdvanceTimeAfterPlayerMove();
@@ -104,9 +77,42 @@ public sealed class ExplorationState : IGameState
             return;
         }
 
+        // ===== not walkable (wall etc) =====
         if (!ctx.Map.IsWalkable(next)) return;
 
-        // ===== Combat uniquement si on marche sur la case =====
+        // ===== Guard blocks the exit path (Map1) =====
+        var pnjBlock = ctx.PnjAt(next);
+        if (pnjBlock is not null && ctx.CurrentLevel == 1 && pnjBlock.Name == Map1GuardName)
+        {
+            if (!HasAnyWeapon(ctx.Player))
+            {
+                ctx.PushLog("Sentinelle : Halte. Aucun passage sans arme.", GameContext.LogKind.Warning);
+                return;
+            }
+
+            ctx.PushLog("Sentinelle : Tu es armé. Passe.", GameContext.LogKind.System);
+
+            if (TryMoveGuardAside(ctx, pnjBlock, playerFrom: prev))
+                ctx.ShowToast("La Sentinelle s'écarte.", ConsoleColor.Black, ConsoleColor.Green, durationTicks: 8);
+
+            ctx.UpdateVision();
+            return;
+        }
+
+        // ===== Chest BEFORE moving (so it triggers when stepping on it) =====
+        var chest = ctx.ChestAt(next);
+        if (chest is not null)
+        {
+            ctx.Player.SetPosition(next);
+            ctx.OpenChest(chest);
+
+            ctx.UpdateVision();
+            ctx.AdvanceTimeAfterPlayerMove();
+            MonstersTurn(ctx);
+            return;
+        }
+
+        // ===== Combat if stepping on monster =====
         var enemy = ctx.MonsterAt(next);
         if (enemy is not null)
         {
@@ -117,7 +123,42 @@ public sealed class ExplorationState : IGameState
         // ===== Move =====
         ctx.Player.SetPosition(next);
 
-        // ===== PNJ talk =====
+        // ===== Merchant (if your project still uses it this way) =====
+        if (ctx.IsMerchantAt(next) && ctx.Merchant is not null)
+        {
+            ctx.UpdateVision();
+            ctx.State = new MerchantState(previous: this, ctx.Merchant);
+            return;
+        }
+
+        // ===== Seals (Map3) =====
+        var seal = ctx.SealAt(next);
+        if (seal is not null)
+        {
+            seal.Activate();
+            ctx.IncrementSealsActivated();
+
+            if (ctx.CurrentLevel == 3 && ctx.SealsActivated == 2 && !ctx.Map3LastSealHintShown)
+            {
+                ctx.ShowMap3LastSealHintOnce();
+                ctx.PushLog("Le dernier sceau résonne faiblement… quelque part dans le temple.", GameContext.LogKind.System);
+            }
+
+            ctx.PushLog($"Sceau {seal.Id} activé ({ctx.SealsActivated}/3).", GameContext.LogKind.System);
+
+            if (ctx.SealsActivated >= 3)
+            {
+                Map3Scripting.OpenCentralDoors(ctx);
+                ctx.PushLog("Les verrous anciens cèdent... les portes de la salle centrale s'ouvrent.", GameContext.LogKind.System);
+            }
+
+            ctx.UpdateVision();
+            ctx.AdvanceTimeAfterPlayerMove();
+            MonstersTurn(ctx);
+            return;
+        }
+
+        // ===== PNJ talk (on the tile you are now on) =====
         var pnj = ctx.PnjAt(next);
         if (pnj is not null)
         {
@@ -127,31 +168,41 @@ public sealed class ExplorationState : IGameState
                 if (!allDead)
                 {
                     ctx.PushLog("Lysa : N-non… je… je peux pas parler. Tue-les… tous…", GameContext.LogKind.Warning);
-                    return;
                 }
+                else
+                {
+                    pnj.SetMessage("Merci… Tiens. Cette clé ouvre l’armurerie. Prends ce que tu peux.");
+                    ctx.PushLog($"{pnj.Name} : {pnj.Talk()}", GameContext.LogKind.System);
 
-                pnj.SetMessage("Merci… Tiens. Cette clé ouvre l’armurerie. Prends ce que tu peux.");
+                    var giftName = pnj.GiveGift();
+                    if (giftName is not null)
+                    {
+                        var gift = ItemCatalog.Create(giftName, next);
+                        ctx.Player.AddToInventory(gift);
+                        ctx.PushLog($"Vous recevez : {gift.Name}", GameContext.LogKind.Loot);
+                    }
+                }
             }
-
-            ctx.PushLog($"{pnj.Name} : {pnj.Talk()}", GameContext.LogKind.System);
-
-            var giftName = pnj.GiveGift();
-            if (giftName is not null)
+            else
             {
-                var gift = ItemCatalog.Create(giftName, next);
-                ctx.Player.AddToInventory(gift);
-                ctx.PushLog($"Vous recevez : {gift.Name}", GameContext.LogKind.Loot);
+                ctx.PushLog($"{pnj.Name} : {pnj.Talk()}", GameContext.LogKind.System);
+
+                var giftName = pnj.GiveGift();
+                if (giftName is not null)
+                {
+                    var gift = ItemCatalog.Create(giftName, next);
+                    ctx.Player.AddToInventory(gift);
+                    ctx.PushLog($"Vous recevez : {gift.Name}", GameContext.LogKind.Loot);
+                }
             }
         }
 
-        // ===== Pick-up =====
+        // ===== Item pickup (after moving) =====
         var item = ctx.ItemAt(next);
         if (item is not null)
         {
             bool picked = ctx.ItemService.TryPickup(ctx, next);
-            if (!picked) return;
-
-            if (ctx.CurrentLevel == 3 && item is LegendarySwordItem)
+            if (picked && ctx.CurrentLevel == 3 && item is LegendarySwordItem)
             {
                 ctx.MarkLegendarySwordPicked();
                 ctx.GrantLegendaryEmpower();
@@ -168,7 +219,6 @@ public sealed class ExplorationState : IGameState
         // ===== Exit =====
         if (ctx.Map.GetTile(next) == TileType.Exit)
         {
-            // sécurité : Map1->Map2 exige arme
             if (ctx.CurrentLevel == 1 && !HasAnyWeapon(ctx.Player))
             {
                 ctx.PushLog("Sentinelle : Reviens quand tu seras armé.", GameContext.LogKind.Warning);
@@ -202,8 +252,6 @@ public sealed class ExplorationState : IGameState
         MonstersTurn(ctx);
     }
 
-    // ===================== Monsters =====================
-
     private static void MonstersTurn(GameContext ctx)
     {
         foreach (var m in ctx.Monsters.Where(m => !m.IsDead))
@@ -223,14 +271,11 @@ public sealed class ExplorationState : IGameState
         }
     }
 
-    // ===================== Guard movement =====================
-
     private static bool TryMoveGuardAside(GameContext ctx, Pnj guard, Position playerFrom)
     {
-        // Priorité: reculer vers le joueur (ça fait effet "je m'écarte"), sinon côtés
         var candidates = new[]
         {
-            playerFrom,                         // derrière (case du joueur précédent)
+            playerFrom,
             guard.Pos.Move(Direction.Up),
             guard.Pos.Move(Direction.Down),
             guard.Pos.Move(Direction.Left),
@@ -251,8 +296,6 @@ public sealed class ExplorationState : IGameState
 
         return false;
     }
-
-    // ===================== Helpers =====================
 
     private static bool HasAnyWeapon(Player p)
     {
