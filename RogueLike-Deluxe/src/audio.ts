@@ -1,0 +1,270 @@
+// ===== Audio procédural : musique d'ambiance + SFX, 100% WebAudio =====
+
+export type MusicMode = "none" | "menu" | "explore" | "night" | "combat" | "boss";
+
+class AudioSys {
+  private ac: AudioContext | null = null;
+  private master!: GainNode;
+  private musicBus!: GainNode;
+  private sfxBus!: GainNode;
+  musicVol = 0.7;
+  sfxVol = 0.8;
+
+  private mode: MusicMode = "none";
+  private step = 0;
+  private nextTime = 0;
+  private timer: number | null = null;
+  private noiseBuf: AudioBuffer | null = null;
+
+  ensure() {
+    if (this.ac) { if (this.ac.state === "suspended") this.ac.resume(); return; }
+    const AC = (window as any).AudioContext || (window as any).webkitAudioContext;
+    if (!AC) return;
+    this.ac = new AC();
+    this.master = this.ac.createGain(); this.master.gain.value = 0.9;
+    this.master.connect(this.ac.destination);
+    this.musicBus = this.ac.createGain(); this.musicBus.gain.value = this.musicVol * 0.5;
+    this.musicBus.connect(this.master);
+    this.sfxBus = this.ac.createGain(); this.sfxBus.gain.value = this.sfxVol;
+    this.sfxBus.connect(this.master);
+    // buffer de bruit partagé
+    const len = this.ac.sampleRate;
+    this.noiseBuf = this.ac.createBuffer(1, len, this.ac.sampleRate);
+    const d = this.noiseBuf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+    this.startScheduler();
+  }
+
+  setMusicVol(v: number) { this.musicVol = v; if (this.ac) this.musicBus.gain.value = v * 0.5; }
+  setSfxVol(v: number) { this.sfxVol = v; if (this.ac) this.sfxBus.gain.value = v; }
+
+  setMode(m: MusicMode) {
+    if (this.mode === m) return;
+    this.mode = m;
+    this.step = 0;
+  }
+
+  // ============ Séquenceur ============
+  private startScheduler() {
+    if (!this.ac || this.timer !== null) return;
+    this.nextTime = this.ac.currentTime + 0.1;
+    this.timer = window.setInterval(() => this.schedule(), 40);
+  }
+
+  private schedule() {
+    if (!this.ac || this.mode === "none") return;
+    const bpm = this.mode === "combat" ? 132 : this.mode === "boss" ? 100 : 66;
+    const stepDur = 60 / bpm / 2; // croches
+    while (this.nextTime < this.ac.currentTime + 0.18) {
+      this.playStep(this.step, this.nextTime, stepDur);
+      this.nextTime += stepDur;
+      this.step = (this.step + 1) % 64;
+    }
+  }
+
+  // D mineur : D F G A C
+  private N(semi: number, base = 73.42) { return base * Math.pow(2, semi / 12); } // D2
+
+  private playStep(s: number, t: number, dur: number) {
+    const m = this.mode;
+    if (m === "menu" || m === "explore" || m === "night") {
+      // Pad lugubre toutes les 16 croches
+      if (s % 16 === 0) {
+        const chords = [[0, 3, 7], [-2, 1, 5], [0, 3, 7], [-4, 0, 3]];
+        const ch = chords[(s / 16) % 4 | 0];
+        for (const semi of ch) this.pad(this.N(semi, 146.83), t, dur * 16, 0.05);
+      }
+      // Basse
+      if (s % 8 === 0) {
+        const bassline = [0, 0, -2, -4, 0, 0, 3, -2];
+        this.bass(this.N(bassline[(s / 8) % 8 | 0]), t, dur * 6, 0.10);
+      }
+      // Cloche éparse
+      if (m !== "menu" && s % 32 === 24) this.bell(this.N(12 + [0, 3, 7, 10][(s / 32) % 4 | 0], 293.66), t, 0.045);
+      // Nuit : arpège de tension
+      if (m === "night" && s % 4 === 2) {
+        const arp = [0, 3, 7, 10, 12, 10, 7, 3];
+        this.pluck(this.N(arp[(s / 4) % 8 | 0], 293.66), t, dur * 1.5, 0.03);
+      }
+    } else if (m === "combat" || m === "boss") {
+      const boss = m === "boss";
+      // Kick
+      if (s % 4 === 0 || (boss && s % 16 === 14)) this.kick(t, boss ? 0.30 : 0.22);
+      // Hat
+      if (s % 2 === 1) this.hat(t, 0.05);
+      // Basse martelée
+      const bl = boss ? [0, 0, 1, 0, -2, 0, 1, 3] : [0, 0, 3, 0, -2, 0, 5, 3];
+      if (s % 2 === 0) this.bass(this.N(bl[(s / 2) % 8 | 0]), t, dur * 1.6, boss ? 0.14 : 0.11);
+      // Nappe de tension
+      if (s % 32 === 0) {
+        const ch = boss ? [0, 1, 7] : [0, 3, 7];
+        for (const semi of ch) this.pad(this.N(semi, 146.83), t, dur * 32, 0.035);
+      }
+      // Lead
+      if (!boss && s % 8 === 4) this.pluck(this.N([12, 10, 7, 15][(s / 8) % 4 | 0], 293.66), t, dur * 2, 0.035);
+      if (boss && s % 8 === 6) this.bell(this.N([0, 1, 0, -2][(s / 8) % 4 | 0], 587.33), t, 0.03);
+    }
+  }
+
+  // ============ Instruments ============
+  private pad(freq: number, t: number, dur: number, vol: number) {
+    if (!this.ac) return;
+    const g = this.ac.createGain();
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(vol, t + dur * 0.3);
+    g.gain.linearRampToValueAtTime(0, t + dur);
+    const f = this.ac.createBiquadFilter();
+    f.type = "lowpass"; f.frequency.value = 900; f.Q.value = 0.8;
+    f.connect(g); g.connect(this.musicBus);
+    for (const det of [-6, 5]) {
+      const o = this.ac.createOscillator();
+      o.type = "sawtooth"; o.frequency.value = freq; o.detune.value = det;
+      o.connect(f); o.start(t); o.stop(t + dur + 0.05);
+    }
+  }
+
+  private bass(freq: number, t: number, dur: number, vol: number) {
+    if (!this.ac) return;
+    const o = this.ac.createOscillator();
+    o.type = "triangle"; o.frequency.value = freq;
+    const g = this.ac.createGain();
+    g.gain.setValueAtTime(vol, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    o.connect(g); g.connect(this.musicBus);
+    o.start(t); o.stop(t + dur + 0.02);
+  }
+
+  private pluck(freq: number, t: number, dur: number, vol: number) {
+    if (!this.ac) return;
+    const o = this.ac.createOscillator();
+    o.type = "square"; o.frequency.value = freq;
+    const f = this.ac.createBiquadFilter();
+    f.type = "lowpass"; f.frequency.setValueAtTime(freq * 4, t);
+    f.frequency.exponentialRampToValueAtTime(freq, t + dur);
+    const g = this.ac.createGain();
+    g.gain.setValueAtTime(vol, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    o.connect(f); f.connect(g); g.connect(this.musicBus);
+    o.start(t); o.stop(t + dur + 0.02);
+  }
+
+  private bell(freq: number, t: number, vol: number) {
+    if (!this.ac) return;
+    for (const [mult, v] of [[1, vol], [2.76, vol * 0.3]] as [number, number][]) {
+      const o = this.ac.createOscillator();
+      o.type = "sine"; o.frequency.value = freq * mult;
+      const g = this.ac.createGain();
+      g.gain.setValueAtTime(v, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 1.4);
+      o.connect(g); g.connect(this.musicBus);
+      o.start(t); o.stop(t + 1.5);
+    }
+  }
+
+  private kick(t: number, vol: number) {
+    if (!this.ac) return;
+    const o = this.ac.createOscillator();
+    o.type = "sine";
+    o.frequency.setValueAtTime(130, t);
+    o.frequency.exponentialRampToValueAtTime(38, t + 0.12);
+    const g = this.ac.createGain();
+    g.gain.setValueAtTime(vol, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.16);
+    o.connect(g); g.connect(this.musicBus);
+    o.start(t); o.stop(t + 0.2);
+  }
+
+  private hat(t: number, vol: number) {
+    if (!this.ac || !this.noiseBuf) return;
+    const src = this.ac.createBufferSource();
+    src.buffer = this.noiseBuf;
+    const f = this.ac.createBiquadFilter();
+    f.type = "highpass"; f.frequency.value = 7000;
+    const g = this.ac.createGain();
+    g.gain.setValueAtTime(vol, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.03);
+    src.connect(f); f.connect(g); g.connect(this.musicBus);
+    src.start(t); src.stop(t + 0.05);
+  }
+
+  // ============ SFX ============
+  private tone(type: OscillatorType, f0: number, f1: number, dur: number, vol: number, when = 0) {
+    if (!this.ac) return;
+    const t = this.ac.currentTime + when;
+    const o = this.ac.createOscillator();
+    o.type = type;
+    o.frequency.setValueAtTime(f0, t);
+    if (f1 !== f0) o.frequency.exponentialRampToValueAtTime(Math.max(20, f1), t + dur);
+    const g = this.ac.createGain();
+    g.gain.setValueAtTime(vol, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    o.connect(g); g.connect(this.sfxBus);
+    o.start(t); o.stop(t + dur + 0.03);
+  }
+
+  private noise(dur: number, vol: number, hp = 1000, when = 0) {
+    if (!this.ac || !this.noiseBuf) return;
+    const t = this.ac.currentTime + when;
+    const src = this.ac.createBufferSource(); src.buffer = this.noiseBuf;
+    const f = this.ac.createBiquadFilter(); f.type = "highpass"; f.frequency.value = hp;
+    const g = this.ac.createGain();
+    g.gain.setValueAtTime(vol, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    src.connect(f); f.connect(g); g.connect(this.sfxBus);
+    src.start(t); src.stop(t + dur + 0.03);
+  }
+
+  sfx(name: string) {
+    if (!this.ac) return;
+    switch (name) {
+      case "step": this.noise(0.05, 0.06, 2500); break;
+      case "bump": this.tone("triangle", 90, 60, 0.08, 0.12); break;
+      case "ui": this.tone("square", 700, 700, 0.04, 0.05); break;
+      case "confirm": this.tone("square", 520, 880, 0.09, 0.08); break;
+      case "back": this.tone("square", 500, 300, 0.08, 0.06); break;
+      case "pickup": this.tone("square", 660, 990, 0.07, 0.08); this.tone("square", 990, 1320, 0.09, 0.07, 0.07); break;
+      case "chest": this.tone("triangle", 200, 140, 0.12, 0.12); this.tone("square", 660, 1320, 0.16, 0.08, 0.12); break;
+      case "door": this.tone("triangle", 140, 90, 0.25, 0.14); this.noise(0.2, 0.06, 400, 0.02); break;
+      case "doorsOpen": this.tone("triangle", 110, 60, 0.5, 0.18); this.noise(0.4, 0.09, 200, 0.05); this.bellPub(440, 0.35, 0.06); break;
+      case "locked": this.tone("square", 220, 180, 0.07, 0.1); this.tone("square", 180, 150, 0.09, 0.1, 0.09); break;
+      case "guard": this.tone("sawtooth", 200, 160, 0.14, 0.09); break;
+      case "talk": this.tone("triangle", 440, 520, 0.05, 0.06); this.tone("triangle", 520, 460, 0.05, 0.05, 0.06); break;
+      case "seal": this.bellPub(220, 1.4, 0.16); this.tone("sine", 110, 55, 0.8, 0.14, 0.02); break;
+      case "hit": this.noise(0.09, 0.16, 900); this.tone("square", 240, 110, 0.1, 0.13); break;
+      case "crit": this.noise(0.12, 0.2, 700); this.tone("square", 880, 220, 0.16, 0.15); this.tone("square", 1320, 1760, 0.1, 0.08, 0.03); break;
+      case "hurt": this.tone("sawtooth", 300, 90, 0.2, 0.16); this.noise(0.12, 0.1, 500); break;
+      case "heal": this.tone("sine", 520, 780, 0.18, 0.1); this.tone("sine", 780, 1040, 0.2, 0.08, 0.12); break;
+      case "dodge": this.noise(0.1, 0.08, 3000); this.tone("sine", 900, 1400, 0.08, 0.05); break;
+      case "flee": this.tone("square", 400, 800, 0.15, 0.07); this.noise(0.15, 0.06, 2000, 0.05); break;
+      case "die": this.tone("sawtooth", 220, 40, 0.5, 0.16); this.noise(0.4, 0.12, 300, 0.05); break;
+      case "levelup": { const seq = [523, 659, 784, 1047]; seq.forEach((f, i) => this.tone("square", f, f, 0.12, 0.09, i * 0.09)); break; }
+      case "exit": this.tone("sine", 300, 600, 0.3, 0.1); this.tone("sine", 450, 900, 0.35, 0.08, 0.1); break;
+      case "night": this.tone("sine", 220, 110, 0.9, 0.09); this.bellPub(146.8, 1.2, 0.05, 0.2); break;
+      case "day": this.tone("sine", 220, 440, 0.7, 0.07); this.bellPub(293.7, 1, 0.05, 0.15); break;
+      case "spawn": this.tone("sawtooth", 90, 200, 0.3, 0.08); this.noise(0.2, 0.05, 600); break;
+      case "warden": this.tone("sawtooth", 70, 180, 0.7, 0.2); this.noise(0.6, 0.12, 150, 0.1); this.bellPub(110, 1.8, 0.1, 0.3); break;
+      case "roar": this.tone("sawtooth", 55, 160, 1.1, 0.26); this.noise(0.9, 0.16, 100, 0.15); break;
+      case "phase2": this.tone("sawtooth", 40, 240, 1.3, 0.24); this.bellPub(587, 1.5, 0.07, 0.4); this.noise(1, 0.14, 120, 0.2); break;
+      case "sword": { const seq = [392, 523, 659, 784, 1047, 1319]; seq.forEach((f, i) => this.bellPub(f, 1, 0.06, i * 0.13)); this.tone("sawtooth", 60, 30, 1.6, 0.14); break; }
+      case "victory": { const seq = [523, 659, 784, 1047, 784, 1047]; seq.forEach((f, i) => this.tone("square", f, f, 0.18, 0.08, i * 0.16)); break; }
+      case "defeat": { const seq = [392, 370, 349, 330]; seq.forEach((f, i) => this.tone("sawtooth", f, f * 0.97, 0.4, 0.09, i * 0.35)); break; }
+      case "coin": this.tone("square", 990, 990, 0.05, 0.07); this.tone("square", 1320, 1320, 0.12, 0.07, 0.05); break;
+    }
+  }
+
+  private bellPub(freq: number, dur: number, vol: number, when = 0) {
+    if (!this.ac) return;
+    const t = this.ac.currentTime + when;
+    for (const [mult, v] of [[1, vol], [2.76, vol * 0.25]] as [number, number][]) {
+      const o = this.ac.createOscillator();
+      o.type = "sine"; o.frequency.value = freq * mult;
+      const g = this.ac.createGain();
+      g.gain.setValueAtTime(v, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+      o.connect(g); g.connect(this.sfxBus);
+      o.start(t); o.stop(t + dur + 0.05);
+    }
+  }
+}
+
+export const Audio = new AudioSys();

@@ -1,0 +1,592 @@
+// ===== GameContext + services + logique d'exploration =====
+// Port de App/GameContext.cs, ExplorationState.cs, VisionService, DoorService,
+// SafeZoneService, MonsterSpawnService, Map3Scripting, ConnectivityFixService, BossSpawnFixService
+import { Pos, P, key, eqPos, move, Dir, DIRS4, Tile, GameMap, RNG, TimeSystem, manhattan } from "./core";
+import { Player, Monster, MonsterCatalog, MonsterRank, Pnj, Chest, ChestType, Seal, Merchant } from "./entities";
+import { Item, ItemCatalog, rollLoot } from "./items";
+import { createLevel, hasLevel } from "./levels";
+import { T } from "./i18n";
+
+export enum LogKind { Info, Loot, Combat, Warning, System }
+export interface LogEntry { kind: LogKind; text: string; time: number; }
+
+export type GameEvent =
+  | { type: "combat"; monster: Monster }
+  | { type: "swordCinematic" }
+  | { type: "bossIntro" }
+  | { type: "end"; victory: boolean }
+  | { type: "merchant"; merchant: Merchant }
+  | { type: "levelLoaded"; level: number }
+  | { type: "sfx"; name: string }
+  | { type: "fx"; name: string; pos: Pos };
+
+export interface ToastData { text: string; color: string; bg: string; until: number; }
+
+const MAP1_ARMORY_DOOR: Pos = P(5, 13);
+const MAP3_CENTRAL_DOORS: Pos[] = [P(18, 6), P(25, 6), P(21, 4), P(21, 9)];
+const MAP3_EXIT_DOORS: Pos[] = [P(35, 7), P(35, 11)];
+
+export class GameContext {
+  map!: GameMap;
+  player: Player;
+  monsters: Monster[] = [];
+  items: Item[] = [];
+  chests: Chest[] = [];
+  pnjs: Pnj[] = [];
+  seals: Seal[] = [];
+  merchant: Merchant | null = null;
+
+  sealsActivated = 0;
+  hasLegendarySword = false;
+  miniBossDefeated = false;
+  legendaryEmpowerNextFight = false;
+  map3LastSealHintShown = false;
+
+  rng = new RNG();
+  time = new TimeSystem(24);
+
+  visible = new Set<string>();
+  discovered = new Set<string>();
+
+  log: LogEntry[] = [];
+  toast: ToastData | null = null;
+  currentLevel = 1;
+
+  events: GameEvent[] = [];
+  private nightSpawnBlockUntil = 0;
+
+  constructor() {
+    this.player = new Player(P(1, 1));
+  }
+
+  emit(e: GameEvent) { this.events.push(e); }
+  drainEvents(): GameEvent[] { const e = this.events; this.events = []; return e; }
+
+  // ===== Log =====
+  pushLog(text: string, kind: LogKind = LogKind.Info) {
+    if (!text) return;
+    const last = this.log[this.log.length - 1];
+    if (last && last.text === text && last.kind === kind) return;
+    this.log.push({ kind, text, time: performance.now() });
+    if (this.log.length > 30) this.log.splice(0, this.log.length - 30);
+  }
+
+  showToast(text: string, color = "#fff", bg = "#7a1a1a", ticks = 8) {
+    this.toast = { text, color, bg, until: this.time.tick + Math.max(1, ticks) };
+  }
+  clearToastIfExpired() {
+    if (this.toast && this.time.tick >= this.toast.until) this.toast = null;
+  }
+
+  // ===== Requêtes =====
+  monsterAt(p: Pos): Monster | null { return this.monsters.find(m => !m.isDead && eqPos(m.pos, p)) ?? null; }
+  itemAt(p: Pos): Item | null { return this.items.find(i => eqPos(i.pos, p)) ?? null; }
+  chestAt(p: Pos): Chest | null { return this.chests.find(c => !c.isOpened && eqPos(c.pos, p)) ?? null; }
+  pnjAt(p: Pos): Pnj | null { return this.pnjs.find(n => eqPos(n.pos, p)) ?? null; }
+  sealAt(p: Pos): Seal | null { return this.seals.find(s => !s.isActivated && eqPos(s.pos, p)) ?? null; }
+  isMerchantAt(p: Pos): boolean { return !!this.merchant && eqPos(this.merchant.pos, p); }
+  isDoorClosed(p: Pos): boolean { return this.map.inBounds(p) && this.map.get(p) === Tile.DoorClosed; }
+  openDoor(p: Pos) { if (this.map.inBounds(p) && this.map.get(p) === Tile.DoorClosed) this.map.set(p.x, p.y, Tile.DoorOpen); }
+  closeDoor(p: Pos) { if (this.map.inBounds(p) && this.map.get(p) === Tile.DoorOpen) this.map.set(p.x, p.y, Tile.DoorClosed); }
+
+  isSafeZone(p: Pos): boolean {
+    // Map3 : salle marchand
+    if (this.currentLevel === 3 && p.x >= 35 && p.x <= 42 && p.y >= 5 && p.y <= 10) return true;
+    // Map1 : armurerie verrouillée (évite un softlock si un spawn nocturne y apparaît
+    // alors que Lysa exige que tous les monstres soient morts)
+    if (this.currentLevel === 1 && p.x >= 1 && p.x <= 4 && p.y >= 11 && p.y <= 16) return true;
+    return false;
+  }
+
+  // ===== Vision =====
+  updateVision() {
+    const radius = Math.max(1, this.player.visionRadius + this.player.lightBonus);
+    this.visible.clear();
+    for (let dy = -radius; dy <= radius; dy++)
+      for (let dx = -radius; dx <= radius; dx++) {
+        if (dx * dx + dy * dy > radius * radius) continue;
+        const x = this.player.pos.x + dx, y = this.player.pos.y + dy;
+        if (x < 0 || y < 0 || x >= this.map.width || y >= this.map.height) continue;
+        const k = x + "," + y;
+        this.visible.add(k);
+        this.discovered.add(k);
+      }
+    const pk = key(this.player.pos);
+    this.visible.add(pk); this.discovered.add(pk);
+  }
+
+  // ===== Chargement de niveau =====
+  loadLevel(level: number) {
+    const data = createLevel(level);
+    this.log = [];
+    this.monsters = data.monsters;
+    this.items = data.items;
+    this.chests = data.chests;
+    this.pnjs = data.pnjs;
+    this.seals = data.seals;
+    this.merchant = data.merchant;
+
+    this.visible.clear(); this.discovered.clear();
+    this.sealsActivated = 0;
+    this.hasLegendarySword = false;
+    this.miniBossDefeated = false;
+    this.legendaryEmpowerNextFight = false;
+    this.map3LastSealHintShown = false;
+    this.toast = null;
+
+    this.map = data.map;
+    this.player.setPosition(data.playerStart);
+    this.player.healToFull();
+    this.currentLevel = level;
+    this.nightSpawnBlockUntil = 0;
+
+    this.pushLog(T("level.loaded", { level }), LogKind.System);
+    this.ensureAllExitsReachable(this.player.pos);
+    if (level >= 4) this.ensureBossReachable();
+    this.updateVision();
+    this.emit({ type: "levelLoaded", level });
+  }
+
+  // ===== Temps / spawns nocturnes =====
+  blockNightSpawnsForTicks(ticks: number) {
+    this.nightSpawnBlockUntil = Math.max(this.nightSpawnBlockUntil, this.time.tick + Math.max(0, ticks));
+  }
+
+  advanceTimeAfterPlayerMove() {
+    const phaseFlip = this.time.advance();
+    if (phaseFlip) {
+      if (this.time.isNight) {
+        this.pushLog(T("night.falls"), LogKind.Warning);
+        this.emit({ type: "sfx", name: "night" });
+        // Équilibrage : buff nocturne appliqué UNE fois par nuit (+2 ATK)
+        for (const m of this.monsters) if (!m.isDead && !m.nightBuffed) { m.modifyAttack(+2); m.nightBuffed = true; }
+      } else {
+        this.pushLog(T("day.breaks"), LogKind.System);
+        this.emit({ type: "sfx", name: "day" });
+        for (const m of this.monsters) if (m.nightBuffed) { m.modifyAttack(-2); m.nightBuffed = false; }
+      }
+    }
+    this.tryNightSpawn();
+    this.clearToastIfExpired();
+  }
+
+  private tryNightSpawn() {
+    if (!this.time.isNight) return;
+    if (this.time.tick < this.nightSpawnBlockUntil) return;
+    const alive = this.monsters.filter(m => !m.isDead).length;
+    if (alive >= 10) return;
+    if (this.rng.next(0, 100) > 20) return;
+    const pos = this.findSpawnCell();
+    if (!pos) return;
+    const mob = MonsterCatalog.nightSlime(pos);
+    if (this.time.isNight) { mob.modifyAttack(+2); mob.nightBuffed = true; }
+    this.monsters.push(mob);
+    this.pushLog(T("night.spawn"), LogKind.Warning);
+    this.emit({ type: "sfx", name: "spawn" });
+    this.emit({ type: "fx", name: "spawn", pos });
+  }
+
+  private findSpawnCell(): Pos | null {
+    const margin = 1;
+    for (let i = 0; i < 80; i++) {
+      const p = P(this.rng.next(margin, this.map.width - margin), this.rng.next(margin, this.map.height - margin));
+      if (this.isValidSpawnCell(p)) return p;
+    }
+    for (let y = margin; y < this.map.height - margin; y++)
+      for (let x = margin; x < this.map.width - margin; x++) {
+        const p = P(x, y);
+        if (this.isValidSpawnCell(p)) return p;
+      }
+    return null;
+  }
+
+  private isValidSpawnCell(p: Pos): boolean {
+    if (!this.map.isWalkable(p)) return false;
+    if (eqPos(p, this.player.pos)) return false;
+    if (this.monsterAt(p) || this.itemAt(p) || this.chestAt(p) || this.sealAt(p) || this.isMerchantAt(p)) return false;
+    if (this.isSafeZone(p)) return false;
+    // évite les cases collées aux murs
+    for (const d of DIRS4) {
+      const q = move(p, d);
+      if (!this.map.inBounds(q) || this.map.get(q) === Tile.Wall) return false;
+    }
+    return true;
+  }
+
+  // ===== Ramassage d'objets =====
+  tryPickup(at: Pos): boolean {
+    const item = this.itemAt(at);
+    if (!item) return false;
+    this.items.splice(this.items.indexOf(item), 1);
+    if (item.autoApply) {
+      item.apply(this.player);
+      this.pushLog(T("item.pickup.used", { item: item.name }), LogKind.Loot);
+    } else {
+      this.player.addToInventory(item);
+      if (item.autoEquip) {
+        this.player.removeFromInventory(item);
+        this.player.equip(item);
+        this.pushLog(T("item.autoequip", { item: item.name }), LogKind.System);
+      } else {
+        this.pushLog(T("item.pickup.inv", { item: item.name }), LogKind.Loot);
+      }
+    }
+    this.emit({ type: "sfx", name: "pickup" });
+    this.emit({ type: "fx", name: "pickup", pos: at });
+    return true;
+  }
+
+  openChest(chest: Chest) {
+    if (chest.isOpened) return;
+    chest.open();
+    const loot = rollLoot(this.rng, chest.pos);
+    const chestLabel =
+      chest.type === ChestType.TorchOnly ? T("chest.torch") :
+      chest.type === ChestType.Legendary ? T("chest.legendary") :
+      chest.type === ChestType.LanternChest ? T("chest.lantern") : T("chest.normal");
+    if (loot.autoApply) {
+      loot.apply(this.player);
+      this.pushLog(T("chest.open", { chest: chestLabel, item: loot.name, how: T("chest.used") }), LogKind.Loot);
+    } else {
+      this.player.addToInventory(loot);
+      this.pushLog(T("chest.open", { chest: chestLabel, item: loot.name, how: T("chest.inv") }), LogKind.Loot);
+    }
+    this.emit({ type: "sfx", name: "chest" });
+    this.emit({ type: "fx", name: "chest", pos: chest.pos });
+  }
+
+  // ===== Map3 scripting =====
+  private openDoors(list: Pos[]) { for (const p of list) this.openDoor(p); }
+  private closeDoors(list: Pos[]) { for (const p of list) this.closeDoor(p); }
+
+  openCentralDoors() { this.openDoors(MAP3_CENTRAL_DOORS); }
+
+  triggerLegendarySwordEvent(fromPos: Pos) {
+    if (this.currentLevel !== 3 || !this.hasLegendarySword) return;
+    this.closeDoors(MAP3_CENTRAL_DOORS);
+    this.closeDoors(MAP3_EXIT_DOORS);
+    this.pushLog(T("sword.doors"), LogKind.System);
+    this.pushLog(T("sword.doors2"), LogKind.System);
+
+    const spawn = this.findSpawnBehind(fromPos);
+    const enraged = this.rng.next(0, 100) < 10;
+    const warden = enraged ? MonsterCatalog.sealWardenEnraged(spawn) : MonsterCatalog.sealWarden(spawn);
+    this.monsters.push(warden);
+    if (enraged) this.pushLog(T("warden.enraged"), LogKind.System);
+    this.pushLog(T("warden.spawn"), LogKind.Combat);
+    this.pushLog(T("warden.line"), LogKind.System);
+    this.emit({ type: "sfx", name: "warden" });
+    this.emit({ type: "fx", name: "spawn", pos: spawn });
+    this.updateVision();
+  }
+
+  onMiniBossDefeated() {
+    if (this.currentLevel !== 3 || !this.hasLegendarySword) return;
+    this.miniBossDefeated = true;
+    this.openDoors(MAP3_CENTRAL_DOORS);
+    this.openDoors(MAP3_EXIT_DOORS);
+    this.pushLog(T("warden.dead1"), LogKind.System);
+    this.pushLog(T("warden.dead2"), LogKind.System);
+    this.player.heal(4);
+    this.blockNightSpawnsForTicks(30);
+    this.pushLog(T("warden.breath", { n: 4 }), LogKind.Info);
+    this.pushLog(T("warden.quiet"), LogKind.System);
+  }
+
+  private findSpawnBehind(preferred: Pos): Pos {
+    if (this.map.isWalkable(preferred) && !this.monsterAt(preferred) && !eqPos(preferred, this.player.pos)) return preferred;
+    for (const d of [Dir.Left, Dir.Right, Dir.Up, Dir.Down]) {
+      const p = move(this.player.pos, d);
+      if (this.map.isWalkable(p) && !this.monsterAt(p) && !eqPos(p, this.player.pos)) return p;
+    }
+    return preferred;
+  }
+
+  // ===== Déplacement joueur (port d'ExplorationState.Update) =====
+  tryMove(dir: Dir): void {
+    if (dir === Dir.None) return;
+    const prev = this.player.pos;
+    const next = move(prev, dir);
+    if (!this.map.inBounds(next)) return;
+
+    // Porte fermée
+    if (this.isDoorClosed(next)) {
+      if (this.currentLevel === 1 && eqPos(next, MAP1_ARMORY_DOOR)) {
+        const keyItem = this.player.inventory.find(i => i.id === "Map1ArmoryKey");
+        if (!keyItem) {
+          this.pushLog(T("door.locked"), LogKind.Warning);
+          this.emit({ type: "sfx", name: "locked" });
+          return;
+        }
+        this.player.removeFromInventory(keyItem);
+        this.openDoor(next);
+        this.pushLog(T("door.armory"), LogKind.System);
+        this.emit({ type: "sfx", name: "door" });
+        this.player.setPosition(next);
+        this.updateVision();
+        this.advanceTimeAfterPlayerMove();
+        this.monstersTurn();
+        return;
+      }
+      this.pushLog(T("door.sealed"), LogKind.Warning);
+      this.emit({ type: "sfx", name: "locked" });
+      return;
+    }
+
+    if (!this.map.isWalkable(next)) { this.emit({ type: "sfx", name: "bump" }); return; }
+
+    // Sentinelle bloque la sortie (Map1)
+    const pnjBlock = this.pnjAt(next);
+    if (pnjBlock && this.currentLevel === 1 && pnjBlock.name === "Sentinelle") {
+      if (!this.player.hasAnyWeapon()) {
+        this.pushLog(T("guard.halt"), LogKind.Warning);
+        this.emit({ type: "sfx", name: "guard" });
+        return;
+      }
+      this.pushLog(T("guard.pass"), LogKind.System);
+      if (this.tryMoveGuardAside(pnjBlock, prev))
+        this.showToast(T("guard.aside"), "#08130a", "#5abf6e", 8);
+      this.updateVision();
+      return;
+    }
+
+    // Coffre (avant de bouger)
+    const chest = this.chestAt(next);
+    if (chest) {
+      this.player.setPosition(next);
+      this.openChest(chest);
+      this.updateVision();
+      this.advanceTimeAfterPlayerMove();
+      this.monstersTurn();
+      return;
+    }
+
+    // Combat si on marche sur un monstre
+    const enemy = this.monsterAt(next);
+    if (enemy) {
+      this.emit({ type: "combat", monster: enemy });
+      return;
+    }
+
+    // Déplacement
+    this.player.setPosition(next);
+    this.emit({ type: "sfx", name: "step" });
+
+    // Marchand
+    if (this.isMerchantAt(next) && this.merchant) {
+      this.updateVision();
+      this.emit({ type: "merchant", merchant: this.merchant });
+      return;
+    }
+
+    // Sceaux (Map3)
+    const seal = this.sealAt(next);
+    if (seal) {
+      seal.activate();
+      this.sealsActivated = Math.min(3, this.sealsActivated + 1);
+      this.emit({ type: "sfx", name: "seal" });
+      this.emit({ type: "fx", name: "seal", pos: next });
+      if (this.currentLevel === 3 && this.sealsActivated === 2 && !this.map3LastSealHintShown) {
+        this.map3LastSealHintShown = true;
+        this.pushLog(T("seal.hint"), LogKind.System);
+      }
+      this.pushLog(T("seal.activated", { id: seal.id, n: this.sealsActivated }), LogKind.System);
+      if (this.sealsActivated >= 3) {
+        this.openCentralDoors();
+        this.pushLog(T("seal.doorsopen"), LogKind.System);
+        this.emit({ type: "sfx", name: "doorsOpen" });
+      }
+      this.updateVision();
+      this.advanceTimeAfterPlayerMove();
+      this.monstersTurn();
+      return;
+    }
+
+    // PNJ (dialogue)
+    const pnj = this.pnjAt(next);
+    if (pnj) {
+      this.emit({ type: "sfx", name: "talk" });
+      if (this.currentLevel === 1 && pnj.name === "Lysa") {
+        const allDead = !this.monsters.some(m => !m.isDead);
+        if (!allDead) {
+          this.pushLog(T("lysa.scared"), LogKind.Warning);
+        } else {
+          pnj.setMessageKey("lysa.thanks");
+          this.pushLog(T("pnj.talk", { name: pnj.name, msg: pnj.talk() }), LogKind.System);
+          const giftName = pnj.giveGift();
+          if (giftName) {
+            const gift = ItemCatalog.create(giftName, next);
+            this.player.addToInventory(gift);
+            this.pushLog(T("pnj.gift", { item: gift.name }), LogKind.Loot);
+            this.emit({ type: "sfx", name: "pickup" });
+          }
+        }
+      } else {
+        this.pushLog(T("pnj.talk", { name: pnj.name, msg: pnj.talk() }), LogKind.System);
+        const giftName = pnj.giveGift();
+        if (giftName) {
+          const gift = ItemCatalog.create(giftName, next);
+          this.player.addToInventory(gift);
+          this.pushLog(T("pnj.gift", { item: gift.name }), LogKind.Loot);
+          this.emit({ type: "sfx", name: "pickup" });
+        }
+      }
+    }
+
+    // Ramassage d'objet
+    const item = this.itemAt(next);
+    if (item) {
+      const picked = this.tryPickup(next);
+      if (picked && this.currentLevel === 3 && item.id === "LegendarySword") {
+        this.hasLegendarySword = true;
+        this.legendaryEmpowerNextFight = true;
+        this.emit({ type: "swordCinematic" });
+        this.showToast(T("sword.toast"), "#ffe6e6", "#6e1111", 10);
+        this.pushLog(T("sword.pick"), LogKind.System);
+        this.triggerLegendarySwordEvent(prev);
+      }
+    }
+
+    // Sortie
+    if (this.map.get(next) === Tile.Exit) {
+      if (this.currentLevel === 1 && !this.player.hasAnyWeapon()) {
+        this.pushLog(T("guard.comeback"), LogKind.Warning);
+        this.player.setPosition(prev);
+        this.updateVision();
+        return;
+      }
+      const nextLevel = this.currentLevel + 1;
+      if (!hasLevel(nextLevel)) {
+        this.emit({ type: "end", victory: true });
+        return;
+      }
+      if (this.currentLevel === 3 && nextLevel === 4) {
+        this.pushLog(T("level.lastdoor"), LogKind.System);
+        this.emit({ type: "bossIntro" });
+        return; // le scene manager chargera le niveau après la cinématique
+      }
+      this.pushLog(T("level.exit", { level: nextLevel }), LogKind.System);
+      this.emit({ type: "sfx", name: "exit" });
+      this.loadLevel(nextLevel);
+      return;
+    }
+
+    this.updateVision();
+    this.advanceTimeAfterPlayerMove();
+    this.monstersTurn();
+  }
+
+  // ===== Tour des monstres =====
+  monstersTurn() {
+    for (const m of this.monsters) {
+      if (m.isDead) continue;
+      const dist = manhattan(m.pos, this.player.pos);
+      if (dist <= 1) continue;
+      const dir = this.chooseMonsterMove(m);
+      if (dir === Dir.None) continue;
+      const next = move(m.pos, dir);
+      if (!this.map.isWalkable(next)) continue;
+      if (this.monsterAt(next)) continue;
+      if (eqPos(next, this.player.pos)) continue;
+      m.setPosition(next);
+    }
+  }
+
+  private chooseMonsterMove(m: Monster): Dir {
+    const dist = manhattan(m.pos, this.player.pos);
+    if (dist > m.aggroRange) return this.rng.pick(DIRS4); // RandomWalk fallback
+    let bestDir = Dir.None;
+    let bestDist = dist;
+    for (const d of DIRS4) {
+      const next = move(m.pos, d);
+      if (!this.map.isWalkable(next)) continue;
+      if (this.monsterAt(next)) continue;
+      if (eqPos(next, this.player.pos)) continue;
+      const nd = manhattan(next, this.player.pos);
+      if (nd < bestDist) { bestDist = nd; bestDir = d; }
+    }
+    if (bestDir === Dir.None) return this.rng.pick(DIRS4);
+    return bestDir;
+  }
+
+  private tryMoveGuardAside(guard: Pnj, playerFrom: Pos): boolean {
+    const candidates = [playerFrom, ...DIRS4.map(d => move(guard.pos, d))];
+    for (const p of candidates) {
+      if (!this.map.inBounds(p) || !this.map.isWalkable(p)) continue;
+      if (eqPos(p, this.player.pos)) continue;
+      if (this.monsterAt(p) || this.pnjAt(p)) continue;
+      guard.setPosition(p);
+      return true;
+    }
+    return false;
+  }
+
+  // ===== Connectivité — port de ConnectivityFixService =====
+  ensureAllExitsReachable(start: Pos) {
+    const exits: Pos[] = [];
+    for (let y = 0; y < this.map.height; y++)
+      for (let x = 0; x < this.map.width; x++)
+        if (this.map.get(P(x, y)) === Tile.Exit) exits.push(P(x, y));
+    for (const exit of exits) {
+      if (this.isReachable(start, exit)) continue;
+      for (const p of this.lPath(start, exit)) if (this.isDoorClosed(p)) this.openDoor(p);
+      if (this.isReachable(start, exit)) continue;
+      for (const p of this.lPath(start, exit)) this.digCell(p);
+      if (!this.isReachable(start, exit)) {
+        let cur = P(start.x, start.y);
+        while (cur.x !== exit.x) { cur = P(cur.x + Math.sign(exit.x - cur.x), cur.y); this.digCell(cur); }
+        while (cur.y !== exit.y) { cur = P(cur.x, cur.y + Math.sign(exit.y - cur.y)); this.digCell(cur); }
+      }
+    }
+  }
+
+  private isReachable(start: Pos, target: Pos): boolean {
+    if (!this.map.inBounds(start) || !this.map.inBounds(target)) return false;
+    const q: Pos[] = [start];
+    const seen = new Set<string>([key(start)]);
+    while (q.length) {
+      const cur = q.shift()!;
+      if (eqPos(cur, target)) return true;
+      for (const d of DIRS4) {
+        const n = move(cur, d);
+        if (!this.map.inBounds(n) || seen.has(key(n))) continue;
+        if (!this.map.isWalkable(n) || this.isDoorClosed(n)) continue;
+        seen.add(key(n)); q.push(n);
+      }
+    }
+    return false;
+  }
+
+  private *lPath(a: Pos, b: Pos): Generator<Pos> {
+    const sx = Math.sign(b.x - a.x), sy = Math.sign(b.y - a.y);
+    let cur = P(a.x, a.y);
+    while (cur.x !== b.x) { cur = P(cur.x + sx, cur.y); yield cur; }
+    while (cur.y !== b.y) { cur = P(cur.x, cur.y + sy); yield cur; }
+  }
+
+  private digCell(p: Pos) {
+    if (!this.map.inBounds(p)) return;
+    if (this.isDoorClosed(p)) { this.openDoor(p); return; }
+    if (this.map.get(p) === Tile.Wall) this.map.set(p.x, p.y, Tile.Floor);
+  }
+
+  // ===== Boss atteignable — port de BossSpawnFixService =====
+  ensureBossReachable() {
+    const boss = this.monsters.find(m => !m.isDead && m.rank === MonsterRank.Boss)
+      ?? this.monsters[this.monsters.length - 1];
+    if (!boss) return;
+    const b = boss.pos;
+    const hasNeighbor = DIRS4.some(d => { const n = move(b, d); return this.map.inBounds(n) && this.map.isWalkable(n); });
+    if (!hasNeighbor) {
+      for (const d of DIRS4) {
+        const n = move(b, d);
+        if (this.map.inBounds(n) && this.map.get(n) === Tile.Wall) { this.map.set(n.x, n.y, Tile.Floor); break; }
+      }
+    }
+    if (!this.isReachable(this.player.pos, b)) {
+      let cur = P(this.player.pos.x, this.player.pos.y);
+      while (cur.x !== b.x) { cur = P(cur.x + Math.sign(b.x - cur.x), cur.y); this.digCell(cur); }
+      while (cur.y !== b.y) { cur = P(cur.x, cur.y + Math.sign(b.y - cur.y)); this.digCell(cur); }
+    }
+  }
+}
