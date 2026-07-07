@@ -15,6 +15,7 @@ export class Item {
   slot?: EquipSlot;
   legendary = false;
   quest = false;
+  consumable = false; // utilisable uniquement en combat (bouton Objet)
   bonuses: { atk?: number; arm?: number; crit?: number; ls?: number };
   applyFn?: (p: Player) => void;
 
@@ -30,6 +31,7 @@ export class Item {
     this.slot = o.slot;
     this.legendary = o.legendary ?? false;
     this.quest = o.quest ?? false;
+    this.consumable = o.consumable ?? false;
     this.bonuses = o.bonuses ?? {};
     this.applyFn = o.applyFn;
   }
@@ -71,6 +73,7 @@ export class Item {
     if (this.slot === EquipSlot.Relic) out.push(T("stat.equip.relic"));
     if (this.legendary) out.push(T("stat.legendary"));
     if (this.quest) out.push(T("stat.quest"));
+    if (this.consumable) out.push(T("stat.consumable"));
     return out;
   }
 }
@@ -122,6 +125,19 @@ export const ItemCatalog = {
     id: "Map1ArmoryKey", pos, sprite: "it_key", nameKey: "item.armorykey", descKey: "item.armorykey.d",
     autoApply: false, canSell: false, quest: true,
   }),
+  // ===== Consommables de combat (bouton Objet) =====
+  bomb: (pos: Pos) => new Item({
+    id: "Bomb", pos, sprite: "it_bomb", nameKey: "item.bomb", descKey: "item.bomb.d",
+    autoApply: false, consumable: true,
+  }),
+  mistPotion: (pos: Pos) => new Item({
+    id: "MistPotion", pos, sprite: "it_mist", nameKey: "item.mist", descKey: "item.mist.d",
+    autoApply: false, consumable: true,
+  }),
+  recallScroll: (pos: Pos) => new Item({
+    id: "RecallScroll", pos, sprite: "it_scroll", nameKey: "item.scroll", descKey: "item.scroll.d",
+    autoApply: false, consumable: true,
+  }),
   abyssKey: (pos: Pos) => new Item({
     id: "AbyssKey", pos, sprite: "it_abysskey", nameKey: "item.abysskey", descKey: "item.abysskey.d",
     autoApply: false, canSell: false, quest: true, legendary: true,
@@ -138,6 +154,9 @@ export const ItemCatalog = {
       case "LegendarySword": return this.legendarySword(pos);
       case "Map1ArmoryKey": return this.map1ArmoryKey(pos);
       case "AbyssKey": return this.abyssKey(pos);
+      case "Bomb": return this.bomb(pos);
+      case "MistPotion": return this.mistPotion(pos);
+      case "RecallScroll": return this.recallScroll(pos);
       case "SunRelic": return this.sunRelic(pos);
       case "AbyssRelic": return this.abyssRelic(pos);
       default: throw new Error("Item inconnu: " + id);
@@ -146,7 +165,7 @@ export const ItemCatalog = {
 };
 
 // ===== Table de butin — port de LootTable.cs =====
-const LOOT_POOL = ["LifeGem", "LifeGem", "Sword", "Armor", "CritCharm", "VampRing", "LegendarySword", "SunRelic"];
+const LOOT_POOL = ["LifeGem", "LifeGem", "Sword", "Armor", "CritCharm", "VampRing", "LegendarySword", "SunRelic", "Bomb", "MistPotion"];
 export function rollLoot(rng: RNG, pos: Pos): Item {
   return ItemCatalog.create(LOOT_POOL[rng.next(0, LOOT_POOL.length)], pos);
 }
@@ -160,6 +179,9 @@ export function sellPrice(item: Item): number {
     case "VampRing": return 13;
     case "CritCharm": return 12;
     case "LifeGem": return 11;
+    case "Bomb": return 9;
+    case "RecallScroll": return 8;
+    case "MistPotion": return 7;
     case "Armor": return 10;
     case "Sword": return 9;
     default: return 6;
@@ -174,6 +196,9 @@ export const MERCHANT_STOCK: { labelKey: string; id: string; price: number }[] =
   { labelKey: "shop.stock.charm", id: "CritCharm", price: 24 },
   { labelKey: "shop.stock.ring", id: "VampRing", price: 26 },
   { labelKey: "shop.stock.abyssrelic", id: "AbyssRelic", price: 34 },
+  { labelKey: "shop.stock.bomb", id: "Bomb", price: 20 },
+  { labelKey: "shop.stock.mist", id: "MistPotion", price: 15 },
+  { labelKey: "shop.stock.scroll", id: "RecallScroll", price: 18 },
 ];
 
 // ===== Marchande ambulante (nocturne, rare) — objets rares à prix majoré =====
