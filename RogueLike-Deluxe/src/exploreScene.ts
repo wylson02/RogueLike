@@ -94,8 +94,9 @@ export class ExploreScene implements Scene {
         case "shrine": break; // le fx/log est déjà géré ; rien d'autre à faire
         case "combat": {
           const m = e.monster;
-          // Boss : dialogue de rencontre (musique + le boss te parle) puis combat
-          if (bossEncounterPages(m.nameKey) && !m.spokeIntro) {
+          // Boss (mode histoire) : dialogue de rencontre (musique + le boss te parle) puis combat.
+          // En Descente Infinie, on enchaîne directement pour ne pas casser le rythme des vagues.
+          if (!G.ctx.endless && bossEncounterPages(m.nameKey) && !m.spokeIntro) {
             m.spokeIntro = true;
             Flow.bossEncounter(m);
             return;
@@ -107,6 +108,7 @@ export class ExploreScene implements Scene {
           return;
         }
         case "merchant": Flow.merchant(e.merchant); return;
+        case "lore": Flow.loreCinematic(e.mark.cineKey); return;
         case "swordCinematic": Flow.swordCinematic(); return;
         case "bossIntro": Flow.bossIntroThenLevel4(); return;
         case "depthsIntro": Flow.depthsIntroThenLevel5(); return;

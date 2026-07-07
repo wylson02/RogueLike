@@ -2,7 +2,7 @@
 // Port de App/GameContext.cs, ExplorationState.cs, VisionService, DoorService,
 // SafeZoneService, MonsterSpawnService, Map3Scripting, ConnectivityFixService, BossSpawnFixService
 import { Pos, P, key, eqPos, move, Dir, DIRS4, Tile, GameMap, RNG, TimeSystem, manhattan } from "./core";
-import { Player, Monster, MonsterCatalog, MonsterRank, Pnj, Chest, ChestType, Seal, Merchant, Altar, Shrine, Trap, Prop } from "./entities";
+import { Player, Monster, MonsterCatalog, MonsterRank, Pnj, Chest, ChestType, Seal, Merchant, Altar, Shrine, Trap, Prop, LoreMark } from "./entities";
 import { Item, ItemCatalog, rollLoot, NIGHT_MERCHANT_NAME } from "./items";
 import { createLevel, hasLevel } from "./levels";
 import { generateFloor, isBossDepth } from "./procgen";
@@ -24,6 +24,7 @@ export type GameEvent =
   | { type: "altar"; altar: Altar }
   | { type: "shrine"; amount: number }
   | { type: "secret"; pos: Pos }
+  | { type: "lore"; mark: LoreMark }
   | { type: "shake"; power: number }
   | { type: "sfx"; name: string }
   | { type: "fx"; name: string; pos: Pos };
@@ -49,6 +50,7 @@ export class GameContext {
   shrines: Shrine[] = []; // sanctuaires (Descente) : soin unique
   traps: Trap[] = [];     // pièges du labyrinthe (map 2)
   props: Prop[] = [];     // décor immersif (torches éclairantes, ossements...)
+  loreMarks: LoreMark[] = []; // points de lore découvrables
 
   sealsActivated = 0;
   hasLegendarySword = false;
@@ -118,6 +120,7 @@ export class GameContext {
   altarAt(p: Pos): Altar | null { return this.altars.find(a => !a.used && eqPos(a.pos, p)) ?? null; }
   shrineAt(p: Pos): Shrine | null { return this.shrines.find(s => !s.used && eqPos(s.pos, p)) ?? null; }
   trapAt(p: Pos): Trap | null { return this.traps.find(t => eqPos(t.pos, p)) ?? null; }
+  loreMarkAt(p: Pos): LoreMark | null { return this.loreMarks.find(l => !l.seen && eqPos(l.pos, p)) ?? null; }
   isMerchantAt(p: Pos): boolean { return !!this.merchant && eqPos(this.merchant.pos, p); }
   isDoorClosed(p: Pos): boolean { return this.map.inBounds(p) && this.map.get(p) === Tile.DoorClosed; }
   openDoor(p: Pos) { if (this.map.inBounds(p) && this.map.get(p) === Tile.DoorClosed) this.map.set(p.x, p.y, Tile.DoorOpen); }
@@ -164,6 +167,7 @@ export class GameContext {
     this.shrines = [];
     this.traps = data.traps ?? [];
     this.props = data.props ?? [];
+    this.loreMarks = data.loreMarks ?? [];
 
     this.visible.clear(); this.discovered.clear();
     this.sealsActivated = 0;
@@ -216,6 +220,7 @@ export class GameContext {
     this.shrines = data.shrines ?? [];
     this.traps = []; // pas de pièges scriptés en Descente procédurale
     this.props = [];
+    this.loreMarks = [];
 
     this.visible.clear(); this.discovered.clear();
     this.sealsActivated = 0;
@@ -717,6 +722,16 @@ export class GameContext {
       this.updateVision();
       this.advanceTimeAfterPlayerMove();
       this.monstersTurn();
+      return;
+    }
+
+    // Point de lore : révélation cinématique (une fois)
+    const lore = this.loreMarkAt(next);
+    if (lore) {
+      lore.seen = true;
+      this.updateVision();
+      this.emit({ type: "sfx", name: "seal" });
+      this.emit({ type: "lore", mark: lore });
       return;
     }
 

@@ -445,3 +445,9 @@ export class Prop {
   pos: Pos; kind: PropKind;
   constructor(pos: Pos, kind: PropKind) { this.pos = pos; this.kind = kind; }
 }
+
+// Point de lore découvrable : en marchant dessus, déclenche une cinématique de révélation.
+export class LoreMark {
+  pos: Pos; cineKey: string; sprite: string; seen = false;
+  constructor(pos: Pos, cineKey: string, sprite: string) { this.pos = pos; this.cineKey = cineKey; this.sprite = sprite; }
+}

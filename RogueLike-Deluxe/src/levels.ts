@@ -1,6 +1,6 @@
 // ===== Niveaux — port 1:1 de App/Services/LevelCatalog.cs =====
 import { GameMap, Pos, P } from "./core";
-import { Monster, MonsterCatalog, Pnj, Chest, ChestType, Seal, Merchant, Altar, Shrine, Trap, Prop } from "./entities";
+import { Monster, MonsterCatalog, Pnj, Chest, ChestType, Seal, Merchant, Altar, Shrine, Trap, Prop, LoreMark } from "./entities";
 import { Item, ItemCatalog } from "./items";
 import { MapCatalog } from "./maps";
 
@@ -17,6 +17,7 @@ export interface LevelData {
   shrines?: Shrine[];
   traps?: Trap[];     // pièges du labyrinthe (map 2)
   props?: Prop[];     // décor immersif (torches, ossements, colonnes...)
+  loreMarks?: LoreMark[]; // points de lore découvrables (déclenchent une cinématique)
 }
 
 export const FIRST_LEVEL = 1;
@@ -152,6 +153,8 @@ function level4(): LevelData {
     seals: [],
     merchant: null,
     pnjs: [new Pnj(P(6, 9), "Vesna", "pnj.vesna")],
+    // Sur le chemin du trône : la lame brisée du Rival — comment il est descendu jusqu'aux Profondeurs
+    loreMarks: [new LoreMark(P(11, 9), "lore.rivaltrace", "rival_blade")],
   };
 }
 

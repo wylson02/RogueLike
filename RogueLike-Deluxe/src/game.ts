@@ -22,6 +22,7 @@ export const Flow: {
   toExplore: () => void;
   startCombat: (monster: any) => void;
   bossEncounter: (monster: any) => void;
+  loreCinematic: (cineKey: string) => void;
   bossIntroThenLevel4: () => void;
   depthsIntroThenLevel5: () => void;
   swordCinematic: () => void;

@@ -526,5 +526,22 @@ console.log("=== MAP 2 : LABYRINTHE + PIEGES ===");
   check(okGas && gas.sprung && c.player.hasStatus("poison"), "le piège à gaz empoisonne le joueur");
 }
 
+console.log("=== LORE : evenement de la trace du Rival (niveau 4) ===");
+{
+  const c = new GameContext();
+  c.loadLevel(4); c.drainEvents(); c.blockNightSpawnsForTicks(1e9);
+  check(c.loreMarks.length >= 1, "un point de lore est posé dans l'arène");
+  const lm = c.loreMarks[0];
+  // se placer à gauche du point de lore et marcher dessus
+  c.player.setPosition(P(lm.pos.x - 1, lm.pos.y));
+  c.tryMove(Dir.Right);
+  const evs = c.drainEvents();
+  check(lm.seen && evs.some(e => e.type === "lore"), "marcher sur la trace déclenche l'événement de lore (une fois)");
+  // ne se redéclenche pas
+  c.player.setPosition(P(lm.pos.x - 1, lm.pos.y));
+  c.tryMove(Dir.Right);
+  check(!c.drainEvents().some(e => e.type === "lore"), "l'événement de lore ne se rejoue pas");
+}
+
 console.log(failures === 0 ? "\nSIMULATION COMPLETE REUSSIE" : `\n${failures} echec(s)`);
 process.exit(failures === 0 ? 0 : 1);

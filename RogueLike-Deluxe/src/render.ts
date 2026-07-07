@@ -297,6 +297,17 @@ export class WorldRenderer {
         this.particles.spawn({ x: pr.pos.x * TS + TS / 2, y: pr.pos.y * TS + TS * 0.32, vx: (Math.random() - 0.5) * 6, vy: -20 - Math.random() * 16, life: 0.5 + Math.random() * 0.4, maxLife: 0.9, size: 2 + Math.random() * 1.5, color: Math.random() < 0.6 ? "#ff9d2e" : "#ffd84a", glow: true });
     }
 
+    // ---- Points de lore (découvrables) ----
+    for (const lm of ctx.loreMarks) {
+      const k = key(lm.pos);
+      if (!ctx.discovered.has(k)) continue;
+      const sx = lm.pos.x * TS - cx, sy = lm.pos.y * TS - cy;
+      const spr = getSprite(lm.sprite);
+      if (spr) { g.shadowColor = "#8a5fd0"; g.shadowBlur = 10; g.drawImage(spr, sx + 2, sy + 2, TS - 4, TS - 4); g.shadowBlur = 0; }
+      if (!lm.seen && ctx.visible.has(k) && Math.random() < dt * 6)
+        this.particles.spawn({ x: lm.pos.x * TS + TS / 2 + (Math.random() - 0.5) * 18, y: lm.pos.y * TS + TS / 2, vx: 0, vy: -16, life: 1, maxLife: 1, size: 2.2, color: "#b088e8", glow: true });
+    }
+
     // ---- Pièges du labyrinthe ----
     for (const tr of ctx.traps) {
       const k = key(tr.pos);

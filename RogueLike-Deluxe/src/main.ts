@@ -9,7 +9,7 @@ import { SceneManager, Scene } from "./scenes";
 import { MainMenuScene } from "./menuScenes";
 import { ExploreScene, MerchantScene } from "./exploreScene";
 import { CombatScene } from "./combatScene";
-import { CinematicScene, introPages, swordPages, bossIntroPages, depthsIntroPages, bossEncounterPages, EndScene } from "./cinematics";
+import { CinematicScene, introPages, swordPages, bossIntroPages, depthsIntroPages, bossEncounterPages, loreMarkPages, EndScene } from "./cinematics";
 import { EndlessHubScene, RelicDraftScene, RunSummaryScene } from "./endlessScenes";
 import { G, Flow } from "./game";
 import { loadSettings, loadGame, clearSave, saveGame } from "./save";
@@ -76,6 +76,12 @@ Flow.bossEncounter = (monster: Monster) => {
   if (!pages) { Flow.startCombat(monster); return; }
   Audio.setMode("boss");
   SceneManager.switchTo(() => new CinematicScene(pages, () => Flow.startCombat(monster), "#c02840"));
+};
+
+// Découverte d'un point de lore : courte cinématique atmosphérique, puis retour au jeu.
+Flow.loreCinematic = (cineKey: string) => {
+  SceneManager.switchTo(() => new CinematicScene(loreMarkPages(cineKey), () => Flow.toExplore(), "#8a5fd0"));
+  Audio.setMode("none");
 };
 
 Flow.merchant = (merchant: Merchant) => SceneManager.switchTo(() => new MerchantScene(merchant));

@@ -241,8 +241,56 @@ export function bossEncounterPages(nameKey: string): CinePage[] | null {
         ],
         sfx: "warden",
       }];
+    case "mob.rival": // Le Rival — sa transformation
+      return [
+        {
+          title: T("bossenc.rival.t"), sprite: "rival", spriteGlow: "#8a3fd0", bg: "#0a0510",
+          lines: [
+            { text: T("bossenc.rival.1") },
+            { text: T("bossenc.rival.2"), color: "#c0a0ff" },
+          ],
+          sfx: "warden",
+        },
+        {
+          title: T("bossenc.rival.t2"), sprite: "rival", spriteGlow: "#c02840", bg: "#0c0408",
+          lines: [
+            { text: T("bossenc.rival.3") },
+            { text: T("bossenc.rival.4"), color: "#ff9090" },
+            { text: T("bossenc.rival.5"), color: "#e0c0ff" },
+          ],
+          sfx: "roar",
+        },
+      ];
     default:
       return null;
+  }
+}
+
+// ===== Cinématiques de découverte de lore (points de lore dans le monde) =====
+export function loreMarkPages(cineKey: string): CinePage[] {
+  switch (cineKey) {
+    case "lore.rivaltrace": // Niveau 4 : la trace de la chute du Rival
+      return [
+        {
+          title: T("lore.rivaltrace.t"), sprite: "rival_blade", spriteGlow: "#6a4a8a", bg: "#0c0508",
+          lines: [
+            { text: T("lore.rivaltrace.1") },
+            { text: T("lore.rivaltrace.2"), color: "#c8a8ff" },
+          ],
+          sfx: "seal",
+        },
+        {
+          title: T("lore.rivaltrace.t2"), bg: "#0a0408",
+          lines: [
+            { text: T("lore.rivaltrace.3") },
+            { text: T("lore.rivaltrace.4"), color: "#ff9090" },
+            { text: T("lore.rivaltrace.5"), color: "#8fd4ff", size: 14 },
+          ],
+          sfx: "warden",
+        },
+      ];
+    default:
+      return [{ lines: [{ text: cineKey }] }];
   }
 }
 

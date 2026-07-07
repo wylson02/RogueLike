@@ -536,7 +536,10 @@ export class CombatSession {
         this.ctx.pushLog(T("combat.rivaldead2"), LogKind.System);
         this.ctx.onRivalDefeated();
       } else if (this.enemy.rank === MonsterRank.Boss) {
-        this.addLog(T("combat.bossdead1"));
+        // mots de fin propres à chaque boss (dernier souffle)
+        const dk = this.enemy.nameKey === "mob.superboss" ? "combat.devourerdead"
+          : this.enemy.nameKey === "mob.boss" ? "combat.kingdead" : "combat.bossdead1";
+        this.addLog(T(dk));
         this.ctx.pushLog(T("combat.bossdead2"), LogKind.System);
       }
     }
