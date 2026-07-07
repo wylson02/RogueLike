@@ -29,6 +29,31 @@ export function textShadow(g: CanvasRenderingContext2D, s: string, x: number, y:
   g.fillText(s, x, y);
 }
 
+// Découpe un texte aux espaces pour tenir dans maxW (mesure au pixel), plafonné à maxLines.
+// La dernière ligne est tronquée avec … seulement si le texte déborde encore. Police déjà réglée.
+export function wrapLine(g: CanvasRenderingContext2D, s: string, maxW: number, maxLines: number): string[] {
+  if (g.measureText(s).width <= maxW) return [s];
+  const words = s.split(" ");
+  const lines: string[] = [];
+  let cur = "";
+  for (const w of words) {
+    const next = cur ? cur + " " + w : w;
+    if (g.measureText(next).width <= maxW) { cur = next; continue; }
+    if (cur) lines.push(cur);
+    cur = w;
+    if (lines.length === maxLines - 1) break; // le reste ira sur la dernière ligne
+  }
+  // ce qui reste (mot courant + mots non traités) sur la dernière ligne, tronqué au pixel si besoin
+  const usedWords = lines.join(" ").split(" ").filter(Boolean).length;
+  let last = words.slice(usedWords).join(" ");
+  if (g.measureText(last).width > maxW) {
+    while (last.length > 1 && g.measureText(last + "…").width > maxW) last = last.slice(0, -1);
+    last += "…";
+  }
+  lines.push(last);
+  return lines;
+}
+
 // ===== Palettes par niveau =====
 interface Biome { floorA: string; floorB: string; wallTop: string; wallFace: string; wallLine: string; deco: string; }
 const BIOMES: Record<number, Biome> = {
@@ -591,18 +616,24 @@ export function drawHud(g: CanvasRenderingContext2D, ctx: GameContext, t: number
   textShadow(g, ctx.endless ? T("hud.depth", { n: ctx.runDepth }) : T("hud.floor", { n: ctx.currentLevel }), dialX - 28, dialY, 12, "#c8c4d4", "right");
   if (ctx.endless) textShadow(g, `✦ ${ctx.runEssence}`, dialX - 28, dialY + 20, 13, "#c8a0ff", "right");
 
-  // ---- journal (bas-gauche) ----
-  const entries = ctx.log.slice(-5);
-  const lx = 10, lh = 16, ly0 = VH - 14 - entries.length * lh;
-  if (entries.length) {
+  // ---- journal (bas-gauche) : retour à la ligne des longs messages (dialogues PNJ) ----
+  const lx = 10, lh = 16, boxW = 560, maxTextW = boxW - 20;
+  g.font = `bold 12px ${FONT}`;
+  // pré-calcule les lignes wrappées (chaque entrée sur 2 lignes max), puis budget global
+  const wrapped: { text: string; kind: LogKind; time: number }[] = [];
+  for (const e of ctx.log.slice(-4)) {
+    const lines = wrapLine(g, e.text, maxTextW, 2);
+    for (const ln of lines) wrapped.push({ text: ln, kind: e.kind, time: e.time });
+  }
+  const shown = wrapped.slice(-6); // plafond de lignes affichées : la boîte ne mange pas l'écran
+  const ly0 = VH - 14 - shown.length * lh;
+  if (shown.length) {
     g.fillStyle = "rgba(8,6,14,.66)";
-    g.beginPath(); g.roundRect(lx, ly0 - 10, 480, entries.length * lh + 16, 8); g.fill();
-    entries.forEach((e, i) => {
+    g.beginPath(); g.roundRect(lx, ly0 - 10, boxW, shown.length * lh + 16, 8); g.fill();
+    shown.forEach((e, i) => {
       const age = (performance.now() - e.time) / 1000;
       g.globalAlpha = clamp(1.3 - age / 14, 0.45, 1);
-      let s = e.text;
-      if (s.length > 56) s = s.slice(0, 55) + "…";
-      text(g, s, lx + 10, ly0 + i * lh, 12, LOG_COLORS[e.kind]);
+      text(g, e.text, lx + 10, ly0 + i * lh, 12, LOG_COLORS[e.kind]);
       g.globalAlpha = 1;
     });
   }
