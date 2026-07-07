@@ -118,6 +118,10 @@ export const ItemCatalog = {
     id: "AbyssRelic", pos, sprite: "it_abyssrelic", nameKey: "item.abyssrelic", descKey: "item.abyssrelic.d",
     autoApply: false, slot: EquipSlot.Relic, bonuses: { atk: 2, ls: 8 },
   }),
+  echoShard: (pos: Pos) => new Item({
+    id: "EchoShard", pos, sprite: "it_echoshard", nameKey: "item.echoshard", descKey: "item.echoshard.d",
+    autoApply: false, canSell: false, legendary: true, slot: EquipSlot.Relic, bonuses: { atk: 3, ls: 10 },
+  }),
   map1ArmoryKey: (pos: Pos) => new Item({
     id: "Map1ArmoryKey", pos, sprite: "it_key", nameKey: "item.armorykey", descKey: "item.armorykey.d",
     autoApply: false, canSell: false, quest: true,
@@ -140,6 +144,7 @@ export const ItemCatalog = {
       case "AbyssKey": return this.abyssKey(pos);
       case "SunRelic": return this.sunRelic(pos);
       case "AbyssRelic": return this.abyssRelic(pos);
+      case "EchoShard": return this.echoShard(pos);
       default: throw new Error("Item inconnu: " + id);
     }
   },

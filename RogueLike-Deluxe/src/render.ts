@@ -115,7 +115,8 @@ export class WorldRenderer {
   draw(g: CanvasRenderingContext2D, ctx: GameContext, dt: number) {
     this.time += dt;
     const t = this.time;
-    const biome = BIOMES[ctx.currentLevel] ?? BIOMES[1];
+    // Les biomes cyclent au-delà de l'étage 5 (Descente Infinie).
+    const biome = BIOMES[((ctx.currentLevel - 1) % 5) + 1] ?? BIOMES[1];
 
     // Caméra suit le joueur (tweené)
     const pt = renderPos(ctx.player, ctx.player.pos, dt);
@@ -312,11 +313,21 @@ export class WorldRenderer {
     // ombre
     g.fillStyle = "rgba(0,0,0,.35)";
     g.beginPath(); g.ellipse(sx + TS / 2, sy + TS - 4, TS * 0.32, TS * 0.12, 0, 0, Math.PI * 2); g.fill();
+    if (m.elite) { g.shadowColor = "#ffca3a"; g.shadowBlur = 14 + Math.sin(t * 4) * 4; }
     if (m.rank === MonsterRank.MiniBoss) { g.shadowColor = "#8a5fd0"; g.shadowBlur = 12; }
     if (m.rank === MonsterRank.Boss) { g.shadowColor = "#ff3b3b"; g.shadowBlur = 16; }
-    const bob = m.rank === MonsterRank.Normal ? 0 : Math.sin(t * 2.5) * 2;
+    const bob = m.rank === MonsterRank.Normal && !m.elite ? 0 : Math.sin(t * 2.5) * 2;
     g.drawImage(spr, sx + 2, sy - 2 + bob, TS - 4, TS - 4);
     g.shadowBlur = 0;
+    // Couronne d'élite
+    if (m.elite) {
+      g.fillStyle = "#ffd84a";
+      const cxp = sx + TS / 2, cyp = sy - 4 + bob;
+      g.beginPath();
+      g.moveTo(cxp - 7, cyp); g.lineTo(cxp - 5, cyp - 6); g.lineTo(cxp - 2, cyp - 2);
+      g.lineTo(cxp, cyp - 7); g.lineTo(cxp + 2, cyp - 2); g.lineTo(cxp + 5, cyp - 6);
+      g.lineTo(cxp + 7, cyp); g.closePath(); g.fill();
+    }
     // barre de vie si blessé
     if (m.hp < m.maxHp) {
       const w = TS - 10;
@@ -438,7 +449,8 @@ export function drawHud(g: CanvasRenderingContext2D, ctx: GameContext, t: number
   g.lineWidth = 3;
   g.beginPath(); g.arc(dialX, dialY, 17, -Math.PI / 2, -Math.PI / 2 + ctx.time.progress01 * Math.PI * 2); g.stroke();
   text(g, ctx.time.isNight ? "☾" : "☀", dialX, dialY + 1, 16, ctx.time.isNight ? "#aab8ff" : "#ffd84a", "center");
-  textShadow(g, T("hud.floor", { n: ctx.currentLevel }), dialX - 28, dialY, 12, "#c8c4d4", "right");
+  textShadow(g, ctx.endless ? T("hud.depth", { n: ctx.runDepth }) : T("hud.floor", { n: ctx.currentLevel }), dialX - 28, dialY, 12, "#c8c4d4", "right");
+  if (ctx.endless) textShadow(g, `✦ ${ctx.runEssence}`, dialX - 28, dialY + 20, 13, "#c8a0ff", "right");
 
   // ---- journal (bas-gauche) ----
   const entries = ctx.log.slice(-5);

@@ -252,7 +252,13 @@ export class CombatScene implements Scene {
 
   private resolveOutcome() {
     const s = this.session;
-    if (s.player.isDead) { Flow.endScreen(false); return; }
+    if (s.player.isDead) {
+      if (G.ctx.endless) Flow.runSummary(); else Flow.endScreen(false);
+      return;
+    }
+    // Descente Infinie : victoire/fuite → retour à l'exploration.
+    // La progression (sortie d'étage de boss, draft de relique) est gérée côté exploration.
+    if (G.ctx.endless) { Flow.toExplore(); return; }
     // Arène : victoire → combat suivant de la vague, ou récompense ; fuite → abandon
     if (G.ctx.arenaActive) {
       if (s.victory) {
@@ -266,6 +272,12 @@ export class CombatScene implements Scene {
       Flow.toExplore();
       return;
     }
+    // Le Rival vaincu n'est pas une fin de partie : la route vers le Dévoreur d'Âmes s'ouvre.
+    if (s.victory && this.enemy.nameKey === "mob.rival") {
+      saveGame(G.ctx);
+      Flow.toExplore();
+      return;
+    }
     if (s.victory && this.enemy.rank === MonsterRank.Boss) {
       // Post-jeu : le Roi vaincu avec la Clé de l'Abîme → le portail des Profondeurs s'ouvre
       if (G.ctx.currentLevel === 4 && G.ctx.player.inventory.some(i => i.id === "AbyssKey")) {
@@ -274,7 +286,8 @@ export class CombatScene implements Scene {
         Flow.toExplore();
         return;
       }
-      Flow.endScreen(true);
+      // Fin Véritable : le Dévoreur d'Âmes vaincu dans les Profondeurs, après avoir affronté le Rival.
+      Flow.endScreen(true, G.ctx.currentLevel === 5);
       return;
     }
     saveGame(G.ctx);

@@ -134,6 +134,7 @@ function level5(): LevelData {
     monsters: [
       MonsterCatalog.gargoyle(P(10, 5)),
       MonsterCatalog.gargoyle(P(10, 13)),
+      MonsterCatalog.theRival(P(17, 9)),
       MonsterCatalog.soulDevourer(P(26, 9)),
     ],
     items: [ItemCatalog.lifeGem(P(5, 9))],

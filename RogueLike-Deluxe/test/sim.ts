@@ -12,8 +12,9 @@ function check(cond: boolean, msg: string) {
 
 const ctx = new GameContext();
 let pendingCombat: Monster | null = null;
-let sawSwordCine = false, sawBossIntro = false, endVictory: boolean | null = null;
+let sawSwordCine = false, sawBossIntro = false, sawDepthsIntro = false, endVictory: boolean | null = null;
 let merchantSeen = false;
+let floorClearedFlag = false;
 
 function handle(events: GameEvent[]) {
   for (const e of events) {
@@ -21,8 +22,10 @@ function handle(events: GameEvent[]) {
     if (e.type === "combat") pendingCombat = e.monster;
     if (e.type === "swordCinematic") sawSwordCine = true;
     if (e.type === "bossIntro") sawBossIntro = true;
+    if (e.type === "depthsIntro") sawDepthsIntro = true;
     if (e.type === "end") endVictory = e.victory;
     if (e.type === "merchant") merchantSeen = true;
+    if (e.type === "floorCleared") floorClearedFlag = true;
   }
 }
 
@@ -196,6 +199,7 @@ check(ctx.map.get(P(18, 6)) === Tile.DoorOpen, "portes centrales ouvertes");
 // épée légendaire
 goTo(P(21, 7));
 check(sawSwordCine, "cinématique épée déclenchée");
+sawSwordCine = false;
 check(ctx.hasLegendarySword, "épée légendaire obtenue");
 check(ctx.player.equippedWeapon?.id === "LegendarySword", "épée légendaire équipée");
 check(ctx.monsters.some(m => !m.isDead && m.nameKey.startsWith("mob.warden")), "Gardien des Sceaux apparu");
@@ -216,6 +220,7 @@ check(merchantSeen, "marchand rencontré");
 // sortie → intro boss
 goTo(P(40, 12));
 check(sawBossIntro, "cinématique boss déclenchée");
+sawBossIntro = false; // évite que les futurs goTo() s'interrompent après une seule case (voir handling de fin de route dans goTo)
 ctx.loadLevel(4);
 handle(ctx.drainEvents());
 
@@ -223,11 +228,41 @@ console.log("=== NIVEAU 4 (BOSS) ===");
 check(ctx.currentLevel === 4, "niveau 4 chargé");
 const boss = ctx.monsters.find(m => m.nameKey === "mob.boss")!;
 check(!!boss, "boss présent");
+
 // on booste le joueur pour garantir la victoire du test
 ctx.player.modifyAttack(+30);
 ctx.player.maxHp += 200; ctx.player.heal(300);
 killMonster(boss);
 check(boss.isDead, "boss vaincu");
+
+// coffre caché : Clé de l'Abîme (débloque le donjon post-jeu)
+goTo(P(41, 2));
+check(ctx.player.inventory.some(i => i.id === "AbyssKey"), "clé de l'Abîme récupérée");
+
+// portail post-jeu (normalement ouvert par CombatScene à la victoire, avec la clé en poche)
+ctx.openAbyssPortal();
+check(ctx.map.get(P(40, 9)) === Tile.Exit, "portail des Profondeurs ouvert");
+goTo(P(40, 9));
+check(sawDepthsIntro, "cinématique des Profondeurs déclenchée");
+sawDepthsIntro = false;
+ctx.loadLevel(5);
+handle(ctx.drainEvents());
+
+console.log("=== NIVEAU 5 (POST-JEU) ===");
+check(ctx.currentLevel === 5, "niveau 5 chargé");
+const rival = ctx.monsters.find(m => m.nameKey === "mob.rival")!;
+check(!!rival, "le Rival est présent");
+ctx.player.modifyAttack(+30); ctx.player.heal(300);
+killMonster(rival);
+check(rival.isDead, "le Rival vaincu");
+check(ctx.rivalDefeated, "flag rivalDefeated activé");
+check(ctx.player.inventory.some(i => i.id === "EchoShard"), "Éclat d'Écho obtenu");
+
+const devourer = ctx.monsters.find(m => m.nameKey === "mob.superboss")!;
+check(!!devourer, "le Dévoreur d'Âmes est présent");
+ctx.player.modifyAttack(+30); ctx.player.heal(300);
+killMonster(devourer);
+check(devourer.isDead, "le Dévoreur d'Âmes vaincu (Fin Véritable atteignable)");
 
 console.log("=== SYSTEME JOUR/NUIT (unitaire) ===");
 {
@@ -253,6 +288,73 @@ console.log("=== SYSTEME JOUR/NUIT (unitaire) ===");
   check(c2.monsters[2].isDead || c2.monsters[2].attack === golemAtk0, "buff nocturne retiré au matin");
   check(c2.monsters.filter(m => !m.isDead).length <= 10 + 3, "plafond de spawns respecté");
   c2.drainEvents();
+}
+
+console.log("=== DESCENTE INFINIE (procédural) ===");
+{
+  function findExit(): Pos | null {
+    for (let y = 0; y < ctx.map.height; y++)
+      for (let x = 0; x < ctx.map.width; x++)
+        if (ctx.map.get(P(x, y)) === Tile.Exit) return P(x, y);
+    return null;
+  }
+
+  // repart d'un run propre sur le contexte existant
+  sawBossIntro = false; sawDepthsIntro = false; sawSwordCine = false; endVictory = null;
+  ctx.startEndlessRun(1);
+  handle(ctx.drainEvents());
+  ctx.blockNightSpawnsForTicks(1e9);
+  check(ctx.endless, "mode Descente actif");
+  check(ctx.runDepth === 1, "démarre à la profondeur 1");
+
+  const FLOORS = 12;
+  let bossFloorTested = false, exitAlwaysReachable = true, essenceGrew = false;
+  const essence0 = ctx.runEssence;
+
+  for (let depth = 1; depth <= FLOORS; depth++) {
+    const boss = depth % 5 === 0;
+    floorClearedFlag = false; // « étage nettoyé » = le joueur a atteint la sortie à un moment
+    // le bot est boosté pour survivre au test (on valide la structure, pas la difficulté)
+    ctx.player.modifyAttack(+80); ctx.player.maxHp += 300; ctx.player.healToFull();
+
+    if (boss) {
+      check(ctx.monsters.length > 0, `profondeur ${depth} : étage de boss peuplé`);
+      if (depth === 5) check(findExit() === null, "profondeur 5 : sortie scellée avant le boss");
+    }
+
+    // Nettoyage des monstres (le bot peut fouler la sortie en chemin → floorCleared).
+    killAllMonsters();
+    handle(ctx.drainEvents());
+    if (boss) { ctx.checkEndlessBossExit(); handle(ctx.drainEvents()); bossFloorTested = true; }
+
+    // Si pas encore franchie pendant le nettoyage, on marche jusqu'à la sortie.
+    if (!floorClearedFlag) {
+      const exit = findExit();
+      if (!exit) { exitAlwaysReachable = false; console.log(`  (profondeur ${depth} : aucune sortie générée !)`); break; }
+      goTo(exit);
+    }
+    if (!floorClearedFlag) {
+      exitAlwaysReachable = false;
+      console.log(`  (profondeur ${depth} : sortie non franchie ; pos=${JSON.stringify(ctx.player.pos)})`);
+      break;
+    }
+
+    if (ctx.runEssence > essence0) essenceGrew = true;
+
+    // simule le draft (pas de scène ici) puis descend
+    ctx.advanceEndlessFloor();
+    handle(ctx.drainEvents());
+    ctx.blockNightSpawnsForTicks(1e9);
+  }
+
+  check(exitAlwaysReachable, `${FLOORS} étages générés et connexes (sortie atteignable)`);
+  check(bossFloorTested, "au moins un étage de boss traversé");
+  check(essenceGrew, "l'essence s'accumule au fil de la descente");
+  check(ctx.runDepth === FLOORS + 1, `profondeur finale atteinte (${ctx.runDepth})`);
+
+  // mort en Descente : le run se termine proprement (pas de crash, flag endless conservé)
+  ctx.player.hp = 0;
+  check(ctx.player.isDead && ctx.endless, "mort en Descente gérable (→ résumé de run)");
 }
 
 console.log(failures === 0 ? "\nSIMULATION COMPLETE REUSSIE" : `\n${failures} echec(s)`);

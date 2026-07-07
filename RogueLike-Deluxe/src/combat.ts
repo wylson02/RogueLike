@@ -20,9 +20,9 @@ export class CombatSession {
   readonly healAmount = 8;
   classAbilityUsed = false;
   enemySpecialUsed = false;
-  private pendingSpecial: "golem" | "nightslime" | "boss" | "spider" | "superboss" | null = null;
+  private pendingSpecial: "golem" | "nightslime" | "boss" | "spider" | "superboss" | "rival" | null = null;
   dodgeTurnsLeft = 0;
-  readonly dodgeChance = 40;
+  get dodgeChance() { return 40 + this.player.dodgeBonus; }
   readonly fleeChance = 55;
   playerFled = false;
   rewardGiven = false;
@@ -41,6 +41,11 @@ export class CombatSession {
       this.addLog(T("combat.sboss1"));
       this.addLog(T("combat.sboss2", { name: enemy.name }));
       this.addLog(T("combat.sboss3"));
+    } else if (enemy.nameKey === "mob.rival") {
+      this.addLog(T("combat.rival1"));
+      this.addLog(T("combat.rival2", { name: enemy.name }));
+      this.addLog(T(`combat.rival.class.${ctx.player.classId}`));
+      this.addLog(T("combat.rival3"));
     } else if (enemy.rank === MonsterRank.Boss) {
       this.addLog(T("combat.boss1"));
       this.addLog(T("combat.boss2", { name: enemy.name }));
@@ -181,10 +186,11 @@ export class CombatSession {
     this.enemy.addArmor(2);
     this.enemy.modifyCritChance(+15);
     this.enemy.modifyCritMultiplierPercent(+50);
-    const sb = this.enemy.nameKey === "mob.superboss";
-    this.addLog(T(sb ? "combat.sphase.a" : "combat.phase2.a"));
-    this.addLog(T(sb ? "combat.sphase.b" : "combat.phase2.b", { name: this.enemy.name }));
-    this.addLog(T(sb ? "combat.sphase.c" : "combat.phase2.c"));
+    const variant = this.enemy.nameKey === "mob.superboss" ? "sphase"
+      : this.enemy.nameKey === "mob.rival" ? "rphase" : "phase2";
+    this.addLog(T(`combat.${variant}.a`));
+    this.addLog(T(`combat.${variant}.b`, { name: this.enemy.name }));
+    this.addLog(T(`combat.${variant}.c`));
     this.emit({ type: "phase2" });
   }
 
@@ -217,6 +223,9 @@ export class CombatSession {
       case "mob.superboss":
         if (hpPct <= 0.75) { this.enemySpecialUsed = true; this.pendingSpecial = "superboss"; }
         break;
+      case "mob.rival":
+        if (hpPct <= 0.6) { this.enemySpecialUsed = true; this.pendingSpecial = "rival"; }
+        break;
       case "mob.gargoyle":
         if (hpPct <= 0.5) {
           this.enemySpecialUsed = true;
@@ -236,8 +245,10 @@ export class CombatSession {
       this.rewardGiven = true;
       const xp = this.enemy.rollXp(this.ctx.rng);
       const gold = this.enemy.rollGold(this.ctx.rng);
+      const hadPassive = this.player.classPassiveUnlocked;
       const ups = this.player.gainXp(xp);
       this.player.addGold(gold);
+      this.ctx.awardKillEssence(this.enemy);
       this.addLog(T("combat.reward", { xp, gold }));
       this.ctx.pushLog(T("combat.reward", { xp, gold }), LogKind.Loot);
       this.emit({ type: "reward" });
@@ -245,8 +256,18 @@ export class CombatSession {
         this.addLog(T("combat.levelup", { n: this.player.level }));
         this.emit({ type: "levelup" });
       }
+      if (!hadPassive && this.player.classPassiveUnlocked) {
+        const passiveName = T(`class.passive.${this.player.classId}`);
+        this.addLog(T("class.passive.gained", { name: passiveName }));
+        this.ctx.pushLog(T("class.passive.gained", { name: passiveName }), LogKind.System);
+        this.emit({ type: "levelup" });
+      }
       if (this.enemy.rank === MonsterRank.MiniBoss) this.ctx.onMiniBossDefeated();
-      if (this.enemy.rank === MonsterRank.Boss) {
+      if (this.enemy.nameKey === "mob.rival") {
+        this.addLog(T("combat.rivaldead1"));
+        this.ctx.pushLog(T("combat.rivaldead2"), LogKind.System);
+        this.ctx.onRivalDefeated();
+      } else if (this.enemy.rank === MonsterRank.Boss) {
         this.addLog(T("combat.bossdead1"));
         this.ctx.pushLog(T("combat.bossdead2"), LogKind.System);
       }
@@ -293,6 +314,23 @@ export class CombatSession {
       this.pendingSpecial = null;
       const dmg = this.player.takeDamage(Math.round(atk * 2 + 3));
       this.addLog(T("combat.special.spider", { n: dmg }));
+      this.emit({ type: "enemySpecial", value: dmg });
+      return;
+    }
+    if (this.pendingSpecial === "rival") {
+      this.pendingSpecial = null;
+      const classId = this.ctx.player.classId;
+      let dmg = 0;
+      if (classId === "warrior") {
+        dmg = this.player.takeDamage(Math.round(atk * 3));
+      } else if (classId === "mage") {
+        dmg = Math.round(atk * 2.2 + 5);
+        this.player.hp -= dmg; // ignore l'armure du joueur, comme la capacité qu'il imite
+      } else {
+        const raw = Math.max(atk + 1, Math.round(atk * (this.enemy.critMultiplierPercent / 100)));
+        dmg = this.player.takeDamage(raw);
+      }
+      this.addLog(T(`combat.special.rival.${classId}`, { n: dmg }));
       this.emit({ type: "enemySpecial", value: dmg });
       return;
     }

@@ -5,6 +5,7 @@ import { Pos, P, key, eqPos, move, Dir, DIRS4, Tile, GameMap, RNG, TimeSystem, m
 import { Player, Monster, MonsterCatalog, MonsterRank, Pnj, Chest, ChestType, Seal, Merchant } from "./entities";
 import { Item, ItemCatalog, rollLoot, NIGHT_MERCHANT_NAME } from "./items";
 import { createLevel, hasLevel } from "./levels";
+import { generateFloor, isBossDepth } from "./procgen";
 import { T } from "./i18n";
 
 export enum LogKind { Info, Loot, Combat, Warning, System }
@@ -14,9 +15,11 @@ export type GameEvent =
   | { type: "combat"; monster: Monster }
   | { type: "swordCinematic" }
   | { type: "bossIntro" }
-  | { type: "end"; victory: boolean }
+  | { type: "depthsIntro" }
+  | { type: "end"; victory: boolean; trueEnding?: boolean }
   | { type: "merchant"; merchant: Merchant }
   | { type: "levelLoaded"; level: number }
+  | { type: "floorCleared"; depth: number }
   | { type: "sfx"; name: string }
   | { type: "fx"; name: string; pos: Pos };
 
@@ -44,6 +47,16 @@ export class GameContext {
   legendaryEmpowerNextFight = false;
   map3LastSealHintShown = false;
   prisonerFreed = false;
+  rivalDefeated = false;
+
+  // ===== Descente Infinie (roguelite procédural) =====
+  endless = false;            // le run en cours est-il une Descente Infinie ?
+  runDepth = 0;               // étage procédural courant
+  runEssence = 0;             // essence accumulée pendant le run (banque à la mort/sortie)
+  runKills = 0;               // monstres tués ce run
+  essenceMult = 1;            // multiplicateur d'essence issu de la méta ("avarice")
+  private exitPlaced = false; // la sortie de l'étage courant est-elle révélée ?
+  private pendingExit: Pos | null = null; // où révéler la sortie une fois l'étage nettoyé
 
   // ===== Arène de Vesna (mode défi par vagues) =====
   arenaWave = 1;           // prochaine vague à affronter (persisté)
@@ -98,6 +111,7 @@ export class GameContext {
   closeDoor(p: Pos) { if (this.map.inBounds(p) && this.map.get(p) === Tile.DoorOpen) this.map.set(p.x, p.y, Tile.DoorClosed); }
 
   isSafeZone(p: Pos): boolean {
+    if (this.endless) return false; // les zones sûres sont propres aux cartes scénarisées
     // Map3 : salle marchand
     if (this.currentLevel === 3 && p.x >= 35 && p.x <= 42 && p.y >= 5 && p.y <= 10) return true;
     // Map1 : armurerie verrouillée (évite un softlock si un spawn nocturne y apparaît
@@ -152,11 +166,112 @@ export class GameContext {
     this.arenaQueue = [];
 
     this.pushLog(T("level.loaded", { level }), LogKind.System);
-    if (level === 5) this.pushLog(T("level.enter5"), LogKind.Warning);
     this.ensureAllExitsReachable(this.player.pos);
     if (level >= 4) this.ensureBossReachable();
     this.updateVision();
     this.emit({ type: "levelLoaded", level });
+  }
+
+  // ===== Descente Infinie : démarre un run et charge un étage procédural =====
+  startEndlessRun(essenceMult = 1) {
+    this.endless = true;
+    this.runDepth = 0;
+    this.runEssence = 0;
+    this.runKills = 0;
+    this.essenceMult = essenceMult;
+    this.arenaWave = 1;
+    this.loadProceduralFloor(1);
+  }
+
+  advanceEndlessFloor() { this.loadProceduralFloor(this.runDepth + 1); }
+
+  loadProceduralFloor(depth: number) {
+    const data = generateFloor(depth, this.rng);
+    this.log = [];
+    this.monsters = data.monsters;
+    this.items = data.items;
+    this.chests = data.chests;
+    this.pnjs = data.pnjs;
+    this.seals = data.seals;
+    this.merchant = data.merchant;
+
+    this.visible.clear(); this.discovered.clear();
+    this.sealsActivated = 0;
+    this.hasLegendarySword = false;
+    this.miniBossDefeated = false;
+    this.legendaryEmpowerNextFight = false;
+    this.map3LastSealHintShown = false;
+    this.toast = null;
+
+    this.map = data.map;
+    this.player.setPosition(data.playerStart);
+    // Soin partiel entre les étages : on récompense la progression sans effacer la tension.
+    if (depth > 1) this.player.heal(Math.round(this.player.maxHp * 0.25));
+    this.endless = true;
+    this.runDepth = depth;
+    this.currentLevel = depth;
+    this.nightSpawnBlockUntil = 0;
+    this.nightMerchant = null;
+    this.arenaActive = false;
+    this.arenaQueue = [];
+
+    const boss = isBossDepth(depth);
+    // Étage de boss : la sortie apparaît une fois l'arène nettoyée (le boss est le dernier monstre).
+    this.exitPlaced = !boss;
+    this.pendingExit = boss ? P(data.playerStart.x, data.playerStart.y) : null;
+    if (boss) {
+      const b = this.monsters.find(m => m.rank === MonsterRank.Boss) ?? this.monsters[this.monsters.length - 1];
+      if (b) this.pendingExit = P(b.pos.x, b.pos.y);
+      this.pushLog(T("endless.bossfloor", { depth }), LogKind.Warning);
+    } else {
+      this.pushLog(T("endless.floor", { depth }), LogKind.System);
+    }
+
+    if (this.exitPlaced) this.ensureAllExitsReachable(this.player.pos);
+    this.updateVision();
+    this.emit({ type: "levelLoaded", level: depth });
+  }
+
+  // Étage de boss nettoyé → révèle la sortie. Appelé chaque frame côté ExploreScene (bon marché).
+  checkEndlessBossExit() {
+    if (!this.endless || this.exitPlaced) return;
+    if (this.monsters.some(m => !m.isDead)) return;
+    let at = this.pendingExit ?? this.player.pos;
+    // La sortie ne doit jamais apparaître sous le joueur (sinon il ne peut pas « entrer » dedans).
+    if (eqPos(at, this.player.pos)) at = this.freeFloorNear(at) ?? at;
+    this.map.set(at.x, at.y, Tile.Exit);
+    this.exitPlaced = true;
+    this.ensureAllExitsReachable(this.player.pos);
+    this.pushLog(T("endless.exitopen"), LogKind.System);
+    this.showToast(T("endless.exitopen.toast"), "#c8f0ff", "#10344a", 10);
+    this.emit({ type: "sfx", name: "doorsOpen" });
+    this.updateVision();
+  }
+
+  // Case de sol la plus proche de `p` qui n'est pas celle du joueur (balayage exhaustif : ne peut
+  // pas échouer sur une vraie carte). Sert à ne jamais faire apparaître la sortie sous le joueur.
+  private freeFloorNear(p: Pos): Pos | null {
+    let best: Pos | null = null, bestD = Infinity;
+    for (let y = 0; y < this.map.height; y++)
+      for (let x = 0; x < this.map.width; x++) {
+        if (this.map.tiles[y][x] !== Tile.Floor) continue;
+        if (x === this.player.pos.x && y === this.player.pos.y) continue;
+        const d = Math.abs(x - p.x) + Math.abs(y - p.y);
+        if (d < bestD) { bestD = d; best = P(x, y); }
+      }
+    return best;
+  }
+
+  // Récompense d'essence à chaque monstre tué en Descente (élites/boss valent davantage).
+  awardKillEssence(m: Monster) {
+    if (!this.endless) return;
+    let base = 2 + Math.floor(this.runDepth * 0.6);
+    if (m.elite) base *= 3;
+    if (m.rank === MonsterRank.MiniBoss) base *= 4;
+    if (m.rank === MonsterRank.Boss) base *= 8;
+    const gain = Math.round(base * this.essenceMult);
+    this.runEssence += gain;
+    this.runKills++;
   }
 
   // ===== Temps / spawns nocturnes =====
@@ -196,6 +311,7 @@ export class GameContext {
     if (!pos) return;
     this.nightMerchant = new Merchant(pos, NIGHT_MERCHANT_NAME);
     this.pushLog(T("night.merchant.spawn"), LogKind.Warning);
+    this.pushLog(T("nyx.line"), LogKind.System);
     this.emit({ type: "sfx", name: "spawn" });
     this.emit({ type: "fx", name: "spawn", pos });
   }
@@ -300,7 +416,10 @@ export class GameContext {
   private buildArenaWave(wave: number): Monster[] {
     const mk = MonsterCatalog;
     const defs: ((p: Pos) => Monster)[] = [];
-    if (wave % 5 === 0) {
+    if (wave % 25 === 0) {
+      // vague spéciale : la fosse conjure une ombre du Rival
+      defs.push(mk.theRival);
+    } else if (wave % 5 === 0) {
       // vague champion : le Gardien (enragé toutes les 10 vagues)
       defs.push(wave % 10 === 0 ? mk.sealWardenEnraged : mk.sealWarden);
     } else {
@@ -393,6 +512,15 @@ export class GameContext {
     this.blockNightSpawnsForTicks(30);
     this.pushLog(T("warden.breath", { n: 4 }), LogKind.Info);
     this.pushLog(T("warden.quiet"), LogKind.System);
+  }
+
+  // Le Rival vaincu : la boucle vacille. Récompense narrative — pas de fin de partie ici,
+  // le vrai dénouement attend derrière le Dévoreur d'Âmes.
+  onRivalDefeated() {
+    this.rivalDefeated = true;
+    this.player.heal(15);
+    this.player.addToInventory(ItemCatalog.create("EchoShard", P(-1, -1)));
+    this.pushLog(T("rival.dead.reward"), LogKind.Loot);
   }
 
   private findSpawnBehind(preferred: Pos): Pos {
@@ -578,6 +706,11 @@ export class GameContext {
 
     // Sortie
     if (this.map.get(next) === Tile.Exit) {
+      // Descente Infinie : la sortie mène au draft de relique puis à l'étage suivant.
+      if (this.endless) {
+        this.emit({ type: "floorCleared", depth: this.runDepth });
+        return;
+      }
       if (this.currentLevel === 1 && !this.player.hasAnyWeapon()) {
         this.pushLog(T("guard.comeback"), LogKind.Warning);
         this.player.setPosition(prev);
@@ -593,6 +726,10 @@ export class GameContext {
         this.pushLog(T("level.lastdoor"), LogKind.System);
         this.emit({ type: "bossIntro" });
         return; // le scene manager chargera le niveau après la cinématique
+      }
+      if (this.currentLevel === 4 && nextLevel === 5) {
+        this.emit({ type: "depthsIntro" });
+        return; // le scene manager chargera le niveau 5 après la cinématique
       }
       this.pushLog(T("level.exit", { level: nextLevel }), LogKind.System);
       this.emit({ type: "sfx", name: "exit" });

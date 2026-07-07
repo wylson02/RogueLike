@@ -18,6 +18,9 @@ interface SaveData {
     visionRadius: number; lightBonus: number;
     classId: ClassId;
     weaponUpgradeLevel: number;
+    armorUpgradeLevel?: number;
+    dodgeBonus?: number;
+    classPassiveUnlocked?: boolean;
     inv: string[];
     eqW: string | null; eqA: string | null; eqAcc: string | null; eqRelic: string | null;
   };
@@ -36,6 +39,9 @@ export function saveGame(ctx: GameContext) {
         visionRadius: p.visionRadius, lightBonus: p.lightBonus,
         classId: p.classId,
         weaponUpgradeLevel: p.weaponUpgradeLevel,
+        armorUpgradeLevel: p.armorUpgradeLevel,
+        dodgeBonus: p.dodgeBonus,
+        classPassiveUnlocked: p.classPassiveUnlocked,
         inv: p.inventory.map(i => i.id),
         eqW: p.equippedWeapon?.id ?? null,
         eqA: p.equippedArmor?.id ?? null,
@@ -82,6 +88,9 @@ export function loadGame(ctx: GameContext): number | null {
     p.visionRadius = s.visionRadius; p.lightBonus = s.lightBonus;
     p.classId = s.classId ?? "warrior"; // sauvegardes pré-classes : repli sur Guerrier
     p.weaponUpgradeLevel = s.weaponUpgradeLevel ?? 0;
+    p.armorUpgradeLevel = s.armorUpgradeLevel ?? 0;
+    p.dodgeBonus = s.dodgeBonus ?? 0;
+    p.classPassiveUnlocked = s.classPassiveUnlocked ?? false;
     for (const id of s.inv) { try { p.inventory.push(ItemCatalog.create(id, P(-1, -1))); } catch { } }
     // équipement restauré SANS ré-appliquer les bonus (déjà inclus dans les stats)
     if (s.eqW) p.equippedWeapon = ItemCatalog.create(s.eqW, P(-1, -1));

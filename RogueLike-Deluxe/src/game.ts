@@ -22,7 +22,13 @@ export const Flow: {
   toExplore: () => void;
   startCombat: (monster: any) => void;
   bossIntroThenLevel4: () => void;
+  depthsIntroThenLevel5: () => void;
   swordCinematic: () => void;
-  endScreen: (victory: boolean) => void;
+  endScreen: (victory: boolean, trueEnding?: boolean) => void;
   merchant: (merchant: any) => void;
+  // ===== Descente Infinie =====
+  endlessHub: () => void;
+  startEndless: (classId: ClassId) => void;
+  relicDraft: () => void;
+  runSummary: () => void;
 } = {} as any;

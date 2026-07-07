@@ -43,6 +43,9 @@ export class ExploreScene implements Scene {
 
     Audio.setMode(ctx.time.isNight ? "night" : "explore");
 
+    // Descente Infinie : révèle la sortie dès que l'étage de boss est nettoyé.
+    if (ctx.endless) { ctx.checkEndlessBossExit(); this.handleEvents(ctx.drainEvents()); }
+
     if (Input.consume("cancel")) { Audio.sfx("ui"); SceneManager.push(new PauseScene()); return; }
     if (Input.consume("inventory")) { Audio.sfx("ui"); SceneManager.push(new InventoryScene()); return; }
     if (Input.consume("progression")) { Audio.sfx("ui"); SceneManager.push(new ProgressionScene()); return; }
@@ -75,9 +78,11 @@ export class ExploreScene implements Scene {
         case "merchant": Flow.merchant(e.merchant); return;
         case "swordCinematic": Flow.swordCinematic(); return;
         case "bossIntro": Flow.bossIntroThenLevel4(); return;
-        case "end": Flow.endScreen(e.victory); return;
+        case "depthsIntro": Flow.depthsIntroThenLevel5(); return;
+        case "end": Flow.endScreen(e.victory, e.trueEnding); return;
+        case "floorCleared": Flow.relicDraft(); return;
         case "levelLoaded":
-          saveGame(G.ctx);
+          if (!G.ctx.endless) saveGame(G.ctx); // les runs Descente ne sont pas resumables (permadeath)
           G.world.snapCamera(G.ctx);
           clearTweens();
           break;
@@ -108,14 +113,18 @@ export class PauseScene implements Scene {
       Audio.sfx("confirm");
       if (this.sel === 0) SceneManager.pop();
       else if (this.sel === 1) { SceneManager.push(new OptionsScene()); }
-      else { saveGame(G.ctx); saveSettings(G.settings); Flow.toMenu(); }
+      else if (G.ctx.endless) {
+        // En Descente : abandonner le run banque l'essence gagnée et affiche le résumé.
+        saveSettings(G.settings);
+        Flow.runSummary();
+      } else { saveGame(G.ctx); saveSettings(G.settings); Flow.toMenu(); }
     }
   }
   draw(g: CanvasRenderingContext2D) {
     dimBackground(g, 0.62);
     const w = 380, h = 230, x = VW / 2 - w / 2, y = VH / 2 - h / 2;
     panel(g, x, y, w, h, T("pause.title"));
-    const items = [T("pause.resume"), T("pause.options"), T("pause.save")];
+    const items = [T("pause.resume"), T("pause.options"), G.ctx.endless ? T("pause.abandon") : T("pause.save")];
     items.forEach((it, i) => {
       const ry = y + 66 + i * 50;
       if (i === this.sel) {
@@ -270,6 +279,7 @@ export class MerchantScene implements Scene {
   private merchant: Merchant;
   private tab: ShopTab = "buy";
   private sel = 0;
+  private forgeSlot: EquipSlot.Weapon | EquipSlot.Armor = EquipSlot.Weapon;
   private t = 0;
   private flash = "";
   private flashT = 0;
@@ -303,6 +313,11 @@ export class MerchantScene implements Scene {
     if (n > 0) {
       if (Input.consume("up")) { this.sel = (this.sel - 1 + n) % n; Audio.sfx("ui"); }
       if (Input.consume("down")) { this.sel = (this.sel + 1) % n; Audio.sfx("ui"); }
+    } else if (this.tab === "forge") {
+      if (Input.consume("up") || Input.consume("down")) {
+        this.forgeSlot = this.forgeSlot === EquipSlot.Weapon ? EquipSlot.Armor : EquipSlot.Weapon;
+        Audio.sfx("ui");
+      }
     }
 
     if (Input.consume("confirm")) {
@@ -340,20 +355,25 @@ export class MerchantScene implements Scene {
         Flow.startCombat(first);
         return;
       } else {
-        if (!p.equippedWeapon) {
-          this.flash = T("shop.forge.noweapon"); this.flashT = 1.4;
+        const slot = this.forgeSlot;
+        const equipped = slot === EquipSlot.Weapon ? p.equippedWeapon : p.equippedArmor;
+        const noEquipKey = slot === EquipSlot.Weapon ? "shop.forge.noweapon" : "shop.forge.noarmor";
+        const doneKey = slot === EquipSlot.Weapon ? "shop.forge.done" : "shop.forge.done.armor";
+        if (!equipped) {
+          this.flash = T(noEquipKey); this.flashT = 1.4;
           Audio.sfx("locked");
-        } else if (p.nextWeaponUpgradeCost() === null) {
+        } else if (p.nextUpgradeCost(slot) === null) {
           this.flash = T("shop.forge.max"); this.flashT = 1.4;
           Audio.sfx("locked");
-        } else if (p.gold < (p.nextWeaponUpgradeCost() ?? Infinity)) {
+        } else if (p.gold < (p.nextUpgradeCost(slot) ?? Infinity)) {
           G.ctx.pushLog(T("shop.poor"), LogKind.Warning);
           this.flash = T("shop.poor"); this.flashT = 1.4;
           Audio.sfx("locked");
         } else {
-          p.upgradeWeapon();
-          G.ctx.pushLog(T("shop.forge.done", { n: p.weaponUpgradeLevel }), LogKind.Loot);
-          this.flash = T("shop.forge.done", { n: p.weaponUpgradeLevel }); this.flashT = 1.4;
+          p.upgradeSlot(slot);
+          const lvl = slot === EquipSlot.Weapon ? p.weaponUpgradeLevel : p.armorUpgradeLevel;
+          G.ctx.pushLog(T(doneKey, { n: lvl }), LogKind.Loot);
+          this.flash = T(doneKey, { n: lvl }); this.flashT = 1.4;
           Audio.sfx("coin");
         }
       }
@@ -448,18 +468,23 @@ export class MerchantScene implements Scene {
       text(g, T("arena.warn"), VW / 2, listY + 112, 12, "#c88a7a", "center");
       text(g, T("arena.hint"), VW / 2, listY + 140, 12, "#8a80a0", "center");
     } else {
-      // forge : amélioration de l'arme équipée
-      const cost = p.nextWeaponUpgradeCost();
-      const wname = p.equippedWeapon ? p.equippedWeapon.name : T("shop.forge.noweapon");
-      textShadow(g, wname, VW / 2, listY + 20, 18, p.equippedWeapon ? "#ffd84a" : "#8a5470", "center");
-      text(g, T("shop.forge.level", { n: p.weaponUpgradeLevel, max: MAX_WEAPON_UPGRADE }), VW / 2, listY + 50, 13, "#a89ec0", "center");
+      // forge : amélioration de l'arme ou de l'armure équipée (↑↓ change de slot)
+      const slot = this.forgeSlot;
+      const equipped = slot === EquipSlot.Weapon ? p.equippedWeapon : p.equippedArmor;
+      const noEquipKey = slot === EquipSlot.Weapon ? "shop.forge.noweapon" : "shop.forge.noarmor";
+      const slotLabel = T(slot === EquipSlot.Weapon ? "shop.forge.slot.weapon" : "shop.forge.slot.armor");
+      const lvl = slot === EquipSlot.Weapon ? p.weaponUpgradeLevel : p.armorUpgradeLevel;
+      const cost = p.nextUpgradeCost(slot);
+      const iname = equipped ? equipped.name : T(noEquipKey);
+      textShadow(g, `${slotLabel} — ${iname}`, VW / 2, listY + 20, 17, equipped ? "#ffd84a" : "#8a5470", "center");
+      text(g, T("shop.forge.level", { n: lvl, max: MAX_WEAPON_UPGRADE }), VW / 2, listY + 50, 13, "#a89ec0", "center");
       if (cost === null) {
         text(g, T("shop.forge.max"), VW / 2, listY + 90, 14, "#7ae87a", "center");
       } else {
         const afford = G.ctx.player.gold >= cost;
         text(g, T("shop.forge.next", { n: cost }), VW / 2, listY + 90, 14, afford ? "#ffd84a" : "#8a5050", "center");
-        text(g, T("shop.forge.hint"), VW / 2, listY + 118, 12, "#8a80a0", "center");
       }
+      text(g, T("shop.forge.hint2"), VW / 2, listY + 118, 12, "#8a80a0", "center");
     }
 
     if (this.flashT > 0) {

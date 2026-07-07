@@ -25,6 +25,7 @@ export class MainMenuScene implements Scene {
     if (hasSave())
       this.items.push({ key: "menu.continue", args: { level: savedLevel() }, action: () => Flow.continueGame() });
     this.items.push({ key: "menu.new", action: () => SceneManager.push(new ClassSelectScene()) });
+    this.items.push({ key: "menu.endless", action: () => Flow.endlessHub() });
     this.items.push({ key: "menu.options", action: () => SceneManager.push(new OptionsScene()) });
     this.items.push({ key: "menu.credits", action: () => SceneManager.push(new CreditsScene()) });
     this.items.push({ key: "menu.quit", action: () => { try { window.close(); } catch { } } });
@@ -131,12 +132,18 @@ const CLASS_ORDER: ClassId[] = ["warrior", "mage", "rogue"];
 
 export class ClassSelectScene implements Scene {
   private sel = 0;
+  private onConfirm: (id: ClassId) => void;
+
+  // Par défaut lance une nouvelle partie histoire ; le mode Descente passe son propre callback.
+  constructor(onConfirm?: (id: ClassId) => void) {
+    this.onConfirm = onConfirm ?? ((id) => Flow.startNew(id));
+  }
 
   update(dt: number) {
     if (Input.consume("cancel")) { Audio.sfx("back"); SceneManager.pop(); return; }
     if (Input.consume("left") || Input.consume("up")) { this.sel = (this.sel + 2) % 3; Audio.sfx("ui"); }
     if (Input.consume("right") || Input.consume("down")) { this.sel = (this.sel + 1) % 3; Audio.sfx("ui"); }
-    if (Input.consume("confirm")) { Audio.sfx("confirm"); Flow.startNew(CLASS_ORDER[this.sel]); }
+    if (Input.consume("confirm")) { Audio.sfx("confirm"); this.onConfirm(CLASS_ORDER[this.sel]); }
   }
 
   draw(g: CanvasRenderingContext2D) {

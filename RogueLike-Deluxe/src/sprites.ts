@@ -48,6 +48,30 @@ export function initSprites() {
     s: "#c8d2e8", O,
   });
 
+  // ================= LE RIVAL (écho sombre du héros — même silhouette, palette inversée) =================
+  sprites["rival"] = mk([
+    "......rr........",
+    ".....rrr........",
+    "....OhhhhO......",
+    "...OhhhhhhO.....",
+    "...OhDDDDhO.....",
+    "...OhhhhhhO.....",
+    "..OaaaaaaaaO....",
+    ".OwaALLALAawO...",
+    ".OwaAAAAAAawO.s.",
+    ".OwaALggLAawO.s.",
+    "..OaAAAAAAaO.gs.",
+    "...OaaaaaaO..Os.",
+    "...OllOOllO.....",
+    "...OllO.OllO....",
+    "..ObbO...ObbO...",
+    "................",
+  ], {
+    r: "#7a1a2a", h: "#2a2438", D: "#0c0a14", a: "#3a2a4e", A: "#4a3a62",
+    L: "#5a4a76", g: "#ff2a3a", w: "#241c34", l: "#150f22", b: "#0c0818",
+    s: "#8a3050", O: "#000000",
+  });
+
   // ================= SLIME =================
   sprites["slime"] = mk([
     "................",
@@ -578,6 +602,25 @@ export function initSprites() {
     ".......rr.......",
     "................",
   ], { r: "#c9932a", R: "#ffd84a", W: "#fff6c8" });
+
+  sprites["it_echoshard"] = mk([
+    "................",
+    "........rr......",
+    ".......rWWr.....",
+    "......rWssWr....",
+    ".....rWssssWr...",
+    "....rWssWWssWr..",
+    "...rWssWssWssWr.",
+    "....rWssWWssWr..",
+    ".....rWssssWr...",
+    "......rWssWr....",
+    ".......rWWr.....",
+    "........rr......",
+    "................",
+    "................",
+    "................",
+    "................",
+  ], { r: "#3a1030", W: "#7a2a58", s: "#e83a5a", O });
 
   sprites["it_abyssrelic"] = mk([
     "................",

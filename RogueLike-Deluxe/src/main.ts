@@ -9,10 +9,12 @@ import { SceneManager, Scene } from "./scenes";
 import { MainMenuScene } from "./menuScenes";
 import { ExploreScene, MerchantScene } from "./exploreScene";
 import { CombatScene } from "./combatScene";
-import { CinematicScene, introPages, swordPages, bossIntroPages, EndScene } from "./cinematics";
+import { CinematicScene, introPages, swordPages, bossIntroPages, depthsIntroPages, EndScene } from "./cinematics";
+import { EndlessHubScene, RelicDraftScene, RunSummaryScene } from "./endlessScenes";
 import { G, Flow } from "./game";
 import { loadSettings, loadGame, clearSave, saveGame } from "./save";
 import { Monster, Merchant, ClassId, applyClass } from "./entities";
+import { loadMeta, applyMetaToPlayer, essenceMultiplier } from "./meta";
 
 const canvas = document.getElementById("game") as HTMLCanvasElement;
 const g = canvas.getContext("2d")!;
@@ -84,10 +86,38 @@ Flow.bossIntroThenLevel4 = () => {
   Audio.setMode("none");
 };
 
-Flow.endScreen = (victory: boolean) => {
-  if (victory) clearSave();
-  SceneManager.switchTo(() => new EndScene(victory, () => Flow.toMenu()));
+Flow.depthsIntroThenLevel5 = () => {
+  SceneManager.switchTo(() => new CinematicScene(depthsIntroPages(), () => {
+    G.ctx.loadLevel(5);
+    G.ctx.drainEvents();
+    saveGame(G.ctx);
+    Flow.toExplore();
+  }, "#6a2fa0"));
+  Audio.setMode("none");
 };
+
+Flow.endScreen = (victory: boolean, trueEnding = false) => {
+  if (victory) clearSave();
+  SceneManager.switchTo(() => new EndScene(victory, () => Flow.toMenu(), trueEnding));
+};
+
+// ===== Descente Infinie =====
+Flow.endlessHub = () => SceneManager.switchTo(() => new EndlessHubScene());
+
+Flow.startEndless = (classId: ClassId) => {
+  G.ctx = new GameContext();
+  applyClass(G.ctx.player, classId);
+  const meta = loadMeta();
+  applyMetaToPlayer(G.ctx.player, meta);
+  G.ctx.startEndlessRun(essenceMultiplier(meta));
+  G.ctx.drainEvents();
+  Flow.toExplore();
+  Audio.setMode("explore");
+};
+
+Flow.relicDraft = () => SceneManager.switchTo(() => new RelicDraftScene());
+
+Flow.runSummary = () => SceneManager.switchTo(() => new RunSummaryScene());
 
 // ===== Écran de démarrage (débloque l'audio au premier input) =====
 class BootScene implements Scene {

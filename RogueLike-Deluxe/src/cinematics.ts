@@ -185,15 +185,39 @@ export function bossIntroPages(): CinePage[] {
   ];
 }
 
+export function depthsIntroPages(): CinePage[] {
+  return [
+    {
+      title: T("depthsintro.t"),
+      lines: [
+        { text: T("depthsintro.1") },
+        { text: T("depthsintro.2") },
+        { text: T("depthsintro.3"), color: "#c8a0e0" },
+      ],
+      sfx: "door", bg: "#0a0612",
+    },
+    {
+      title: T("depthsintro.4t"), sprite: "rival", spriteGlow: "#8a3fd0", bg: "#0a0510",
+      lines: [
+        { text: T("depthsintro.4") },
+        { text: T("depthsintro.5"), color: "#d0a0ff" },
+      ],
+      sfx: "warden",
+    },
+  ];
+}
+
 // ===== Écran de fin =====
 export class EndScene implements Scene {
   private victory: boolean;
+  private trueEnding: boolean;
   private t = 0;
   private particles = new Particles();
   private done: () => void;
 
-  constructor(victory: boolean, done: () => void) {
+  constructor(victory: boolean, done: () => void, trueEnding = false) {
     this.victory = victory;
+    this.trueEnding = trueEnding;
     this.done = done;
   }
 
@@ -217,7 +241,8 @@ export class EndScene implements Scene {
 
   draw(g: CanvasRenderingContext2D) {
     const grad = g.createLinearGradient(0, 0, 0, VH);
-    if (this.victory) { grad.addColorStop(0, "#0a1420"); grad.addColorStop(1, "#1c2410"); }
+    if (this.trueEnding) { grad.addColorStop(0, "#160a24"); grad.addColorStop(1, "#241030"); }
+    else if (this.victory) { grad.addColorStop(0, "#0a1420"); grad.addColorStop(1, "#1c2410"); }
     else { grad.addColorStop(0, "#180810"); grad.addColorStop(1, "#050308"); }
     g.fillStyle = grad;
     g.fillRect(0, 0, VW, VH);
@@ -226,16 +251,16 @@ export class EndScene implements Scene {
     const a = clamp(this.t / 1.2, 0, 1);
     g.globalAlpha = a;
     g.save();
-    g.shadowColor = this.victory ? "#ffd84a" : "#c02828";
+    g.shadowColor = this.trueEnding ? "#c060ff" : this.victory ? "#ffd84a" : "#c02828";
     g.shadowBlur = 30;
     g.font = `bold 58px ${FONT}`;
     g.textAlign = "center"; g.textBaseline = "middle";
-    g.fillStyle = this.victory ? "#f8e8b8" : "#d84848";
-    g.fillText(T(this.victory ? "end.victory" : "end.defeat"), VW / 2, 150);
+    g.fillStyle = this.trueEnding ? "#e8c8ff" : this.victory ? "#f8e8b8" : "#d84848";
+    g.fillText(T(this.trueEnding ? "end.trueending" : this.victory ? "end.victory" : "end.defeat"), VW / 2, 150);
     g.restore();
 
-    text(g, T(this.victory ? "end.v1" : "end.d1"), VW / 2, 240, 17, "#c8c0d4", "center");
-    text(g, T(this.victory ? "end.v2" : "end.d2"), VW / 2, 274, 17, "#c8c0d4", "center");
+    text(g, T(this.trueEnding ? "end.tv1" : this.victory ? "end.v1" : "end.d1"), VW / 2, 240, 17, "#c8c0d4", "center");
+    text(g, T(this.trueEnding ? "end.tv2" : this.victory ? "end.v2" : "end.d2"), VW / 2, 274, 17, "#c8c0d4", "center");
 
     const p = G.ctx.player;
     textShadow(g, T("end.stats", { lvl: p.level, gold: p.gold, floor: G.ctx.currentLevel }), VW / 2, 350, 15, "#8fd4ff", "center");

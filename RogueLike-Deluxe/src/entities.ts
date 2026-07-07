@@ -34,6 +34,7 @@ export abstract class Character {
 export enum EquipSlot { Weapon, Armor, Accessory, Relic }
 export const MAX_WEAPON_UPGRADE = 5;
 export enum StatType { MaxHp, Attack, Armor, CritChance, LifeSteal }
+export type ForgeSlot = EquipSlot.Weapon | EquipSlot.Armor;
 
 export type ClassId = "warrior" | "mage" | "rogue";
 
@@ -51,6 +52,9 @@ export class Player extends Character {
   lightBonus = 0;
   classId: ClassId = "warrior";
   weaponUpgradeLevel = 0;
+  armorUpgradeLevel = 0;
+  dodgeBonus = 0;
+  classPassiveUnlocked = false;
 
   constructor(pos: Pos) { super(pos, 70, 5); }
 
@@ -73,6 +77,10 @@ export class Player extends Character {
       this.level++;
       this.statPoints++;
       ups++;
+    }
+    if (!this.classPassiveUnlocked && this.level >= 5) {
+      this.classPassiveUnlocked = true;
+      applyClassPassive(this);
     }
     return ups;
   }
@@ -114,17 +122,31 @@ export class Player extends Character {
     return this.inventory.some(i => i.slot === EquipSlot.Weapon);
   }
 
-  // Forge du marchand : améliore l'arme équipée en ATK, jusqu'à MAX_WEAPON_UPGRADE.
-  nextWeaponUpgradeCost(): number | null {
-    if (this.weaponUpgradeLevel >= MAX_WEAPON_UPGRADE) return null;
-    return 40 + this.weaponUpgradeLevel * 30;
+  // Forge du marchand : améliore l'arme (ATK) ou l'armure (ARM) équipée, jusqu'à MAX_WEAPON_UPGRADE paliers.
+  nextUpgradeCost(slot: ForgeSlot): number | null {
+    const lvl = slot === EquipSlot.Weapon ? this.weaponUpgradeLevel : this.armorUpgradeLevel;
+    if (lvl >= MAX_WEAPON_UPGRADE) return null;
+    return 40 + lvl * 30;
   }
-  upgradeWeapon(): boolean {
-    const cost = this.nextWeaponUpgradeCost();
-    if (cost === null || !this.equippedWeapon || !this.spendGold(cost)) return false;
-    this.weaponUpgradeLevel++;
-    this.modifyAttack(+2);
+  upgradeSlot(slot: ForgeSlot): boolean {
+    const cost = this.nextUpgradeCost(slot);
+    const equipped = slot === EquipSlot.Weapon ? this.equippedWeapon : this.equippedArmor;
+    if (cost === null || !equipped || !this.spendGold(cost)) return false;
+    if (slot === EquipSlot.Weapon) { this.weaponUpgradeLevel++; this.modifyAttack(+2); }
+    else { this.armorUpgradeLevel++; this.modifyArmor(+1); }
     return true;
+  }
+  // Conservés pour compatibilité (arme = comportement historique)
+  nextWeaponUpgradeCost(): number | null { return this.nextUpgradeCost(EquipSlot.Weapon); }
+  upgradeWeapon(): boolean { return this.upgradeSlot(EquipSlot.Weapon); }
+}
+
+// Capacité permanente débloquée au niveau 5 — une profondeur de classe au-delà des stats de départ.
+export function applyClassPassive(p: Player) {
+  switch (p.classId) {
+    case "warrior": p.maxHp += 10; p.hp += 10; p.addArmor(3); break;
+    case "mage": p.modifyCritMultiplierPercent(+20); break;
+    case "rogue": p.dodgeBonus += 15; break;
   }
 }
 
@@ -170,6 +192,7 @@ export class Monster extends Character {
   minXp: number; maxXp: number;
   feminine: boolean; // accord grammatical FR de "combat.appear" (Un/Une {name} surgit !)
   nightBuffed = false; // équilibrage : buff nocturne appliqué une fois
+  elite = false;       // variante élite (mode Descente Infinie) : boostée, récompense majorée
   aiKind: AiKind;
   spawnPos: Pos;               // pour le comportement "patrol"
   patrolDir: Dir | null = null; // direction courante de patrouille
@@ -236,6 +259,18 @@ export const MonsterCatalog = {
     m.addArmor(2);
     m.modifyCritChance(12);
     m.modifyCritMultiplierPercent(50);
+    return m;
+  },
+  // Le Rival — écho du joueur, dernier obstacle avant le Dévoreur d'Âmes (niveau 5)
+  theRival: (pos: Pos) => {
+    const m = new Monster({
+      nameKey: "mob.rival", pos, hp: 70, attack: 9,
+      minGold: 80, maxGold: 120, minXp: 60, maxXp: 90,
+      rank: MonsterRank.Boss, aggroRange: 8, sprite: "rival",
+    });
+    m.addArmor(1);
+    m.modifyCritChance(10);
+    m.modifyCritMultiplierPercent(30);
     return m;
   },
   // Super-boss du donjon post-jeu (niveau 5)
