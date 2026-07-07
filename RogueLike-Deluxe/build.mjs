@@ -1,6 +1,7 @@
 // Bundle le jeu en un seul fichier dist/index.html (jouable partout, embarquable Tauri)
 import { build } from "esbuild";
-import { readFileSync, writeFileSync, mkdirSync } from "fs";
+import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync } from "fs";
+import { join } from "path";
 
 const res = await build({
   entryPoints: ["src/main.ts"],
@@ -12,6 +13,26 @@ const res = await build({
 });
 
 const js = res.outputFiles[0].text;
+
+// ===== Musiques : MP3 de assets/audio/ embarqués en base64 (le jeu reste un seul fichier) =====
+const AUDIO_DIR = "assets/audio";
+let musicScript = "";
+if (existsSync(AUDIO_DIR)) {
+  const music = {};
+  let total = 0;
+  for (const f of readdirSync(AUDIO_DIR)) {
+    if (!f.endsWith(".mp3")) continue;
+    const key = f.replace(/\.mp3$/, "");
+    const bytes = readFileSync(join(AUDIO_DIR, f));
+    total += bytes.length;
+    music[key] = `data:audio/mpeg;base64,${bytes.toString("base64")}`;
+    console.log(`  ♪ ${f} (${(bytes.length / 1024 / 1024).toFixed(1)} Mo)`);
+  }
+  if (Object.keys(music).length > 0) {
+    musicScript = `<script>window.__MUSIC__=${JSON.stringify(music)};</script>\n`;
+    console.log(`  musiques embarquées : ${(total / 1024 / 1024).toFixed(1)} Mo`);
+  }
+}
 const html = `<!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -27,7 +48,7 @@ const html = `<!DOCTYPE html>
 </head>
 <body>
 <canvas id="game" width="960" height="540" tabindex="0"></canvas>
-<script>${js.replace(/<\/script>/g, "<\\/script>")}</script>
+${musicScript}<script>${js.replace(/<\/script>/g, "<\\/script>")}</script>
 </body>
 </html>`;
 

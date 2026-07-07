@@ -10,11 +10,19 @@ class AudioSys {
   musicVol = 0.7;
   sfxVol = 0.8;
 
-  private mode: MusicMode = "none";
+  private mode: MusicMode = "none";       // mode du séquenceur procédural (silence si une piste MP3 joue)
+  private desiredMode: MusicMode = "none"; // mode demandé par le jeu
   private step = 0;
   private nextTime = 0;
   private timer: number | null = null;
   private noiseBuf: AudioBuffer | null = null;
+
+  // ===== Pistes MP3 (embarquées en base64 par build.mjs dans window.__MUSIC__) =====
+  private buffers: Record<string, AudioBuffer> = {}; // pistes décodées
+  private declared = new Set<string>();               // pistes présentes (même pas encore décodées)
+  private trackSource: AudioBufferSourceNode | null = null;
+  private trackGain: GainNode | null = null;
+  private trackKey: string | null = null;             // piste en cours de lecture
 
   ensure() {
     if (this.ac) { if (this.ac.state === "suspended") this.ac.resume(); return; }
@@ -33,15 +41,80 @@ class AudioSys {
     const d = this.noiseBuf.getChannelData(0);
     for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
     this.startScheduler();
+    this.loadTracks();
+  }
+
+  // Décode les MP3 embarqués. La nuit retombe sur la piste d'exploration si nuit.mp3 manque.
+  private loadTracks() {
+    const MUSIC: Record<string, string> = (typeof window !== "undefined" && (window as any).__MUSIC__) || {};
+    for (const key of Object.keys(MUSIC)) this.declared.add(key);
+    this.applyMode(); // coupe le procédural là où une piste va prendre le relais
+    for (const key of Object.keys(MUSIC)) {
+      fetch(MUSIC[key])
+        .then(r => r.arrayBuffer())
+        .then(buf => this.ac!.decodeAudioData(buf))
+        .then(decoded => { this.buffers[key] = decoded; this.applyMode(); })
+        .catch(() => {});
+    }
   }
 
   setMusicVol(v: number) { this.musicVol = v; if (this.ac) this.musicBus.gain.value = v * 0.5; }
   setSfxVol(v: number) { this.sfxVol = v; if (this.ac) this.sfxBus.gain.value = v; }
 
   setMode(m: MusicMode) {
-    if (this.mode === m) return;
-    this.mode = m;
-    this.step = 0;
+    if (this.desiredMode === m) return;
+    this.desiredMode = m;
+    this.applyMode();
+  }
+
+  // Quelle piste MP3 correspond à un mode (avec repli nuit → exploration)
+  private trackKeyFor(m: MusicMode): string | null {
+    if (m === "none") return null;
+    if (this.declared.has(m)) return m;
+    if (m === "night" && this.declared.has("explore")) return "explore";
+    return null;
+  }
+
+  // Arbitre entre piste MP3 et synthé procédural pour le mode demandé
+  private applyMode() {
+    if (!this.ac) return;
+    const key = this.trackKeyFor(this.desiredMode);
+    if (key) {
+      // une piste est prévue : on fait taire le procédural
+      if (this.mode !== "none") { this.mode = "none"; }
+      if (this.buffers[key]) this.startTrack(key); // sinon on attend le décodage
+      else this.fadeOutTrack();                    // silence pendant le chargement
+    } else {
+      // pas de piste : synthé procédural
+      this.fadeOutTrack();
+      if (this.mode !== this.desiredMode) { this.mode = this.desiredMode; this.step = 0; }
+    }
+  }
+
+  private startTrack(key: string) {
+    if (!this.ac) return;
+    if (this.trackKey === key && this.trackSource) return; // déjà en cours
+    this.fadeOutTrack();
+    const src = this.ac.createBufferSource();
+    src.buffer = this.buffers[key];
+    src.loop = true; // boucle sans coupure (précision échantillon, contrairement à un <audio> loop)
+    const g = this.ac.createGain();
+    const now = this.ac.currentTime;
+    g.gain.setValueAtTime(0, now);
+    g.gain.linearRampToValueAtTime(1, now + 0.7); // fondu entrant
+    src.connect(g); g.connect(this.musicBus);
+    try { src.start(); } catch {}
+    this.trackSource = src; this.trackGain = g; this.trackKey = key;
+  }
+
+  private fadeOutTrack() {
+    if (!this.ac || !this.trackSource || !this.trackGain) { this.trackSource = null; this.trackGain = null; this.trackKey = null; return; }
+    const s = this.trackSource, g = this.trackGain, now = this.ac.currentTime;
+    g.gain.cancelScheduledValues(now);
+    g.gain.setValueAtTime(g.gain.value, now);
+    g.gain.linearRampToValueAtTime(0, now + 0.5); // fondu sortant → crossfade
+    setTimeout(() => { try { s.stop(); } catch {} }, 650);
+    this.trackSource = null; this.trackGain = null; this.trackKey = null;
   }
 
   // ============ Séquenceur ============
