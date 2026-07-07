@@ -1,8 +1,10 @@
-# Les Sceaux de l'Abîme — Édition Deluxe
+# Les Sceaux de l'Abîme — Édition Deluxe : REBIRTH
 
-Portage complet du RogueLike console (C#) en **jeu de bureau pixel art**, prêt pour un
-empaquetage Steam via Tauri. Moteur TypeScript, rendu Canvas, audio WebAudio — zéro
-dépendance à l'exécution, un seul fichier `dist/index.html`.
+Portage complet du RogueLike console (C#) en **jeu de bureau pixel art**, refondu en
+profondeur (combat à télégraphes, builds élémentaires émergents, événements d'étage,
+game feel moderne), prêt pour un empaquetage Steam via Tauri. Moteur TypeScript,
+rendu Canvas, audio WebAudio — zéro dépendance à l'exécution, un seul fichier
+`dist/index.html`.
 
 ## 🎮 Jouer immédiatement
 
@@ -33,7 +35,52 @@ Roi de l'Abîme et sa phase 2.
 - Système jour/nuit (24 ticks) avec spawns nocturnes et buff des monstres.
 - i18n FR/EN complet (menu Options).
 
-### Nouveautés version Deluxe
+## ⚡ La refonte REBIRTH
+
+### Combat à télégraphes (intents)
+
+Chaque ennemi **annonce son prochain coup** au-dessus de sa barre de vie
+(attaque ~n, coup dévastateur, charge, garde, drain, venin, perce-armure).
+Chaque espèce suit un **pattern cyclique** lisible ; les gros coups passent par un
+tour de **charge** que le joueur peut mitiger (la garde amortit un coup lourd de
+moitié, la Brume l'évite totalement). Les boss changent de pattern en **phase 2**.
+Les capacités spéciales historiques (seuils de PV) déclenchent désormais des
+télégraphes au lieu de coups surprises.
+
+### Builds élémentaires émergents (Descente Infinie)
+
+Les reliques draftées entre les étages appartiennent à 4 éléments qui se **combinent** :
+
+| Élément | Mécanique | Résonance (3 cumuls) |
+|---|---|---|
+| 🔥 Braise | brûlures qui s'empilent, bonus vs ennemis en feu | frapper un ennemi en feu fait **détoner** sa brûlure |
+| ❄ Givre | givre (−ATK ennemie), gel, armure conditionnelle | les ennemis givrés infligent −20% de dégâts |
+| 🩸 Sang | vol de vie, saignement, puissance à bas PV | le saignement infligé **te soigne** d'autant |
+| ⚡ Tempête | crits, échos (la frappe se rejoue), foudre perce-armure | +15% d'écho, et les échos peuvent critiquer |
+
+Exemple de synergie : *Tempo* (1er coup crit garanti) + *Embrasement* (les crits
+brûlent) + *Foudre* (les crits foudroient) + résonance de Braise = chaque ouverture
+de combat est une détonation en chaîne.
+
+### Économie du risque
+
+- **Autels maudits** : un boon épique immédiat… contre une malédiction de run
+  (Fragilité, Famine, Pénombre, Attrition).
+- **Sanctuaires** : soin unique de 40%.
+- **Salles secrètes** : des murs fissurés (lueur discrète) cachent des trésors
+  légendaires — foncez dedans.
+- **Élites à affixes** : Épines, Vampirique, Véloce, Brute, Blindé — chaque élite
+  change les règles du combat.
+
+### Game feel
+
+Hitstop à l'impact, lunges avec traînées fantômes, arcs de taille, ondes de choc,
+chiffres de dégâts qui popent, flashs de palette (crit / phase 2), screenshake en
+combat **et** en exploration, héros présent sur le champ de bataille, fond de combat
+en parallaxe, bannières d'étage, brouillard ambiant par biome, poussière de pas,
+vignette de danger à PV bas, transition jour/nuit fondue, menu titre orageux.
+
+### Nouveautés version Deluxe (historique)
 
 - Rendu pixel art procédural : tileset par niveau, éclairage dynamique avec scintillement
   de torche, particules, ombres, minimap, HUD graphique, transitions de scène.
@@ -86,21 +133,26 @@ Les icônes sont déjà générées dans `src-tauri/icons/` (régénérables :
 
 ```
 src/
-  core.ts          types, RNG, carte, jour/nuit
-  entities.ts      joueur, monstres, PNJ, coffres, sceaux
+  core.ts          types, RNG, carte (dont murs fissurés), jour/nuit
+  entities.ts      joueur (boons de run), monstres (affixes d'élites), statuts
+                   empilables (brûlure/saignement/givre), PNJ, coffres, autels, sanctuaires
   items.ts         objets, catalogue, butin, prix
+  boons.ts         boons élémentaires (Braise/Givre/Sang/Tempête), résonances, malédictions
   maps.ts          les 4 cartes (port 1:1 de MapCatalog.cs)
   levels.ts        composition des niveaux (LevelCatalog.cs)
-  context.ts       GameContext : exploration, vision, portes, scripting Map3
-  combat.ts        combat tour par tour + phase 2 du boss
+  context.ts       GameContext : exploration, vision, portes, autels/sanctuaires/secrets
+  combat.ts        combat à INTENTS : patterns par espèce, télégraphes, charges,
+                   hooks de boons (à-la-frappe / au-crit / au-kill / au-subi), affixes
+  procgen.ts       étages procéduraux : salles, élites à affixes, autels, secrets
   sprites.ts       pixel art procédural (aucun asset externe)
-  render.ts        rendu monde, éclairage, particules, HUD
+  render.ts        rendu monde, éclairage, screenshake, ambiance, HUD (build élémentaire)
   audio.ts         musique + SFX procéduraux (WebAudio)
   input.ts         clavier + manette
-  i18n.ts          FR/EN
-  save.ts          sauvegarde localStorage
-  scenes.ts / *Scene(s).ts   menu, cinématiques, exploration, combat, marchand…
-test/sim.ts        bot de test : finit le jeu en entier et vérifie chaque étape
+  i18n.ts          FR/EN (intégral, nouvelles mécaniques comprises)
+  save.ts          sauvegarde localStorage (format inchangé — saves compatibles)
+  scenes.ts / *Scene(s).ts   menu, cinématiques, exploration (autel), combat, marchand…
+test/sim.ts        bot de test : finit le jeu en entier + vérifie intents, hooks de
+                   boons, résonances, autels/malédictions, salles secrètes, affixes
 src-tauri/         projet Tauri 2 prêt à compiler
 ```
 

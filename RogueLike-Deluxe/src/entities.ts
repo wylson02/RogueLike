@@ -4,8 +4,11 @@ import type { Item } from "./items";
 import { T } from "./i18n";
 
 // ===== Effets de statut (portée : un combat) =====
-export type StatusKind = "poison" | "stun";
+// poison/burn/bleed : dégâts par tour • stun : perd son tour • chill : réduit l'ATK effective
+export type StatusKind = "poison" | "stun" | "burn" | "bleed" | "chill";
 export interface StatusEffect { kind: StatusKind; turns: number; power: number; }
+// Les statuts élémentaires s'empilent en puissance (c'est le moteur des builds Braise/Sang/Givre)
+const STACKING_STATUS: StatusKind[] = ["burn", "bleed", "chill"];
 
 export abstract class Character {
   pos: Pos;
@@ -35,14 +38,21 @@ export abstract class Character {
   modifyLifeSteal(d: number) { this.lifeStealPercent = clamp(this.lifeStealPercent + d, 0, 100); }
   modifyCritMultiplierPercent(d: number) { this.critMultiplierPercent = clamp(this.critMultiplierPercent + d, 150, 400); }
 
-  // Statuts : un même statut se rafraîchit (durée/puissance max) au lieu de s'empiler
+  // Statuts : poison/stun se rafraîchissent (durée/puissance max) ; burn/bleed/chill
+  // EMPILENT leur puissance (plafonnée) — c'est ce qui rend les builds élémentaires émergents.
   addStatus(kind: StatusKind, turns: number, power = 0) {
     const cur = this.statuses.find(s => s.kind === kind);
-    if (cur) { cur.turns = Math.max(cur.turns, turns); cur.power = Math.max(cur.power, power); }
-    else this.statuses.push({ kind, turns, power });
+    if (cur) {
+      cur.turns = Math.max(cur.turns, turns);
+      if (STACKING_STATUS.includes(kind)) cur.power = Math.min(kind === "chill" ? 6 : 30, cur.power + power);
+      else cur.power = Math.max(cur.power, power);
+    } else this.statuses.push({ kind, turns, power });
   }
   hasStatus(kind: StatusKind): boolean { return this.statuses.some(s => s.kind === kind && s.turns > 0); }
   getStatus(kind: StatusKind): StatusEffect | null { return this.statuses.find(s => s.kind === kind) ?? null; }
+  statusPower(kind: StatusKind): number { return this.getStatus(kind)?.power ?? 0; }
+  // ATK effective en combat : le givre engourdit
+  get effectiveAttack(): number { return Math.max(1, this.attack - this.statusPower("chill")); }
   clearStatuses() { this.statuses = []; }
 }
 
@@ -71,6 +81,11 @@ export class Player extends Character {
   dodgeBonus = 0;
   classPassiveUnlocked = false;
   talents: string[] = []; // ids de talents choisis (ex. "w1a")
+  // ===== Boons de run (Descente Infinie) : id → cumuls. Lus par le combat via les hooks. =====
+  runBoons: Record<string, number> = {};
+
+  boonLevel(id: string): number { return this.runBoons[id] ?? 0; }
+  addBoon(id: string) { this.runBoons[id] = (this.runBoons[id] ?? 0) + 1; }
 
   constructor(pos: Pos) { super(pos, 70, 5); }
 
@@ -251,6 +266,13 @@ export function applyClass(p: Player, id: ClassId) {
 export enum MonsterRank { Normal, MiniBoss, Boss }
 export type AiKind = "aggro" | "random" | "patrol" | "ambush" | "flee";
 
+// ===== Affixes d'élites (Descente Infinie) : chaque élite a un twist de combat =====
+// thorns : renvoie 20% des dégâts subis • vampiric : soigne 30% des dégâts infligés
+// swift : frappe deux fois (60% chacune) • brute : ses coups lourds sont inesquivables
+// shielded : +3 armure de départ
+export type EliteAffix = "thorns" | "vampiric" | "swift" | "brute" | "shielded";
+export const ELITE_AFFIXES: EliteAffix[] = ["thorns", "vampiric", "swift", "brute", "shielded"];
+
 export class Monster extends Character {
   nameKey: string;
   rank: MonsterRank;
@@ -261,6 +283,7 @@ export class Monster extends Character {
   feminine: boolean; // accord grammatical FR de "combat.appear" (Un/Une {name} surgit !)
   nightBuffed = false; // équilibrage : buff nocturne appliqué une fois
   elite = false;       // variante élite (mode Descente Infinie) : boostée, récompense majorée
+  affix: EliteAffix | null = null; // twist de combat des élites (Épines, Vampirique…)
   aiKind: AiKind;
   spawnPos: Pos;               // pour le comportement "patrol"
   patrolDir: Dir | null = null; // direction courante de patrouille
@@ -281,7 +304,10 @@ export class Monster extends Character {
     this.aiKind = o.aiKind ?? "aggro";
     this.spawnPos = P(o.pos.x, o.pos.y);
   }
-  get name() { return T(this.nameKey); }
+  get name() {
+    const base = T(this.nameKey);
+    return this.affix ? `${base} — ${T("affix." + this.affix)}` : base;
+  }
   rollGold(rng: RNG) { return this.minGold === this.maxGold ? this.minGold : rng.next(this.minGold, this.maxGold + 1); }
   rollXp(rng: RNG) { return this.minXp === this.maxXp ? this.minXp : rng.next(this.minXp, this.maxXp + 1); }
 }
@@ -391,4 +417,15 @@ export class Seal {
 export class Merchant {
   pos: Pos; name: string;
   constructor(pos: Pos, name = "Marchand") { this.pos = pos; this.name = name; }
+}
+
+// ===== Événements d'étage (Descente Infinie) =====
+// Autel maudit : un boon épique contre une malédiction de run. Sanctuaire : soin unique.
+export class Altar {
+  pos: Pos; used = false;
+  constructor(pos: Pos) { this.pos = pos; }
+}
+export class Shrine {
+  pos: Pos; used = false;
+  constructor(pos: Pos) { this.pos = pos; }
 }

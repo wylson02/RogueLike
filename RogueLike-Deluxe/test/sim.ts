@@ -1,8 +1,10 @@
 // Simulation headless : traverse le jeu complet et vérifie la logique.
 import { GameContext, GameEvent } from "../src/context";
-import { CombatSession } from "../src/combat";
-import { Monster } from "../src/entities";
-import { Pos, P, eqPos, key, Dir, move, DIRS4, Tile } from "../src/core";
+import { CombatSession, CombatEvent } from "../src/combat";
+import { Monster, MonsterCatalog, Altar } from "../src/entities";
+import { generateFloor } from "../src/procgen";
+import { elementStacks, hasResonance } from "../src/boons";
+import { Pos, P, eqPos, key, Dir, move, DIRS4, Tile, RNG } from "../src/core";
 
 let failures = 0;
 function check(cond: boolean, msg: string) {
@@ -355,6 +357,141 @@ console.log("=== DESCENTE INFINIE (procédural) ===");
   // mort en Descente : le run se termine proprement (pas de crash, flag endless conservé)
   ctx.player.hp = 0;
   check(ctx.player.isDead && ctx.endless, "mort en Descente gérable (→ résumé de run)");
+}
+
+console.log("=== REBIRTH : INTENTS / TELEGRAPHES ===");
+{
+  const c = new GameContext();
+  c.loadLevel(1); c.drainEvents(); c.blockNightSpawnsForTicks(1e9);
+  c.player.maxHp = 500; c.player.healToFull(); c.player.modifyAttack(-3); // combat long pour voir le pattern
+  const golem = MonsterCatalog.golem(P(5, 5));
+  golem.maxHp = 500; golem.hp = 500;
+  const s = new CombatSession(c, golem);
+  check(!!s.intent && !!s.intent.labelKey, "l'ennemi annonce une intention dès le début du combat");
+  let sawCharge = false, heavyAfterCharge = false;
+  for (let turn = 0; turn < 12 && !s.over; turn++) {
+    const chargedNow = s.intent.kind === "charge";
+    s.playTurn("attack");
+    const evs = s.drainEvents();
+    if (evs.some(e => e.type === "enemyCharge")) sawCharge = true;
+    if (chargedNow) {
+      // le tour SUIVANT la charge doit être le coup dévastateur
+      s.playTurn("attack");
+      if (s.drainEvents().some(e => e.type === "enemySpecial")) heavyAfterCharge = true;
+      break;
+    }
+  }
+  check(sawCharge, "le golem télégraphie sa charge");
+  check(heavyAfterCharge, "la charge est suivie du coup dévastateur au tour suivant");
+}
+
+console.log("=== REBIRTH : HOOKS DE BOONS ===");
+{
+  // Étincelle : les attaques brûlent
+  const c = new GameContext();
+  c.loadLevel(1); c.drainEvents(); c.blockNightSpawnsForTicks(1e9);
+  c.player.maxHp = 500; c.player.healToFull();
+  c.player.runBoons["kindle"] = 1;
+  const slime = MonsterCatalog.slime(P(5, 5));
+  slime.maxHp = 200; slime.hp = 200;
+  const s = new CombatSession(c, slime);
+  s.playTurn("attack");
+  s.drainEvents();
+  check(slime.hasStatus("burn"), "Étincelle : l'attaque applique une brûlure");
+  const hpBefore = slime.hp;
+  s.playTurn("dodge");
+  s.drainEvents();
+  check(slime.hp < hpBefore, "la brûlure ronge l'ennemi à chaque tour");
+
+  // Tempo : premier coup critique garanti
+  const c2 = new GameContext();
+  c2.loadLevel(1); c2.drainEvents(); c2.blockNightSpawnsForTicks(1e9);
+  c2.player.maxHp = 500; c2.player.healToFull();
+  c2.player.runBoons["tempo"] = 1;
+  const slime2 = MonsterCatalog.slime(P(5, 5));
+  slime2.maxHp = 200; slime2.hp = 200;
+  const s2 = new CombatSession(c2, slime2);
+  s2.playTurn("attack");
+  const evs2 = s2.drainEvents();
+  check(evs2.some(e => e.type === "playerCrit"), "Tempo : la première attaque est un critique garanti");
+
+  // Résonance de Braise (3 cumuls fire) : combustion à la frappe d'un ennemi qui brûle
+  const c3 = new GameContext();
+  c3.loadLevel(1); c3.drainEvents(); c3.blockNightSpawnsForTicks(1e9);
+  c3.player.maxHp = 500; c3.player.healToFull();
+  c3.player.runBoons["kindle"] = 3;
+  check(elementStacks(c3.player, "fire") === 3, "3 cumuls de Braise comptés");
+  check(hasResonance(c3.player, "fire"), "la résonance de Braise est éveillée");
+  const golem3 = MonsterCatalog.golem(P(5, 5));
+  golem3.maxHp = 400; golem3.hp = 400;
+  const s3 = new CombatSession(c3, golem3);
+  let sawCombustion = false;
+  for (let i = 0; i < 4 && !s3.over; i++) {
+    s3.playTurn("attack");
+    if (s3.drainEvents().some((e: CombatEvent) => e.type === "combustion")) { sawCombustion = true; break; }
+  }
+  check(sawCombustion, "résonance de Braise : la brûlure détone à la frappe");
+}
+
+console.log("=== REBIRTH : AUTELS, MALEDICTIONS, SANCTUAIRES ===");
+{
+  const c = new GameContext();
+  c.startEndlessRun(1);
+  c.drainEvents(); c.blockNightSpawnsForTicks(1e9);
+  // autel posé sous les pieds du bot
+  const spot = ((): Pos => {
+    for (const d of DIRS4) {
+      const p = move(c.player.pos, d);
+      if (c.map.isWalkable(p) && !c.monsterAt(p)) return p;
+    }
+    return c.player.pos;
+  })();
+  const altar = new Altar(spot);
+  c.altars.push(altar);
+  c.tryMove(DIRS4.find(d => eqPos(move(c.player.pos, d), spot))!);
+  const evs = c.drainEvents();
+  check(evs.some(e => e.type === "altar"), "marcher sur un autel déclenche le pacte");
+  const curseId = c.acceptAltar(altar);
+  check(c.runCurses.length === 1 && c.runCurses[0] === curseId, "accepter le pacte applique une malédiction de run");
+
+  // Famine : plus de soin entre étages
+  c.runCurses.length = 0;
+  c.runCurses.push("famine");
+  c.player.maxHp = 100;
+  c.player.hp = 40;
+  c.loadProceduralFloor(c.runDepth + 1);
+  c.drainEvents();
+  check(c.player.hp === 40, "malédiction de Famine : aucun soin entre les étages");
+}
+
+console.log("=== REBIRTH : PROCGEN (secrets, autels, sanctuaires, affixes) ===");
+{
+  const rng = new RNG(1234);
+  let altars = 0, shrines = 0, cracked = 0, elites = 0, affixed = 0;
+  for (let depth = 2; depth <= 20; depth++) {
+    const data = generateFloor(depth, rng);
+    altars += data.altars?.length ?? 0;
+    shrines += data.shrines?.length ?? 0;
+    for (let y = 0; y < data.map.height; y++)
+      for (let x = 0; x < data.map.width; x++)
+        if (data.map.get(P(x, y)) === Tile.Cracked) cracked++;
+    for (const m of data.monsters) if (m.elite) { elites++; if (m.affix) affixed++; }
+  }
+  check(altars > 0, `des autels maudits sont générés (${altars} sur 19 étages)`);
+  check(shrines > 0, `des sanctuaires sont générés (${shrines})`);
+  check(cracked > 0, `des salles secrètes (murs fissurés) sont générées (${cracked})`);
+  check(elites > 0 && affixed === elites, `toutes les élites portent un affixe (${affixed}/${elites})`);
+
+  // Mur fissuré : marcher dedans le brise et révèle la salle
+  const c = new GameContext();
+  c.startEndlessRun(1);
+  c.drainEvents(); c.blockNightSpawnsForTicks(1e9);
+  const wall = move(c.player.pos, Dir.Up);
+  c.map.set(wall.x, wall.y, Tile.Cracked);
+  c.tryMove(Dir.Up);
+  const evs = c.drainEvents();
+  check(c.map.get(wall) === Tile.Floor, "le mur fissuré se brise quand on le pousse");
+  check(evs.some(e => e.type === "secret"), "l'événement de salle secrète est émis");
 }
 
 console.log(failures === 0 ? "\nSIMULATION COMPLETE REUSSIE" : `\n${failures} echec(s)`);

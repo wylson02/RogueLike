@@ -31,8 +31,12 @@ export class MainMenuScene implements Scene {
     this.items.push({ key: "menu.quit", action: () => { try { window.close(); } catch { } } });
   }
 
+  private lightning = 0; // éclair d'ambiance occasionnel
+
   update(dt: number) {
     this.t += dt;
+    this.lightning = Math.max(0, this.lightning - dt * 4);
+    if (Math.random() < dt * 0.12) this.lightning = 0.6 + Math.random() * 0.4;
     // braises
     if (Math.random() < dt * 22)
       this.particles.spawn({
@@ -40,6 +44,14 @@ export class MainMenuScene implements Scene {
         vx: (Math.random() - 0.5) * 12, vy: -22 - Math.random() * 30,
         life: 4 + Math.random() * 3, maxLife: 7, size: 2 + Math.random() * 2,
         color: Math.random() < 0.7 ? "#c0502a" : "#e8a03a", glow: true,
+      });
+    // runes violettes qui montent de la porte
+    if (Math.random() < dt * 6)
+      this.particles.spawn({
+        x: VW / 2 + (Math.random() - 0.5) * 160, y: VH - 40 - Math.random() * 120,
+        vx: (Math.random() - 0.5) * 6, vy: -14 - Math.random() * 14,
+        life: 3 + Math.random() * 2, maxLife: 5, size: 2,
+        color: Math.random() < 0.5 ? "#8a5fd0" : "#c8a0ff", glow: true,
       });
     this.particles.update(dt);
 
@@ -56,6 +68,26 @@ export class MainMenuScene implements Scene {
     grad.addColorStop(1, "#251020");
     g.fillStyle = grad;
     g.fillRect(0, 0, VW, VH);
+
+    // éclair d'ambiance : la salle blêmit un instant
+    if (this.lightning > 0) {
+      g.fillStyle = `rgba(150,140,200,${(this.lightning * 0.08).toFixed(3)})`;
+      g.fillRect(0, 0, VW, VH);
+    }
+
+    // nappes de brume dérivantes
+    g.save();
+    g.globalAlpha = 0.06;
+    for (let i = 0; i < 2; i++) {
+      const fy = VH * (0.55 + i * 0.25) + Math.sin(this.t * 0.35 + i * 2.4) * 20;
+      const fgrad = g.createLinearGradient(0, fy - 60, 0, fy + 60);
+      fgrad.addColorStop(0, "rgba(150,130,190,0)");
+      fgrad.addColorStop(0.5, "rgba(150,130,190,1)");
+      fgrad.addColorStop(1, "rgba(150,130,190,0)");
+      g.fillStyle = fgrad;
+      g.fillRect(0, fy - 60, VW, 120);
+    }
+    g.restore();
 
     // silhouette de porte au fond
     g.save();

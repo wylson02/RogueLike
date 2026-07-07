@@ -1,12 +1,13 @@
 // ===== Exploration + pause + inventaire + progression + marchand =====
 import { Scene, SceneManager, panel, dimBackground } from "./scenes";
-import { VW, VH, text, textShadow, drawHud, clearTweens } from "./render";
+import { VW, VH, text, textShadow, drawHud, clearTweens, FONT } from "./render";
 import { Input } from "./input";
 import { Audio } from "./audio";
 import { T } from "./i18n";
 import { G, Flow } from "./game";
 import { LogKind, GameEvent } from "./context";
-import { StatType, Merchant, EquipSlot, MAX_WEAPON_UPGRADE, Monster, MonsterRank, TalentCatalog, chooseTalent } from "./entities";
+import { StatType, Merchant, EquipSlot, MAX_WEAPON_UPGRADE, Monster, MonsterRank, TalentCatalog, chooseTalent, Altar } from "./entities";
+import { RelicDraftScene } from "./endlessScenes";
 import { Item, ItemCatalog, sellPrice, MERCHANT_STOCK, NIGHT_MERCHANT_STOCK, NIGHT_MERCHANT_NAME } from "./items";
 import { getSprite } from "./sprites";
 import { saveGame, saveSettings } from "./save";
@@ -18,16 +19,23 @@ export class ExploreScene implements Scene {
   private lastDt = 1 / 60;
   private pendingCombat: Monster | null = null; // flash façon Pokémon avant le combat
   private flashT = 0;
+  private bannerT = 0;          // bannière d'étage (Descente)
+  private bannerText = "";
 
   enter() {
     Audio.setMode(G.ctx.time.isNight ? "night" : "explore");
     G.world.snapCamera(G.ctx);
     clearTweens();
+    if (G.ctx.endless && this.bannerT <= 0 && this.t === 0) {
+      this.bannerText = T("hud.depth", { n: G.ctx.runDepth }).toUpperCase();
+      this.bannerT = 2.4;
+    }
   }
 
   update(dt: number) {
     this.t += dt;
     this.lastDt = dt;
+    this.bannerT = Math.max(0, this.bannerT - dt);
     const ctx = G.ctx;
 
     // Flash d'entrée en combat : inputs bloqués, la musique de combat démarre déjà
@@ -68,11 +76,19 @@ export class ExploreScene implements Scene {
         case "fx": {
           const x = e.pos.x * TS + TS / 2, y = e.pos.y * TS + TS / 2;
           if (e.name === "seal") G.world.particles.burst(x, y, "#5adfe8", 26, 90, 1, 3, true);
-          else if (e.name === "chest") G.world.particles.burst(x, y, "#ffd84a", 18, 70, 0.8, 3, true);
+          else if (e.name === "chest") { G.world.particles.burst(x, y, "#ffd84a", 18, 70, 0.8, 3, true); G.world.addShake(0.3); }
           else if (e.name === "pickup") G.world.particles.burst(x, y, "#fff0a0", 10, 50, 0.6, 2.5, true);
           else if (e.name === "spawn") G.world.particles.burst(x, y, "#8a5fd0", 20, 80, 0.9, 3, true);
+          else if (e.name === "secret") {
+            G.world.particles.burst(x, y, "#c8b090", 34, 130, 1, 4);
+            G.world.particles.burst(x, y, "#ffe9c0", 14, 90, 0.8, 3, true);
+          }
+          else if (e.name === "shrine") G.world.particles.burst(x, y, "#7ae8c8", 22, 80, 1, 3, true);
           break;
         }
+        case "shake": G.world.addShake(e.power); break;
+        case "altar": SceneManager.push(new AltarScene(e.altar)); return;
+        case "shrine": break; // le fx/log est déjà géré ; rien d'autre à faire
         case "combat":
           this.pendingCombat = e.monster;
           this.flashT = 0;
@@ -89,6 +105,10 @@ export class ExploreScene implements Scene {
           if (!G.ctx.endless) saveGame(G.ctx); // les runs Descente ne sont pas resumables (permadeath)
           G.world.snapCamera(G.ctx);
           clearTweens();
+          if (G.ctx.endless) {
+            this.bannerText = T("hud.depth", { n: G.ctx.runDepth }).toUpperCase();
+            this.bannerT = 2.4;
+          }
           break;
       }
     }
@@ -97,12 +117,97 @@ export class ExploreScene implements Scene {
   draw(g: CanvasRenderingContext2D) {
     G.world.draw(g, G.ctx, Math.min(0.05, this.lastDt));
     drawHud(g, G.ctx, this.t);
+
+    // Bannière d'étage (Descente) : la profondeur s'annonce en lettres de pierre
+    if (this.bannerT > 0) {
+      const total = 2.4;
+      const t = total - this.bannerT;
+      const aIn = Math.min(1, t / 0.35);
+      const aOut = Math.min(1, this.bannerT / 0.5);
+      const a = Math.min(aIn, aOut);
+      const slideX = (1 - aIn) * (1 - aIn) * -160;
+      g.save();
+      g.globalAlpha = a * 0.85;
+      const bh = 74, by = VH * 0.3;
+      const grad = g.createLinearGradient(0, by, 0, by + bh);
+      grad.addColorStop(0, "rgba(10,6,18,0)");
+      grad.addColorStop(0.5, "rgba(10,6,18,.92)");
+      grad.addColorStop(1, "rgba(10,6,18,0)");
+      g.fillStyle = grad;
+      g.fillRect(0, by, VW, bh);
+      g.globalAlpha = a;
+      g.shadowColor = "#8a5fd0"; g.shadowBlur = 18;
+      g.font = `bold 34px ${FONT}`;
+      g.textAlign = "center"; g.textBaseline = "middle";
+      g.fillStyle = "#e8d8ff";
+      g.fillText(this.bannerText, VW / 2 + slideX, by + bh / 2);
+      g.restore();
+    }
+
     // 3 éclairs blancs façon Pokémon avant la bascule en combat
     if (this.pendingCombat) {
       const a = Math.abs(Math.sin(this.flashT * Math.PI * 4)) * 0.85;
       g.fillStyle = `rgba(255,255,255,${a})`;
       g.fillRect(0, 0, VW, VH);
     }
+  }
+}
+
+// ===== Autel maudit : le pacte — un pouvoir épique contre une malédiction =====
+export class AltarScene implements Scene {
+  private sel = 0; // 0 = sceller le pacte, 1 = refuser
+  private t = 0;
+  constructor(private altar: Altar) {}
+
+  update(dt: number) {
+    this.t += dt;
+    if (Input.consume("cancel")) { G.ctx.refuseAltar(this.altar); Audio.sfx("back"); SceneManager.pop(); return; }
+    if (Input.consume("left") || Input.consume("right") || Input.consume("up") || Input.consume("down")) {
+      this.sel = 1 - this.sel; Audio.sfx("ui");
+    }
+    if (Input.consume("confirm")) {
+      if (this.sel === 1) {
+        G.ctx.refuseAltar(this.altar);
+        Audio.sfx("back");
+        SceneManager.pop();
+      } else {
+        const curseId = G.ctx.acceptAltar(this.altar);
+        Audio.sfx("curse");
+        G.world.addShake(1.2);
+        SceneManager.pop();
+        // Le pacte scellé : un draft épique s'ouvre (sans changer d'étage)
+        SceneManager.push(new RelicDraftScene({ epicOnly: true, curseId, onDone: () => SceneManager.pop() }));
+      }
+    }
+  }
+
+  draw(g: CanvasRenderingContext2D) {
+    dimBackground(g, 0.78);
+    const w = 560, h = 300, x = VW / 2 - w / 2, y = VH / 2 - h / 2;
+    panel(g, x, y, w, h, T("altar.title"));
+    const pulse = 0.7 + Math.sin(this.t * 3) * 0.3;
+    g.save();
+    g.shadowColor = "#c04888"; g.shadowBlur = 20 * pulse;
+    textShadow(g, "☠", VW / 2, y + 64, 38, "#e060a0", "center");
+    g.restore();
+    text(g, T("altar.desc1"), VW / 2, y + 116, 14, "#d8c8e8", "center");
+    text(g, T("altar.desc2"), VW / 2, y + 140, 13, "#a89ec0", "center");
+    text(g, T("altar.desc3"), VW / 2, y + 164, 12, "#8a6080", "center");
+
+    const opts = [T("altar.accept"), T("altar.refuse")];
+    opts.forEach((o, i) => {
+      const oy = y + 210 + 0, ox = VW / 2 + (i === 0 ? -130 : 130);
+      const selected = i === this.sel;
+      const bw2 = 220, bh2 = 40;
+      g.fillStyle = selected ? (i === 0 ? "rgba(140,30,80,.85)" : "rgba(60,60,80,.85)") : "rgba(30,24,44,.7)";
+      g.beginPath(); g.roundRect(ox - bw2 / 2, oy - bh2 / 2, bw2, bh2, 8); g.fill();
+      if (selected) {
+        g.strokeStyle = i === 0 ? "#ff90c0" : "#b0b8d0"; g.lineWidth = 2;
+        g.beginPath(); g.roundRect(ox - bw2 / 2, oy - bh2 / 2, bw2, bh2, 8); g.stroke();
+      }
+      textShadow(g, o, ox, oy + 1, 14, selected ? "#fff" : "#9a92ac", "center");
+    });
+    text(g, T("altar.hint"), VW / 2, y + h - 18, 11, "#6e6584", "center");
   }
 }
 

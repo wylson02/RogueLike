@@ -1,6 +1,13 @@
-// ===== Combat tour par tour — port de CombatState.cs + CombatContext.cs + Actions =====
+// ===== Combat tour par tour, refondu =====
+// Deux piliers nouveaux par rapport au port C# d'origine :
+//  1. INTENTS : l'ennemi annonce son prochain coup (télégraphe façon Slay the Spire).
+//     Chaque espèce a un pattern cyclique ; les boss changent de pattern en phase 2 ;
+//     les gros coups passent par un tour de CHARGE lisible que le joueur peut mitiger.
+//  2. HOOKS DE BOONS : les boons élémentaires (Braise/Givre/Sang/Tempête) s'appliquent
+//     à-la-frappe / au-crit / au-kill / au-subi et résonnent entre eux (voir boons.ts).
 import { GameContext, LogKind } from "./context";
 import { Monster, MonsterRank } from "./entities";
+import { hasResonance, elementStacks } from "./boons";
 import { T } from "./i18n";
 
 export type CombatActionId = "attack" | "heal" | "dodge" | "flee" | "class" | "item";
@@ -9,8 +16,65 @@ export interface CombatEvent {
   type: "playerHit" | "playerCrit" | "enemyHit" | "playerDodge" | "heal" | "dodgeUp"
       | "fleeOk" | "fleeFail" | "enemyDead" | "playerDead" | "phase2" | "levelup" | "reward"
       | "classAbility" | "enemySpecial" | "enemyBuff"
-      | "itemUse" | "poisonEnemy" | "poisonPlayer" | "stunEnemy" | "stunPlayer";
+      | "itemUse" | "poisonEnemy" | "poisonPlayer" | "stunEnemy" | "stunPlayer"
+      // ---- nouveaux (boons / intents) ----
+      | "burn" | "bleed" | "chill" | "freeze" | "thunder" | "echoHit" | "combustion"
+      | "thorns" | "enemyCharge" | "enemyGuard" | "enemyLeech" | "resonance";
   value?: number;
+}
+
+// ===== Intents : ce que l'ennemi fera à son prochain tour =====
+export type IntentKind = "attack" | "heavy" | "charge" | "guard" | "leech" | "venom" | "pierce";
+
+export interface Intent {
+  kind: IntentKind;
+  mult: number;             // multiplicateur d'ATK effective (attack/heavy/leech/venom/pierce)
+  flat?: number;            // bonus plat de dégâts
+  arm?: number;             // guard : armure gagnée
+  healPct?: number;         // leech : % des dégâts rendus en PV
+  poison?: { turns: number; power: number }; // venom
+  unavoidable?: boolean;    // ignore l'esquive (mais pas la Brume)
+  labelKey: string;         // clé i18n du télégraphe
+}
+
+const I = {
+  attack: (mult = 1): Intent => ({ kind: "attack", mult, labelKey: "intent.attack" }),
+  heavy: (mult: number, flat = 0): Intent => ({ kind: "heavy", mult, flat, labelKey: "intent.heavy" }),
+  charge: (mult: number, flat = 0): Intent => ({ kind: "charge", mult, flat, labelKey: "intent.charge" }),
+  guard: (arm: number): Intent => ({ kind: "guard", mult: 0, arm, labelKey: "intent.guard" }),
+  leech: (mult: number, healPct: number): Intent => ({ kind: "leech", mult, healPct, labelKey: "intent.leech" }),
+  venom: (mult: number, power: number, turns = 3): Intent => ({ kind: "venom", mult, poison: { turns, power }, labelKey: "intent.venom" }),
+  pierce: (mult: number, flat = 0): Intent => ({ kind: "pierce", mult, flat, labelKey: "intent.pierce" }),
+};
+
+export const INTENT_ICON: Record<IntentKind, string> = {
+  attack: "⚔", heavy: "💥", charge: "⏳", guard: "🛡", leech: "🧛", venom: "☠", pierce: "⚡",
+};
+
+// Pattern cyclique par espèce. Les boss reçoivent un pattern différent en phase 2.
+function patternFor(nameKey: string, phase2: boolean): Intent[] {
+  switch (nameKey) {
+    case "mob.slime": return [I.attack(), I.attack(), I.leech(0.8, 50)];
+    case "mob.nightslime": return [I.attack(), I.leech(1.2, 60)];
+    case "mob.spider": return [I.attack(), I.venom(0.9, 2), I.attack(1.1)];
+    case "mob.golem": return [I.attack(), I.attack(0.9), I.charge(2.4, 3)];
+    case "mob.gargoyle": return [I.attack(), I.guard(2), I.heavy(1.6)];
+    case "mob.warden":
+    case "mob.warden.enraged": return [I.attack(), I.guard(3), I.charge(2.2, 2)];
+    case "mob.boss":
+      return phase2
+        ? [I.attack(1.1), I.pierce(1.4), I.charge(2.8, 5)]
+        : [I.attack(), I.attack(1.1), I.charge(2.4, 4)];
+    case "mob.rival":
+      return phase2
+        ? [I.attack(1.1), I.pierce(1.5), I.charge(2.6, 3)]
+        : [I.attack(), I.attack(), I.pierce(1.4)];
+    case "mob.superboss":
+      return phase2
+        ? [I.pierce(1.4), I.leech(1.6, 80), I.charge(2.8, 5)]
+        : [I.attack(), I.leech(1.4, 80), I.charge(2.5, 5)];
+    default: return [I.attack()];
+  }
 }
 
 export class CombatSession {
@@ -20,9 +84,8 @@ export class CombatSession {
   healsLeft = 2;
   readonly healAmount = 8;
   classAbilityUsesLeft = 1;
-  mistTurns = 0; // Potion de brume : esquive garantie (même contre les spéciales)
+  mistTurns = 0; // Potion de brume : esquive garantie (même contre les charges)
   enemySpecialUsed = false;
-  private pendingSpecial: "golem" | "nightslime" | "boss" | "spider" | "superboss" | "rival" | null = null;
   dodgeTurnsLeft = 0;
   get dodgeChance() { return 40 + this.player.dodgeBonus; }
   readonly fleeChance = 55;
@@ -35,11 +98,19 @@ export class CombatSession {
   over = false;
   victory = false;
 
+  // ---- intents ----
+  intent: Intent;                    // ce que l'ennemi fera à son prochain tour (affiché)
+  private patternIdx = 0;
+  private chargedIntent: Intent | null = null; // coup lourd armé par une charge
+  private firstStrikeDone = false;   // pour Tempo (crit garanti) et Grêle (givre massif)
+
   constructor(ctx: GameContext, enemy: Monster) {
     this.ctx = ctx;
     this.enemy = enemy;
     // Écho arcanique / furtif : capacité de classe utilisable 2 fois
     if (ctx.player.hasTalent("m2b") || ctx.player.hasTalent("r2b")) this.classAbilityUsesLeft = 2;
+    // Affixe Blindé : l'élite entre en scène cuirassée
+    if (enemy.affix === "shielded") enemy.addArmor(3);
 
     if (enemy.nameKey === "mob.superboss") {
       this.addLog(T("combat.sboss1"));
@@ -57,6 +128,7 @@ export class CombatSession {
     } else {
       this.addLog(T(enemy.feminine ? "combat.appear.f" : "combat.appear", { name: enemy.name }));
     }
+    if (enemy.affix) this.addLog(T("combat.affix." + enemy.affix));
 
     if (ctx.legendaryEmpowerNextFight) {
       ctx.legendaryEmpowerNextFight = false;
@@ -64,6 +136,8 @@ export class CombatSession {
       this.empowerApplied = true;
       this.addLog(T("combat.empower"));
     }
+
+    this.intent = this.rollIntent();
   }
 
   get player() { return this.ctx.player; }
@@ -73,12 +147,12 @@ export class CombatSession {
   private emit(e: CombatEvent) { this.events.push(e); }
   drainEvents(): CombatEvent[] { const e = this.events; this.events = []; return e; }
   private roll(pct: number) { return this.ctx.rng.next(0, 100) < pct; }
+  private hasCurse(id: string) { return this.ctx.runCurses.includes(id); }
 
-  // Joue un tour complet : action joueur → phase 2 → récompense → tour ennemi → statuts
+  // ===== Tour complet : action joueur → spéciale/phase 2 → tour ennemi → statuts =====
   playTurn(action: CombatActionId, itemId?: string) {
     if (this.over) return;
 
-    // Étourdi : le joueur perd son action
     if (this.player.hasStatus("stun")) {
       this.addLog(T("combat.stunned.player"));
       this.emit({ type: "stunPlayer" });
@@ -94,13 +168,15 @@ export class CombatSession {
     if (this.enemy.hasStatus("stun")) {
       this.addLog(T("combat.stunned.enemy", { name: this.enemy.name }));
       this.emit({ type: "stunEnemy" });
+      // le télégraphe reste armé : l'ennemi gelé reprendra là où il en était
     } else {
       this.resolveEnemyTurn();
+      if (!this.enemy.isDead && !this.player.isDead) this.intent = this.rollIntent();
     }
     if (this.dodgeTurnsLeft > 0) this.dodgeTurnsLeft--;
 
     this.tickStatuses();
-    this.checkEnemyDead(); // mort par poison
+    this.checkEnemyDead(); // mort par poison/brûlure/saignement
 
     if (this.player.isDead) {
       this.addLog(T("combat.playerdead"));
@@ -111,53 +187,174 @@ export class CombatSession {
     if (this.isOver) this.finish();
   }
 
-  // Fin de tour : le poison ronge les deux camps, les statuts expirent
+  // ===== Fin de tour : les dégâts sur la durée rongent, les statuts expirent =====
   private tickStatuses() {
-    const pPoison = this.player.getStatus("poison");
+    const p = this.player, e = this.enemy;
+    const pPoison = p.getStatus("poison");
     if (pPoison && pPoison.turns > 0) {
-      this.player.hp -= pPoison.power;
+      p.hp -= pPoison.power;
       this.addLog(T("combat.poison.player", { n: pPoison.power }));
       this.emit({ type: "poisonPlayer", value: pPoison.power });
     }
-    const ePoison = this.enemy.getStatus("poison");
-    if (ePoison && ePoison.turns > 0 && !this.enemy.isDead) {
-      this.enemy.hp -= ePoison.power;
-      this.addLog(T("combat.poison.enemy", { name: this.enemy.name, n: ePoison.power }));
-      this.emit({ type: "poisonEnemy", value: ePoison.power });
+    if (!e.isDead) {
+      const ePoison = e.getStatus("poison");
+      if (ePoison && ePoison.turns > 0) {
+        e.hp -= ePoison.power;
+        this.addLog(T("combat.poison.enemy", { name: e.name, n: ePoison.power }));
+        this.emit({ type: "poisonEnemy", value: ePoison.power });
+      }
+      const burn = e.getStatus("burn");
+      if (burn && burn.turns > 0) {
+        e.hp -= burn.power;
+        this.addLog(T("combat.burn.tick", { name: e.name, n: burn.power }));
+        this.emit({ type: "burn", value: burn.power });
+      }
+      const bleed = e.getStatus("bleed");
+      if (bleed && bleed.turns > 0) {
+        e.hp -= bleed.power;
+        this.addLog(T("combat.bleed.tick", { name: e.name, n: bleed.power }));
+        this.emit({ type: "bleed", value: bleed.power });
+        // Résonance de Sang : le sang versé te revient
+        if (hasResonance(p, "blood") && bleed.power > 0) {
+          p.heal(bleed.power);
+          this.addLog(T("combat.res.blood.heal", { n: bleed.power }));
+        }
+      }
     }
-    for (const c of [this.player, this.enemy]) {
+    for (const c of [p, e]) {
       for (const s of c.statuses) s.turns--;
       c.statuses = c.statuses.filter(s => s.turns > 0);
     }
   }
 
+  // ===== Frappe du joueur : cœur des hooks de boons =====
+  // Retourne les dégâts totaux infligés. isEcho évite les récursions d'écho infinies.
+  private strike(baseMult: number, opts: { autoCrit?: boolean; pierce?: boolean; isEcho?: boolean; label?: "attack" | "class" } = {}): number {
+    const p = this.player, e = this.enemy;
+    const base = Math.max(1, Math.round(p.attack * baseMult));
+    let crit = opts.autoCrit ?? false;
+    // Tempo : la première frappe de chaque combat est un crit garanti
+    if (!this.firstStrikeDone && p.boonLevel("tempo") > 0) crit = true;
+    if (!crit) crit = this.roll(p.critChancePercent);
+    // Écho de Tempête : les échos peuvent critiquer si la résonance est éveillée
+    if (opts.isEcho && crit && !hasResonance(p, "storm")) crit = false;
+
+    let dmg = base;
+    if (crit) {
+      dmg = Math.round(base * (p.critMultiplierPercent / 100));
+      dmg = Math.max(dmg, base + 1);
+    }
+    // Immolation : +20%/cumul contre un ennemi qui brûle
+    const immo = p.boonLevel("immolate");
+    if (immo > 0 && e.hasStatus("burn")) dmg = Math.round(dmg * (1 + 0.2 * immo));
+    // Frénésie : +18%/cumul sous 50% PV
+    const fren = p.boonLevel("frenzy");
+    if (fren > 0 && p.hp <= p.maxHp * 0.5) dmg = Math.round(dmg * (1 + 0.18 * fren));
+
+    let dealt: number;
+    if (opts.pierce) { e.hp -= dmg; dealt = dmg; }
+    else dealt = e.takeDamage(dmg);
+
+    // Vol de vie
+    let heal = 0;
+    if (p.lifeStealPercent > 0 && dealt > 0) {
+      heal = Math.floor(dealt * (p.lifeStealPercent / 100));
+      if (heal > 0) p.heal(heal);
+    }
+
+    // ---- log + event du coup principal ----
+    if (opts.label === "class") {
+      // le log de la capacité est écrit par l'appelant ; on émet juste l'event
+      this.emit({ type: "classAbility", value: dealt });
+    } else if (opts.isEcho) {
+      this.addLog(T("combat.echo", { n: dealt }));
+      this.emit({ type: "echoHit", value: dealt });
+    } else {
+      let log = crit ? T("combat.crit", { n: dealt }) : T("combat.attack", { n: dealt });
+      if (heal > 0) log += " " + T("combat.lifesteal", { n: heal });
+      this.addLog(log);
+      this.emit({ type: crit ? "playerCrit" : "playerHit", value: dealt });
+    }
+
+    // ---- Foudre : les crits foudroient (dégâts bonus, ignore l'armure) ----
+    const thunder = p.boonLevel("thunder");
+    if (crit && thunder > 0 && !e.isDead) {
+      const bolt = Math.max(1, Math.round(dealt * 0.35 * thunder));
+      e.hp -= bolt;
+      this.addLog(T("combat.thunder", { n: bolt }));
+      this.emit({ type: "thunder", value: bolt });
+    }
+
+    this.applyOnHitBoons(crit);
+
+    // ---- Combustion (résonance de Braise) : frapper un ennemi qui brûle fait détoner la brûlure ----
+    if (hasResonance(p, "fire") && !e.isDead) {
+      const burnPow = e.statusPower("burn");
+      if (burnPow > 0 && !opts.isEcho) {
+        e.hp -= burnPow;
+        this.addLog(T("combat.res.fire", { n: burnPow }));
+        this.emit({ type: "combustion", value: burnPow });
+      }
+    }
+
+    // ---- Épines (affixe d'élite) : le fer se paie ----
+    if (e.affix === "thorns" && !e.isDead && dealt > 0) {
+      const back = Math.max(1, Math.round(dealt * 0.2));
+      p.hp -= back;
+      this.addLog(T("combat.thorns", { n: back }));
+      this.emit({ type: "thorns", value: back });
+    }
+
+    this.firstStrikeDone = true;
+
+    // ---- Écho de Tempête : la frappe se rejoue (une seule fois, à 50%) ----
+    const echo = p.boonLevel("echo");
+    if (!opts.isEcho && echo > 0 && !e.isDead) {
+      let chance = 15 * echo;
+      if (hasResonance(p, "storm")) chance += 15;
+      if (this.roll(chance)) dealt += this.strike(baseMult * 0.5, { ...opts, isEcho: true, label: "attack" });
+    }
+    return dealt;
+  }
+
+  // Statuts appliqués par les boons à chaque frappe (même les échos)
+  private applyOnHitBoons(crit: boolean) {
+    const p = this.player, e = this.enemy;
+    if (e.isDead) return;
+    // Braise
+    const kindle = p.boonLevel("kindle");
+    if (kindle > 0) { e.addStatus("burn", 3, 2 * kindle); this.emit({ type: "burn", value: 0 }); }
+    const ignite = p.boonLevel("ignite");
+    if (crit && ignite > 0) { e.addStatus("burn", 3, 3 * ignite); this.emit({ type: "burn", value: 0 }); }
+    // Givre
+    const frost = p.boonLevel("frostbite");
+    if (frost > 0) { e.addStatus("chill", 4, frost); this.emit({ type: "chill", value: e.statusPower("chill") }); }
+    const hail = p.boonLevel("hail");
+    if (hail > 0 && !this.firstStrikeDone) { e.addStatus("chill", 5, 3 * hail); this.emit({ type: "chill", value: e.statusPower("chill") }); }
+    const zero = p.boonLevel("absolutezero");
+    if (zero > 0 && this.roll(12 * zero) && !e.hasStatus("stun")) {
+      e.addStatus("stun", 1);
+      this.addLog(T("combat.freeze", { name: e.name }));
+      this.emit({ type: "freeze" });
+    }
+    // Cœur de glace : ton armure croît avec le givre de l'ennemi (recalcul simple, borné)
+    // (implémenté comme bonus de réduction dans les dégâts ennemis — voir enemyDamage)
+    // Sang
+    const lacer = p.boonLevel("laceration");
+    if (lacer > 0) { e.addStatus("bleed", 4, 2 * lacer); this.emit({ type: "bleed", value: 0 }); }
+  }
+
   private executePlayerAction(action: CombatActionId, itemId?: string) {
     switch (action) {
-      case "attack": {
-        const baseDmg = Math.max(1, this.player.attack);
-        const crit = this.roll(this.player.critChancePercent);
-        let dmg = baseDmg;
-        if (crit) {
-          dmg = Math.round(baseDmg * (this.player.critMultiplierPercent / 100));
-          dmg = Math.max(dmg, baseDmg + 1);
-        }
-        this.enemy.takeDamage(dmg);
-        let heal = 0;
-        if (this.player.lifeStealPercent > 0 && dmg > 0) {
-          heal = Math.floor(dmg * (this.player.lifeStealPercent / 100));
-          if (heal > 0) this.player.heal(heal);
-        }
-        let log = crit ? T("combat.crit", { n: dmg }) : T("combat.attack", { n: dmg });
-        if (heal > 0) log += " " + T("combat.lifesteal", { n: heal });
-        this.addLog(log);
-        this.emit({ type: crit ? "playerCrit" : "playerHit", value: dmg });
+      case "attack":
+        this.strike(1, { label: "attack" });
         break;
-      }
       case "heal": {
         if (this.healsLeft <= 0) return;
         this.healsLeft--;
-        // Second souffle (Guerrier palier 2) : soins de combat renforcés
-        const amount = this.healAmount + (this.player.hasTalent("w2a") ? 4 : 0);
+        let amount = this.healAmount + (this.player.hasTalent("w2a") ? 4 : 0);
+        // Malédiction d'Attrition : les soins de combat sont diminués de moitié
+        if (this.hasCurse("attrition")) amount = Math.ceil(amount / 2);
         this.player.heal(amount);
         this.addLog(T("combat.heal", { n: amount }));
         this.emit({ type: "heal", value: amount });
@@ -186,32 +383,20 @@ export class CombatSession {
         const p = this.player;
         switch (p.classId) {
           case "warrior": {
-            const dmg = Math.round(p.attack * 3);
-            this.enemy.takeDamage(dmg);
+            const dmg = this.strike(3, { label: "class" });
             this.addLog(T("combat.classability.warrior", { n: dmg }));
-            this.emit({ type: "classAbility", value: dmg });
             break;
           }
           case "mage": {
-            // Surcharge (Mage palier 1) : Explosion Arcanique +50%
             const mul = p.hasTalent("m1b") ? 1.5 : 1;
-            const dmg = Math.round((p.attack * 2.2 + 5) * mul);
-            this.enemy.hp -= dmg; // ignore l'armure de la cible
+            const dmg = this.strike(2.2 * mul, { pierce: true, label: "class" });
             this.addLog(T("combat.classability.mage", { n: dmg }));
-            this.emit({ type: "classAbility", value: dmg });
             break;
           }
           case "rogue": {
-            const baseDmg = Math.max(1, p.attack);
-            const dmg = Math.max(Math.round(baseDmg * (p.critMultiplierPercent / 100)), baseDmg + 1);
-            this.enemy.takeDamage(dmg);
-            if (p.lifeStealPercent > 0) {
-              const heal = Math.floor(dmg * (p.lifeStealPercent / 100));
-              if (heal > 0) p.heal(heal);
-            }
+            const dmg = this.strike(1, { autoCrit: true, label: "class" });
             this.dodgeTurnsLeft = Math.max(this.dodgeTurnsLeft, 2);
             this.addLog(T("combat.classability.rogue", { n: dmg }));
-            this.emit({ type: "classAbility", value: dmg });
             break;
           }
         }
@@ -252,7 +437,6 @@ export class CombatSession {
     if (this.phase2 || this.enemy.rank !== MonsterRank.Boss || this.enemy.isDead) return;
     if (this.enemy.maxHp <= 0 || this.enemy.hp > Math.floor(this.enemy.maxHp / 2)) return;
     this.phase2 = true;
-    // Buffs de la phase 2 (fusion des deux déclencheurs du code original)
     this.enemy.heal(18);
     this.enemy.modifyAttack(+5);
     this.enemy.addArmor(2);
@@ -264,18 +448,27 @@ export class CombatSession {
     this.addLog(T(`combat.${variant}.b`, { name: this.enemy.name }));
     this.addLog(T(`combat.${variant}.c`));
     this.emit({ type: "phase2" });
+    // Le boss change de pattern : nouveau télégraphe immédiat
+    this.patternIdx = 0;
+    this.chargedIntent = null;
+    this.intent = this.rollIntent();
   }
 
-  // Capacités spéciales des monstres — 1 fois par combat, au franchissement d'un seuil de PV.
+  // Capacité spéciale au franchissement d'un seuil de PV — 1 fois par combat.
+  // Les buffs immédiats restent immédiats ; les gros coups deviennent des CHARGES lisibles.
   private checkEnemySpecial() {
     if (this.enemySpecialUsed || this.enemy.isDead || this.enemy.maxHp <= 0) return;
     const hpPct = this.enemy.hp / this.enemy.maxHp;
+    const forceCharge = (mult: number, flat = 0) => {
+      this.enemySpecialUsed = true;
+      this.chargedIntent = null;
+      this.intent = I.charge(mult, flat);
+      this.addLog(T("combat.special.telegraph", { name: this.enemy.name }));
+    };
     switch (this.enemy.nameKey) {
-      case "mob.golem":
-        if (hpPct <= 0.5) { this.enemySpecialUsed = true; this.pendingSpecial = "golem"; }
-        break;
+      case "mob.golem": if (hpPct <= 0.5) forceCharge(3, 5); break;
       case "mob.nightslime":
-        if (hpPct <= 0.5) { this.enemySpecialUsed = true; this.pendingSpecial = "nightslime"; }
+        if (hpPct <= 0.5) { this.enemySpecialUsed = true; this.intent = I.leech(2, 50); }
         break;
       case "mob.warden":
       case "mob.warden.enraged":
@@ -286,17 +479,13 @@ export class CombatSession {
           this.emit({ type: "enemyBuff" });
         }
         break;
-      case "mob.boss":
-        if (hpPct <= 0.75) { this.enemySpecialUsed = true; this.pendingSpecial = "boss"; }
-        break;
+      case "mob.boss": if (hpPct <= 0.75) forceCharge(3, 5); break;
       case "mob.spider":
-        if (hpPct <= 0.5) { this.enemySpecialUsed = true; this.pendingSpecial = "spider"; }
+        if (hpPct <= 0.5) { this.enemySpecialUsed = true; this.intent = I.venom(2, 2, 3); }
         break;
-      case "mob.superboss":
-        if (hpPct <= 0.75) { this.enemySpecialUsed = true; this.pendingSpecial = "superboss"; }
-        break;
+      case "mob.superboss": if (hpPct <= 0.75) forceCharge(2.5, 5); break;
       case "mob.rival":
-        if (hpPct <= 0.6) { this.enemySpecialUsed = true; this.pendingSpecial = "rival"; }
+        if (hpPct <= 0.6) { this.enemySpecialUsed = true; this.intent = I.pierce(2.2, 3); }
         break;
       case "mob.gargoyle":
         if (hpPct <= 0.5) {
@@ -321,6 +510,13 @@ export class CombatSession {
       const ups = this.player.gainXp(xp);
       this.player.addGold(gold);
       this.ctx.awardKillEssence(this.enemy);
+      // Transfusion : le sang des vaincus te répare
+      const trans = this.player.boonLevel("transfusion");
+      if (trans > 0) {
+        const heal = Math.max(1, Math.round(this.player.maxHp * 0.06 * trans));
+        this.player.heal(heal);
+        this.addLog(T("combat.transfusion", { n: heal }));
+      }
       this.addLog(T("combat.reward", { xp, gold }));
       this.ctx.pushLog(T("combat.reward", { xp, gold }), LogKind.Loot);
       this.emit({ type: "reward" });
@@ -347,92 +543,140 @@ export class CombatSession {
     this.emit({ type: "enemyDead" });
   }
 
+  // ===== Tour ennemi : résolution de l'intent télégraphé =====
+  private rollIntent(): Intent {
+    // Une charge résolue arme le coup lourd correspondant
+    if (this.chargedIntent) { const c = this.chargedIntent; this.chargedIntent = null; return c; }
+    const pattern = patternFor(this.enemy.nameKey, this.phase2);
+    const intent = pattern[this.patternIdx % pattern.length];
+    this.patternIdx++;
+    return intent;
+  }
+
+  // Dégâts ennemis avec Givre (ATK réduite), résonances et affixes.
+  private enemyRaw(mult: number, flat = 0): number {
+    let raw = Math.max(1, Math.round(this.enemy.effectiveAttack * mult + flat));
+    // Résonance de Givre : un ennemi engourdi frappe encore plus faiblement
+    if (hasResonance(this.player, "frost") && this.enemy.hasStatus("chill"))
+      raw = Math.max(1, Math.round(raw * 0.8));
+    return raw;
+  }
+
+  // Armure effective du joueur (Cœur de glace : +1 ARM / 2 givres sur l'ennemi, par cumul)
+  private playerBonusArmor(): number {
+    const ice = this.player.boonLevel("iceheart");
+    if (ice <= 0) return 0;
+    return Math.floor(this.enemy.statusPower("chill") / 2) * ice;
+  }
+
+  private hurtPlayer(raw: number, pierce = false): number {
+    let dmg: number;
+    if (pierce) { dmg = raw; this.player.hp -= raw; }
+    else {
+      const bonus = this.playerBonusArmor();
+      dmg = Math.max(0, raw - (this.player.armor + bonus));
+      this.player.hp -= dmg;
+    }
+    // Cendres : encaisser embrase l'agresseur
+    const ashes = this.player.boonLevel("ashes");
+    if (ashes > 0 && dmg > 0 && !this.enemy.isDead) {
+      this.enemy.addStatus("burn", 3, 2 * ashes);
+      this.emit({ type: "burn", value: 0 });
+    }
+    return dmg;
+  }
+
   private resolveEnemyTurn() {
     if (this.enemy.isDead) return;
-    // Potion de brume : esquive garantie, y compris contre les attaques spéciales
+    const it = this.intent;
+
+    // ---- CHARGE : l'ennemi arme son coup, le joueur a un tour pour réagir ----
+    if (it.kind === "charge") {
+      this.chargedIntent = { ...I.heavy(it.mult, it.flat), unavoidable: false };
+      this.addLog(T("combat.enemy.charge", { name: this.enemy.name }));
+      this.emit({ type: "enemyCharge" });
+      return;
+    }
+    // ---- GUARD : buff défensif ----
+    if (it.kind === "guard") {
+      this.enemy.addArmor(it.arm ?? 2);
+      this.addLog(T("combat.enemy.guard", { name: this.enemy.name, n: it.arm ?? 2 }));
+      this.emit({ type: "enemyGuard" });
+      return;
+    }
+
+    // ---- Attaques : Brume > esquive > coup ----
     if (this.mistTurns > 0) {
       this.mistTurns--;
       this.addLog(T("combat.mist.dodge", { name: this.enemy.name }));
       this.emit({ type: "playerDodge" });
       return;
     }
-    // Les attaques spéciales ignorent l'esquive du joueur.
-    if (!this.pendingSpecial) {
+
+    const isHeavy = it.kind === "heavy";
+    const bruteHeavy = isHeavy && this.enemy.affix === "brute";
+    let dodgedHalf = false;
+    if (!it.unavoidable) {
       if (this.dodgeTurnsLeft > 0) {
-        if (this.roll(this.dodgeChance)) {
+        if (isHeavy) {
+          // Un coup lourd télégraphé ne s'évite pas totalement : la garde le mitige de moitié
+          if (!bruteHeavy) { dodgedHalf = true; this.addLog(T("combat.heavy.braced", { name: this.enemy.name })); }
+        } else if (this.roll(this.dodgeChance)) {
           this.addLog(T("combat.dodged", { name: this.enemy.name }));
           this.emit({ type: "playerDodge" });
           return;
+        } else {
+          this.addLog(T("combat.nododge", { name: this.enemy.name }));
         }
-        this.addLog(T("combat.nododge", { name: this.enemy.name }));
-      } else if (this.player.hasTalent("r2a") && this.roll(15)) {
-        // Ombre (Voleur palier 2) : esquive passive permanente
+      } else if (!isHeavy && this.player.hasTalent("r2a") && this.roll(15)) {
         this.addLog(T("combat.dodged", { name: this.enemy.name }));
         this.emit({ type: "playerDodge" });
         return;
       }
     }
-    const atk = Math.max(1, this.enemy.attack);
-    if (this.pendingSpecial === "golem") {
-      this.pendingSpecial = null;
-      const dmg = this.player.takeDamage(Math.round(atk * 3 + 5));
-      this.addLog(T("combat.special.golem", { n: dmg }));
-      this.emit({ type: "enemySpecial", value: dmg });
-      return;
-    }
-    if (this.pendingSpecial === "nightslime") {
-      this.pendingSpecial = null;
-      const dmg = this.player.takeDamage(Math.round(atk * 2));
-      const heal = Math.round(dmg * 0.5);
-      if (heal > 0) this.enemy.heal(heal);
-      this.addLog(T("combat.special.nightslime", { n: dmg, heal }));
-      this.emit({ type: "enemySpecial", value: dmg });
-      return;
-    }
-    if (this.pendingSpecial === "boss") {
-      this.pendingSpecial = null;
-      const dmg = this.player.takeDamage(Math.round(atk * 3 + 5));
-      this.addLog(T("combat.special.boss", { name: this.enemy.name, n: dmg }));
-      this.emit({ type: "enemySpecial", value: dmg });
-      return;
-    }
-    if (this.pendingSpecial === "spider") {
-      this.pendingSpecial = null;
-      const dmg = this.player.takeDamage(Math.round(atk * 2 + 3));
-      this.player.addStatus("poison", 3, 2); // venin : 2 dégâts/tour pendant 3 tours
-      this.addLog(T("combat.special.spider", { n: dmg }));
-      this.emit({ type: "enemySpecial", value: dmg });
-      return;
-    }
-    if (this.pendingSpecial === "rival") {
-      this.pendingSpecial = null;
-      const classId = this.ctx.player.classId;
-      let dmg = 0;
-      if (classId === "warrior") {
-        dmg = this.player.takeDamage(Math.round(atk * 3));
-      } else if (classId === "mage") {
-        dmg = Math.round(atk * 2.2 + 5);
-        this.player.hp -= dmg; // ignore l'armure du joueur, comme la capacité qu'il imite
-      } else {
-        const raw = Math.max(atk + 1, Math.round(atk * (this.enemy.critMultiplierPercent / 100)));
-        dmg = this.player.takeDamage(raw);
+
+    // ---- Résolution du coup ----
+    const swings = this.enemy.affix === "swift" && it.kind === "attack" ? 2 : 1;
+    for (let s = 0; s < swings; s++) {
+      if (this.player.isDead) break;
+      const multEff = (swings === 2 ? it.mult * 0.6 : it.mult) * (dodgedHalf ? 0.5 : 1);
+      let raw = this.enemyRaw(multEff, dodgedHalf ? Math.round((it.flat ?? 0) / 2) : (it.flat ?? 0));
+      const pierce = it.kind === "pierce";
+      const dmg = this.hurtPlayer(raw, pierce);
+
+      switch (it.kind) {
+        case "attack":
+          this.addLog(T("combat.enemyhit", { name: this.enemy.name, n: dmg }));
+          this.emit({ type: "enemyHit", value: dmg });
+          break;
+        case "heavy":
+          this.addLog(T("combat.enemy.heavy", { name: this.enemy.name, n: dmg }));
+          this.emit({ type: "enemySpecial", value: dmg });
+          break;
+        case "pierce":
+          this.addLog(T("combat.enemy.pierce", { name: this.enemy.name, n: dmg }));
+          this.emit({ type: "enemySpecial", value: dmg });
+          break;
+        case "leech": {
+          const heal = Math.max(1, Math.round(dmg * ((it.healPct ?? 50) / 100)));
+          this.enemy.heal(heal);
+          this.addLog(T("combat.enemy.leech", { name: this.enemy.name, n: dmg, heal }));
+          this.emit({ type: "enemyLeech", value: dmg });
+          break;
+        }
+        case "venom":
+          if (it.poison) this.player.addStatus("poison", it.poison.turns, it.poison.power);
+          this.addLog(T("combat.enemy.venom", { name: this.enemy.name, n: dmg }));
+          this.emit({ type: "enemySpecial", value: dmg });
+          break;
       }
-      this.addLog(T(`combat.special.rival.${classId}`, { n: dmg }));
-      this.emit({ type: "enemySpecial", value: dmg });
-      return;
+      // Affixe Vampirique : se nourrit de chaque coup
+      if (this.enemy.affix === "vampiric" && dmg > 0) {
+        const vheal = Math.max(1, Math.round(dmg * 0.3));
+        this.enemy.heal(vheal);
+        this.addLog(T("combat.affix.vampiric.proc", { name: this.enemy.name, n: vheal }));
+      }
     }
-    if (this.pendingSpecial === "superboss") {
-      this.pendingSpecial = null;
-      const dmg = this.player.takeDamage(Math.round(atk * 2.5 + 5));
-      const heal = Math.max(1, Math.round(dmg * 0.8));
-      this.enemy.heal(heal);
-      this.addLog(T("combat.special.superboss", { name: this.enemy.name, n: dmg, heal }));
-      this.emit({ type: "enemySpecial", value: dmg });
-      return;
-    }
-    const dmg = this.player.takeDamage(atk);
-    this.addLog(T("combat.enemyhit", { name: this.enemy.name, n: dmg }));
-    this.emit({ type: "enemyHit", value: dmg });
   }
 
   private finish() {

@@ -1,6 +1,6 @@
 // ===== Niveaux — port 1:1 de App/Services/LevelCatalog.cs =====
 import { GameMap, Pos, P } from "./core";
-import { Monster, MonsterCatalog, Pnj, Chest, ChestType, Seal, Merchant } from "./entities";
+import { Monster, MonsterCatalog, Pnj, Chest, ChestType, Seal, Merchant, Altar, Shrine } from "./entities";
 import { Item, ItemCatalog } from "./items";
 import { MapCatalog } from "./maps";
 
@@ -13,6 +13,8 @@ export interface LevelData {
   pnjs: Pnj[];
   seals: Seal[];
   merchant: Merchant | null;
+  altars?: Altar[];   // événements d'étage (Descente Infinie uniquement)
+  shrines?: Shrine[];
 }
 
 export const FIRST_LEVEL = 1;

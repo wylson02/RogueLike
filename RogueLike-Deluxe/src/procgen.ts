@@ -2,7 +2,7 @@
 // Salles rectangulaires reliées par des couloirs en L ; connectivité garantie par
 // le chaînage des couloirs (chaque salle est reliée à la suivante).
 import { Tile, Pos, P, RNG, GameMap, manhattan } from "./core";
-import { Monster, MonsterCatalog, Chest, ChestType, Merchant, Pnj, Seal } from "./entities";
+import { Monster, MonsterCatalog, Chest, ChestType, Merchant, Pnj, Seal, Altar, Shrine, ELITE_AFFIXES } from "./entities";
 import { Item, ItemCatalog } from "./items";
 import type { LevelData } from "./levels";
 
@@ -40,8 +40,10 @@ function scaleMonster(m: Monster, depth: number, boss: boolean): Monster {
 }
 
 // Transforme un monstre normal en élite : plus coriace, plus rentable, marqué visuellement.
-function makeElite(m: Monster, depth: number): Monster {
+// Chaque élite reçoit un AFFIXE de combat (Épines, Vampirique, Véloce, Brute, Blindé).
+function makeElite(m: Monster, depth: number, rng?: RNG): Monster {
   m.elite = true;
+  if (rng) m.affix = ELITE_AFFIXES[rng.next(0, ELITE_AFFIXES.length)];
   m.maxHp = Math.round(m.maxHp * 1.7);
   m.hp = m.maxHp;
   m.modifyAttack(2 + Math.floor(depth / 3));
@@ -143,7 +145,7 @@ export function generateFloor(depth: number, rng: RNG): LevelData {
     // Deux gardes d'élite pour épicer l'arène.
     for (const r of rooms.slice(1, 3)) {
       const p = freeCellIn(r);
-      if (p) monsters.push(makeElite(scaleMonster(monsterPool(depth)[rng.next(0, monsterPool(depth).length)](p), depth, false), depth));
+      if (p) monsters.push(makeElite(scaleMonster(monsterPool(depth)[rng.next(0, monsterPool(depth).length)](p), depth, false), depth, rng));
     }
     // Un coffre légendaire en récompense anticipée.
     const cRoom = rooms[rng.next(1, rooms.length)];
@@ -161,7 +163,7 @@ export function generateFloor(depth: number, rng: RNG): LevelData {
         const p = freeCellIn(r);
         if (!p) continue;
         let m = scaleMonster(pool[rng.next(0, pool.length)](p), depth, false);
-        if (rng.next(0, 100) < 12 + depth) m = makeElite(m, depth);
+        if (rng.next(0, 100) < 12 + depth) m = makeElite(m, depth, rng);
         monsters.push(m);
       }
     }
@@ -188,7 +190,62 @@ export function generateFloor(depth: number, rng: RNG): LevelData {
     if (p) merchant = new Merchant(p, "Vesna la Troqueuse");
   }
 
+  // ---- Événements d'étage : le risque/récompense de la Descente ----
+  const altars: Altar[] = [];
+  const shrines: Shrine[] = [];
+  if (!boss) {
+    // Autel maudit (~30% des étages dès la profondeur 2) : boon épique contre malédiction.
+    if (depth >= 2 && rng.next(0, 100) < 30) {
+      const r = rooms[rng.next(1, rooms.length)];
+      const p = freeCellIn(r);
+      if (p) altars.push(new Altar(p));
+    }
+    // Sanctuaire (~25%) : une source de soin unique.
+    if (rng.next(0, 100) < 25) {
+      const r = rooms[rng.next(1, rooms.length)];
+      const p = freeCellIn(r);
+      if (p) shrines.push(new Shrine(p));
+    }
+    // Salle secrète (~55%) : un mur fissuré cache une poche au trésor légendaire.
+    if (rng.next(0, 100) < 55) carveSecretRoom(map, rooms, rng, chests);
+  }
+
   const pnjs: Pnj[] = [];
   const seals: Seal[] = [];
-  return { map, playerStart: start, monsters, items, chests, pnjs, seals, merchant };
+  return { map, playerStart: start, monsters, items, chests, pnjs, seals, merchant, altars, shrines };
+}
+
+// Creuse une poche 3×3 derrière un mur d'une salle, scellée par un mur FISSURÉ que le
+// joueur peut enfoncer. Le trésor est toujours légendaire : la curiosité paie.
+function carveSecretRoom(map: GameMap, rooms: Room[], rng: RNG, chests: Chest[]) {
+  const DIRS: [number, number][] = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+  for (let tries = 0; tries < 80; tries++) {
+    const r = rooms[rng.next(0, rooms.length)];
+    const [dx, dy] = DIRS[rng.next(0, 4)];
+    // case de la salle collée au bord choisi
+    const edge = dx !== 0
+      ? P(dx < 0 ? r.x : r.x + r.w - 1, rng.next(r.y, r.y + r.h))
+      : P(rng.next(r.x, r.x + r.w), dy < 0 ? r.y : r.y + r.h - 1);
+    const wall = P(edge.x + dx, edge.y + dy);       // le futur mur fissuré
+    const center = P(wall.x + dx * 2, wall.y + dy * 2); // centre de la poche 3×3
+    // toute la zone (poche + fissure) doit être du mur plein, à ≥1 case du bord
+    let ok = map.inBounds(P(wall.x, wall.y)) && map.get(wall) === Tile.Wall;
+    for (let yy = center.y - 1; yy <= center.y + 1 && ok; yy++)
+      for (let xx = center.x - 1; xx <= center.x + 1 && ok; xx++) {
+        if (xx <= 0 || yy <= 0 || xx >= map.width - 1 || yy >= map.height - 1) { ok = false; break; }
+        if (map.get(P(xx, yy)) !== Tile.Wall) ok = false;
+      }
+    // la case entre la fissure et la poche doit aussi être creusable
+    const link = P(wall.x + dx, wall.y + dy);
+    if (ok && (!map.inBounds(link) || (map.get(link) !== Tile.Wall))) ok = false;
+    if (!ok) continue;
+
+    for (let yy = center.y - 1; yy <= center.y + 1; yy++)
+      for (let xx = center.x - 1; xx <= center.x + 1; xx++)
+        map.set(xx, yy, Tile.Floor);
+    map.set(link.x, link.y, Tile.Floor);
+    map.set(wall.x, wall.y, Tile.Cracked);
+    chests.push(new Chest(center, ChestType.Legendary));
+    return;
+  }
 }

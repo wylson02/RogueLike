@@ -2,6 +2,7 @@
 import { Tile, Pos, P, key, lerp, clamp } from "./core";
 import { GameContext, LogKind } from "./context";
 import { Monster, MonsterRank, Chest, ChestType } from "./entities";
+import { boonById, ELEMENT_COLOR, hasResonance, elementStacks, Element } from "./boons";
 import { getSprite } from "./sprites";
 import { T } from "./i18n";
 
@@ -105,11 +106,19 @@ export class WorldRenderer {
   particles = new Particles();
   private lightCanvas = document.createElement("canvas");
   time = 0;
+  private shake = 0;         // secousse caméra (exploration)
+  private nightBlend = 0;    // fondu jour ↔ nuit (0 = jour, 1 = nuit)
+  private lastPPos = { x: -1, y: -1 }; // poussière de pas
+  private heroFacingLeft = false;      // orientation du héros
+  private heroLastX = 0;
+
+  addShake(power: number) { this.shake = Math.min(2, this.shake + power); }
 
   snapCamera(ctx: GameContext) {
     const px = ctx.player.pos.x * TS, py = ctx.player.pos.y * TS;
     this.cam.x = clamp(px - VW / 2, -TS, ctx.map.width * TS - VW + TS);
     this.cam.y = clamp(py - VH / 2, -TS, ctx.map.height * TS - VH + TS);
+    this.nightBlend = ctx.time.isNight ? 1 : 0;
   }
 
   draw(g: CanvasRenderingContext2D, ctx: GameContext, dt: number) {
@@ -118,13 +127,42 @@ export class WorldRenderer {
     // Les biomes cyclent au-delà de l'étage 5 (Descente Infinie).
     const biome = BIOMES[((ctx.currentLevel - 1) % 5) + 1] ?? BIOMES[1];
 
-    // Caméra suit le joueur (tweené)
+    // Caméra suit le joueur (tweené) + secousse
     const pt = renderPos(ctx.player, ctx.player.pos, dt);
     const targX = clamp(pt.x * TS + TS / 2 - VW / 2, -TS, Math.max(-TS, ctx.map.width * TS - VW + TS));
     const targY = clamp(pt.y * TS + TS / 2 - VH / 2, -TS, Math.max(-TS, ctx.map.height * TS - VH + TS));
     this.cam.x = lerp(this.cam.x, targX, clamp(dt * 6, 0, 1));
     this.cam.y = lerp(this.cam.y, targY, clamp(dt * 6, 0, 1));
-    const cx = Math.round(this.cam.x), cy = Math.round(this.cam.y);
+    this.shake = Math.max(0, this.shake - dt * 3.5);
+    const shX = this.shake > 0 ? (Math.random() - 0.5) * this.shake * 9 : 0;
+    const shY = this.shake > 0 ? (Math.random() - 0.5) * this.shake * 9 : 0;
+    const cx = Math.round(this.cam.x + shX), cy = Math.round(this.cam.y + shY);
+
+    // Poussière de pas : le déplacement laisse une trace
+    if (this.lastPPos.x !== ctx.player.pos.x || this.lastPPos.y !== ctx.player.pos.y) {
+      if (this.lastPPos.x >= 0) {
+        for (let i = 0; i < 3; i++)
+          this.particles.spawn({
+            x: this.lastPPos.x * TS + TS / 2 + (Math.random() - 0.5) * 10,
+            y: this.lastPPos.y * TS + TS - 8 + (Math.random() - 0.5) * 4,
+            vx: (Math.random() - 0.5) * 16, vy: -6 - Math.random() * 10,
+            life: 0.4 + Math.random() * 0.25, maxLife: 0.65, size: 2.2, color: "rgba(180,170,160,.5)",
+          });
+      }
+      this.lastPPos = { x: ctx.player.pos.x, y: ctx.player.pos.y };
+    }
+
+    // Ambiance de biome : braises/spores flottantes autour du joueur
+    if (Math.random() < dt * 8) {
+      const emberCol = ctx.currentLevel >= 4 ? (Math.random() < 0.6 ? "#c04030" : "#802020")
+        : ctx.currentLevel === 2 ? "#4a7ab0" : ctx.currentLevel === 3 ? "#b09a60" : "#7a708a";
+      this.particles.spawn({
+        x: cx + Math.random() * VW, y: cy + VH + 6,
+        vx: (Math.random() - 0.5) * 8, vy: -10 - Math.random() * 16,
+        life: 4 + Math.random() * 3, maxLife: 7, size: 1.6 + Math.random() * 1.4,
+        color: emberCol, glow: ctx.currentLevel >= 4,
+      });
+    }
 
     g.fillStyle = "#0a0810";
     g.fillRect(0, 0, VW, VH);
@@ -141,7 +179,7 @@ export class WorldRenderer {
         const sx = x * TS - cx, sy = y * TS - cy;
         const h = hash(x, y);
 
-        if (tile === Tile.Wall) {
+        if (tile === Tile.Wall || tile === Tile.Cracked) {
           const below = y + 1 < ctx.map.height ? ctx.map.tiles[y + 1][x] : Tile.Wall;
           if (below !== Tile.Wall) {
             // face du mur
@@ -159,6 +197,20 @@ export class WorldRenderer {
             g.fillStyle = biome.wallLine;
             if (h > 0.75) g.fillRect(sx + TS * 0.2, sy + TS * 0.3, TS * 0.25, TS * 0.18);
             else if (h > 0.5) g.fillRect(sx + TS * 0.55, sy + TS * 0.5, TS * 0.2, TS * 0.15);
+          }
+          // Mur fissuré : les lézardes luisent faiblement — l'œil attentif est récompensé
+          if (tile === Tile.Cracked) {
+            const pulse = 0.5 + Math.sin(t * 2.2 + x * 2) * 0.25;
+            g.strokeStyle = `rgba(255,220,150,${pulse * 0.55})`;
+            g.lineWidth = 2;
+            g.beginPath();
+            g.moveTo(sx + TS * 0.5, sy + TS * 0.12);
+            g.lineTo(sx + TS * 0.36, sy + TS * 0.4);
+            g.lineTo(sx + TS * 0.56, sy + TS * 0.58);
+            g.lineTo(sx + TS * 0.42, sy + TS * 0.9);
+            g.moveTo(sx + TS * 0.36, sy + TS * 0.4);
+            g.lineTo(sx + TS * 0.2, sy + TS * 0.62);
+            g.stroke();
           }
         } else {
           // sol
@@ -182,6 +234,22 @@ export class WorldRenderer {
       this.drawSeal(g, sx, sy, t, s.isActivated);
       if (!s.isActivated && ctx.visible.has(k) && Math.random() < dt * 4)
         this.particles.spawn({ x: s.pos.x * TS + TS / 2 + (Math.random() - 0.5) * 20, y: s.pos.y * TS + TS / 2, vx: 0, vy: -22, life: 0.9, maxLife: 0.9, size: 2.5, color: "#5adfe8", glow: true });
+    }
+
+    // ---- Autels maudits & sanctuaires ----
+    for (const a of ctx.altars) {
+      if (!ctx.discovered.has(key(a.pos))) continue;
+      const sx = a.pos.x * TS - cx, sy = a.pos.y * TS - cy;
+      this.drawAltar(g, sx, sy, t, a.used);
+      if (!a.used && ctx.visible.has(key(a.pos)) && Math.random() < dt * 5)
+        this.particles.spawn({ x: a.pos.x * TS + TS / 2 + (Math.random() - 0.5) * 18, y: a.pos.y * TS + TS / 2, vx: 0, vy: -18, life: 1, maxLife: 1, size: 2.2, color: "#c04888", glow: true });
+    }
+    for (const s of ctx.shrines) {
+      if (!ctx.discovered.has(key(s.pos))) continue;
+      const sx = s.pos.x * TS - cx, sy = s.pos.y * TS - cy;
+      this.drawShrine(g, sx, sy, t, s.used);
+      if (!s.used && ctx.visible.has(key(s.pos)) && Math.random() < dt * 5)
+        this.particles.spawn({ x: s.pos.x * TS + TS / 2 + (Math.random() - 0.5) * 14, y: s.pos.y * TS + TS / 2, vx: 0, vy: -16, life: 0.9, maxLife: 0.9, size: 2, color: "#7ae8c8", glow: true });
     }
 
     // ---- Objets ----
@@ -242,14 +310,24 @@ export class WorldRenderer {
       this.drawMonster(g, m, sx, sy, t);
     }
 
-    // ---- Joueur ----
+    // ---- Joueur (s'oriente dans le sens de la marche) ----
     {
       const sx = pt.x * TS - cx, sy = pt.y * TS - cy;
       const bob = Math.sin(t * 4) * 1.5;
+      if (pt.x < this.heroLastX - 0.01) this.heroFacingLeft = true;
+      else if (pt.x > this.heroLastX + 0.01) this.heroFacingLeft = false;
+      this.heroLastX = pt.x;
       // ombre
       g.fillStyle = "rgba(0,0,0,.35)";
       g.beginPath(); g.ellipse(sx + TS / 2, sy + TS - 4, TS * 0.3, TS * 0.12, 0, 0, Math.PI * 2); g.fill();
-      g.drawImage(getSprite("player"), sx + 2, sy - 2 + bob, TS - 4, TS - 4);
+      if (this.heroFacingLeft) {
+        g.save();
+        g.translate(sx + TS / 2, 0); g.scale(-1, 1); g.translate(-(sx + TS / 2), 0);
+        g.drawImage(getSprite("player"), sx + 2, sy - 2 + bob, TS - 4, TS - 4);
+        g.restore();
+      } else {
+        g.drawImage(getSprite("player"), sx + 2, sy - 2 + bob, TS - 4, TS - 4);
+      }
     }
 
     // ---- Particules ----
@@ -259,11 +337,72 @@ export class WorldRenderer {
     // ---- Éclairage ----
     this.drawLighting(g, ctx, cx, cy, t);
 
-    // ---- Teinte de nuit ----
-    if (ctx.time.isNight) {
-      g.fillStyle = "rgba(30,40,110,.18)";
+    // ---- Teinte de nuit (fondue : le crépuscule s'installe, l'aube dissipe) ----
+    this.nightBlend = lerp(this.nightBlend, ctx.time.isNight ? 1 : 0, clamp(dt * 1.2, 0, 1));
+    if (this.nightBlend > 0.01) {
+      g.fillStyle = `rgba(30,40,110,${(0.18 * this.nightBlend).toFixed(3)})`;
       g.fillRect(0, 0, VW, VH);
     }
+
+    // ---- Brume ambiante : deux nappes qui dérivent lentement ----
+    g.save();
+    g.globalAlpha = 0.05 + this.nightBlend * 0.03;
+    for (let i = 0; i < 2; i++) {
+      const off = (t * (8 + i * 5)) % (VW * 2);
+      const fogY = VH * (0.3 + i * 0.35) + Math.sin(t * 0.4 + i * 2) * 24;
+      const grad2 = g.createLinearGradient(0, fogY - 70, 0, fogY + 70);
+      grad2.addColorStop(0, "rgba(160,150,190,0)");
+      grad2.addColorStop(0.5, "rgba(160,150,190,1)");
+      grad2.addColorStop(1, "rgba(160,150,190,0)");
+      g.fillStyle = grad2;
+      g.fillRect(-off % VW, fogY - 70, VW * 2, 140);
+    }
+    g.restore();
+
+    // ---- Vignette de danger : les bords saignent quand la vie s'épuise ----
+    const hpRatio = ctx.player.maxHp > 0 ? ctx.player.hp / ctx.player.maxHp : 1;
+    if (hpRatio < 0.3) {
+      const pulse = 0.5 + Math.sin(t * 5) * 0.3;
+      const a = (0.3 - hpRatio) / 0.3 * 0.45 * pulse;
+      const dv = g.createRadialGradient(VW / 2, VH / 2, VH * 0.32, VW / 2, VH / 2, VH * 0.75);
+      dv.addColorStop(0, "rgba(160,10,20,0)");
+      dv.addColorStop(1, `rgba(160,10,20,${a.toFixed(3)})`);
+      g.fillStyle = dv;
+      g.fillRect(0, 0, VW, VH);
+    }
+  }
+
+  // Autel maudit : monolithe sombre à lueur pourpre
+  private drawAltar(g: CanvasRenderingContext2D, sx: number, sy: number, t: number, used: boolean) {
+    const cx = sx + TS / 2;
+    g.save();
+    if (!used) { g.shadowColor = "#c04888"; g.shadowBlur = 12 + Math.sin(t * 3) * 4; }
+    g.fillStyle = used ? "#2a2230" : "#3a2038";
+    g.beginPath();
+    g.moveTo(cx - 9, sy + TS - 5); g.lineTo(cx - 6, sy + 8); g.lineTo(cx, sy + 4);
+    g.lineTo(cx + 6, sy + 8); g.lineTo(cx + 9, sy + TS - 5);
+    g.closePath(); g.fill();
+    g.fillStyle = used ? "#3a3244" : `rgba(220,90,160,${0.6 + Math.sin(t * 3) * 0.3})`;
+    g.fillRect(cx - 2, sy + 12, 4, 4);
+    g.fillRect(cx - 1, sy + 20, 2, 8);
+    g.restore();
+  }
+
+  // Sanctuaire : vasque d'eau claire
+  private drawShrine(g: CanvasRenderingContext2D, sx: number, sy: number, t: number, used: boolean) {
+    const cx = sx + TS / 2, cy2 = sy + TS / 2 + 4;
+    g.save();
+    g.fillStyle = "#4a4458";
+    g.beginPath(); g.ellipse(cx, cy2 + 6, 13, 6, 0, 0, Math.PI * 2); g.fill();
+    if (!used) { g.shadowColor = "#7ae8c8"; g.shadowBlur = 10; }
+    g.fillStyle = used ? "#33404a" : "#5adfc8";
+    g.beginPath(); g.ellipse(cx, cy2 + 3, 10, 4.4, 0, 0, Math.PI * 2); g.fill();
+    if (!used) {
+      g.strokeStyle = `rgba(200,255,240,${0.4 + Math.sin(t * 4) * 0.25})`;
+      g.lineWidth = 1.4;
+      g.beginPath(); g.ellipse(cx, cy2 + 3, 5 + Math.sin(t * 2.4) * 2.5, 2.4, 0, 0, Math.PI * 2); g.stroke();
+    }
+    g.restore();
   }
 
   private drawPortal(g: CanvasRenderingContext2D, sx: number, sy: number, t: number) {
@@ -471,6 +610,40 @@ export function drawHud(g: CanvasRenderingContext2D, ctx: GameContext, t: number
   // ---- aide touches (bas-droite) ----
   text(g, T("hud.keys"), VW - 12, VH - 12, 11, "rgba(170,165,190,.75)", "right");
 
+  // ---- Build de Descente : éléments investis + résonances + malédictions (bas-droite) ----
+  if (ctx.endless) {
+    const els: Element[] = ["fire", "frost", "blood", "storm"];
+    let bx = VW - 12;
+    const by = VH - 36;
+    // malédictions (à droite, en rouge)
+    for (const c of ctx.runCurses) {
+      bx -= 24;
+      const pulse = 0.7 + Math.sin(t * 3) * 0.2;
+      g.globalAlpha = pulse;
+      textShadow(g, "☠", bx, by, 15, "#ff5060", "center");
+      g.globalAlpha = 1;
+    }
+    if (ctx.runCurses.length) bx -= 12;
+    for (const el of [...els].reverse()) {
+      const n = elementStacks(ctx.player, el);
+      if (n <= 0) continue;
+      bx -= 46;
+      const res = hasResonance(ctx.player, el);
+      const col = ELEMENT_COLOR[el];
+      g.fillStyle = "rgba(8,6,14,.72)";
+      g.beginPath(); g.roundRect(bx - 4, by - 12, 44, 24, 6); g.fill();
+      if (res) {
+        g.strokeStyle = col; g.lineWidth = 1.5;
+        g.shadowColor = col; g.shadowBlur = 6 + Math.sin(t * 4) * 3;
+        g.beginPath(); g.roundRect(bx - 4, by - 12, 44, 24, 6); g.stroke();
+        g.shadowBlur = 0;
+      }
+      const icon = el === "fire" ? "🔥" : el === "frost" ? "❄" : el === "blood" ? "🩸" : "⚡";
+      text(g, icon, bx + 8, by, 13, col, "center");
+      textShadow(g, "×" + n, bx + 28, by, 12, res ? col : "#c8c0d4", "center");
+    }
+  }
+
   // ---- points de stat dispo ----
   if (p.statPoints > 0) {
     const pulse = 0.75 + Math.sin(t * 5) * 0.25;
@@ -500,7 +673,7 @@ function drawMinimap(g: CanvasRenderingContext2D, ctx: GameContext): number {
     for (let x = 0; x < ctx.map.width; x++) {
       if (!ctx.discovered.has(x + "," + y)) continue;
       const tile = ctx.map.tiles[y][x];
-      g.fillStyle = tile === Tile.Wall ? "#4a4658"
+      g.fillStyle = tile === Tile.Wall || tile === Tile.Cracked ? "#4a4658"
         : tile === Tile.Exit ? "#5adfff"
         : tile === Tile.DoorClosed ? "#c8873a"
         : "#211d2c";

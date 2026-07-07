@@ -19,7 +19,8 @@ export function move(p: Pos, d: Dir): Pos {
   }
 }
 
-export enum Tile { Floor, Wall, Exit, DoorClosed, DoorOpen }
+// Cracked : mur fissuré — se brise quand on marche dedans (salles secrètes de la Descente)
+export enum Tile { Floor, Wall, Exit, DoorClosed, DoorOpen, Cracked }
 
 // RNG — équivalent de System.Random (Next(min,max) : max exclusif)
 export class RNG {

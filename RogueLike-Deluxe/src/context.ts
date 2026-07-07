@@ -2,10 +2,11 @@
 // Port de App/GameContext.cs, ExplorationState.cs, VisionService, DoorService,
 // SafeZoneService, MonsterSpawnService, Map3Scripting, ConnectivityFixService, BossSpawnFixService
 import { Pos, P, key, eqPos, move, Dir, DIRS4, Tile, GameMap, RNG, TimeSystem, manhattan } from "./core";
-import { Player, Monster, MonsterCatalog, MonsterRank, Pnj, Chest, ChestType, Seal, Merchant } from "./entities";
+import { Player, Monster, MonsterCatalog, MonsterRank, Pnj, Chest, ChestType, Seal, Merchant, Altar, Shrine } from "./entities";
 import { Item, ItemCatalog, rollLoot, NIGHT_MERCHANT_NAME } from "./items";
 import { createLevel, hasLevel } from "./levels";
 import { generateFloor, isBossDepth } from "./procgen";
+import { rollCurse } from "./boons";
 import { T } from "./i18n";
 
 export enum LogKind { Info, Loot, Combat, Warning, System }
@@ -20,6 +21,10 @@ export type GameEvent =
   | { type: "merchant"; merchant: Merchant }
   | { type: "levelLoaded"; level: number }
   | { type: "floorCleared"; depth: number }
+  | { type: "altar"; altar: Altar }
+  | { type: "shrine"; amount: number }
+  | { type: "secret"; pos: Pos }
+  | { type: "shake"; power: number }
   | { type: "sfx"; name: string }
   | { type: "fx"; name: string; pos: Pos };
 
@@ -40,6 +45,8 @@ export class GameContext {
   seals: Seal[] = [];
   merchant: Merchant | null = null;
   nightMerchant: Merchant | null = null;
+  altars: Altar[] = [];   // autels maudits (Descente) : boon épique contre malédiction
+  shrines: Shrine[] = []; // sanctuaires (Descente) : soin unique
 
   sealsActivated = 0;
   hasLegendarySword = false;
@@ -55,6 +62,7 @@ export class GameContext {
   runEssence = 0;             // essence accumulée pendant le run (banque à la mort/sortie)
   runKills = 0;               // monstres tués ce run
   essenceMult = 1;            // multiplicateur d'essence issu de la méta ("avarice")
+  runCurses: string[] = [];   // malédictions acceptées aux autels (ids de boons.ts/CURSES)
   private exitPlaced = false; // la sortie de l'étage courant est-elle révélée ?
   private pendingExit: Pos | null = null; // où révéler la sortie une fois l'étage nettoyé
 
@@ -105,6 +113,8 @@ export class GameContext {
   chestAt(p: Pos): Chest | null { return this.chests.find(c => !c.isOpened && eqPos(c.pos, p)) ?? null; }
   pnjAt(p: Pos): Pnj | null { return this.pnjs.find(n => eqPos(n.pos, p)) ?? null; }
   sealAt(p: Pos): Seal | null { return this.seals.find(s => !s.isActivated && eqPos(s.pos, p)) ?? null; }
+  altarAt(p: Pos): Altar | null { return this.altars.find(a => !a.used && eqPos(a.pos, p)) ?? null; }
+  shrineAt(p: Pos): Shrine | null { return this.shrines.find(s => !s.used && eqPos(s.pos, p)) ?? null; }
   isMerchantAt(p: Pos): boolean { return !!this.merchant && eqPos(this.merchant.pos, p); }
   isDoorClosed(p: Pos): boolean { return this.map.inBounds(p) && this.map.get(p) === Tile.DoorClosed; }
   openDoor(p: Pos) { if (this.map.inBounds(p) && this.map.get(p) === Tile.DoorClosed) this.map.set(p.x, p.y, Tile.DoorOpen); }
@@ -147,6 +157,8 @@ export class GameContext {
     this.pnjs = data.pnjs;
     this.seals = data.seals;
     this.merchant = data.merchant;
+    this.altars = [];
+    this.shrines = [];
 
     this.visible.clear(); this.discovered.clear();
     this.sealsActivated = 0;
@@ -179,6 +191,7 @@ export class GameContext {
     this.runEssence = 0;
     this.runKills = 0;
     this.essenceMult = essenceMult;
+    this.runCurses = [];
     this.arenaWave = 1;
     this.loadProceduralFloor(1);
   }
@@ -194,6 +207,8 @@ export class GameContext {
     this.pnjs = data.pnjs;
     this.seals = data.seals;
     this.merchant = data.merchant;
+    this.altars = data.altars ?? [];
+    this.shrines = data.shrines ?? [];
 
     this.visible.clear(); this.discovered.clear();
     this.sealsActivated = 0;
@@ -205,8 +220,9 @@ export class GameContext {
 
     this.map = data.map;
     this.player.setPosition(data.playerStart);
-    // Soin partiel entre les étages : on récompense la progression sans effacer la tension.
-    if (depth > 1) this.player.heal(Math.round(this.player.maxHp * 0.25));
+    // Soin partiel entre les étages — sauf sous la malédiction de Famine.
+    if (depth > 1 && !this.runCurses.includes("famine"))
+      this.player.heal(Math.round(this.player.maxHp * 0.25));
     this.endless = true;
     this.runDepth = depth;
     this.currentLevel = depth;
@@ -350,6 +366,7 @@ export class GameContext {
     if (!this.map.isWalkable(p)) return false;
     if (eqPos(p, this.player.pos)) return false;
     if (this.monsterAt(p) || this.itemAt(p) || this.chestAt(p) || this.sealAt(p) || this.isMerchantAt(p) || this.pnjAt(p)) return false;
+    if (this.altarAt(p) || this.shrineAt(p)) return false;
     if (this.nightMerchant && eqPos(this.nightMerchant.pos, p)) return false;
     if (this.isSafeZone(p)) return false;
     // évite les cases collées aux murs
@@ -407,6 +424,23 @@ export class GameContext {
     }
     this.emit({ type: "sfx", name: "chest" });
     this.emit({ type: "fx", name: "chest", pos: chest.pos });
+  }
+
+  // ===== Autel maudit : sceller le pacte — applique une malédiction, renvoie son id =====
+  acceptAltar(altar: Altar): string {
+    altar.used = true;
+    const curse = rollCurse(this.rng, this.runCurses);
+    this.runCurses.push(curse.id);
+    curse.apply?.(this.player);
+    this.updateVision(); // la malédiction de Pénombre réduit la vision immédiatement
+    this.pushLog(T("altar.cursed", { name: T(curse.nameKey) }), LogKind.Warning);
+    this.emit({ type: "sfx", name: "curse" });
+    return curse.id;
+  }
+
+  refuseAltar(altar: Altar) {
+    altar.used = true;
+    this.pushLog(T("altar.refused"), LogKind.System);
   }
 
   // ===== Arène de Vesna : vagues de monstres enchaînées, sans soin entre les combats =====
@@ -563,6 +597,21 @@ export class GameContext {
       return;
     }
 
+    // Mur fissuré : il cède sous la poussée — une salle secrète se dévoile
+    if (this.map.get(next) === Tile.Cracked) {
+      this.map.set(next.x, next.y, Tile.Floor);
+      this.pushLog(T("secret.crumble"), LogKind.System);
+      this.showToast(T("secret.toast"), "#ffe9c0", "#3a2a10", 8);
+      this.emit({ type: "secret", pos: next });
+      this.emit({ type: "shake", power: 1 });
+      this.emit({ type: "sfx", name: "secret" });
+      this.emit({ type: "fx", name: "secret", pos: next });
+      this.updateVision();
+      this.advanceTimeAfterPlayerMove();
+      this.monstersTurn();
+      return;
+    }
+
     if (!this.map.isWalkable(next)) { this.emit({ type: "sfx", name: "bump" }); return; }
 
     // Sentinelle bloque la sortie (Map1)
@@ -612,6 +661,32 @@ export class GameContext {
     if (this.nightMerchant && eqPos(this.nightMerchant.pos, next)) {
       this.updateVision();
       this.emit({ type: "merchant", merchant: this.nightMerchant });
+      return;
+    }
+
+    // Autel maudit (Descente) : le choix appartient au joueur — la scène gère le pacte
+    const altar = this.altarAt(next);
+    if (altar) {
+      this.updateVision();
+      this.emit({ type: "sfx", name: "altar" });
+      this.emit({ type: "altar", altar });
+      return;
+    }
+
+    // Sanctuaire (Descente) : une source claire — soin unique
+    const shrine = this.shrineAt(next);
+    if (shrine) {
+      shrine.used = true;
+      const amount = Math.round(this.player.maxHp * 0.4);
+      this.player.heal(amount);
+      this.pushLog(T("shrine.used", { n: amount }), LogKind.Loot);
+      this.showToast(T("shrine.toast"), "#c8f0ff", "#10344a", 8);
+      this.emit({ type: "shrine", amount });
+      this.emit({ type: "sfx", name: "shrine" });
+      this.emit({ type: "fx", name: "shrine", pos: next });
+      this.updateVision();
+      this.advanceTimeAfterPlayerMove();
+      this.monstersTurn();
       return;
     }
 
@@ -878,7 +953,8 @@ export class GameContext {
   private digCell(p: Pos) {
     if (!this.map.inBounds(p)) return;
     if (this.isDoorClosed(p)) { this.openDoor(p); return; }
-    if (this.map.get(p) === Tile.Wall) this.map.set(p.x, p.y, Tile.Floor);
+    const t = this.map.get(p);
+    if (t === Tile.Wall || t === Tile.Cracked) this.map.set(p.x, p.y, Tile.Floor);
   }
 
   // ===== Boss atteignable — port de BossSpawnFixService =====
