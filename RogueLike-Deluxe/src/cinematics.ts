@@ -207,6 +207,45 @@ export function depthsIntroPages(): CinePage[] {
   ];
 }
 
+// ===== Dialogue de rencontre : le boss te parle avant le combat =====
+// Renvoie null pour un monstre normal (pas de dialogue). Clé = nameKey du monstre.
+export function bossEncounterPages(nameKey: string): CinePage[] | null {
+  switch (nameKey) {
+    case "mob.boss": // Roi de l'Abîme
+      return [{
+        title: T("mob.boss").toUpperCase(), sprite: "boss", spriteGlow: "#ff3b3b", bg: "#0c0508",
+        lines: [
+          { text: T("bossenc.king.1") },
+          { text: T("bossenc.king.2"), color: "#ff9090" },
+          { text: T("bossenc.king.3"), color: "#ffd0d0" },
+        ],
+        sfx: "roar",
+      }];
+    case "mob.superboss": // Dévoreur d'Âmes
+      return [{
+        title: T("mob.superboss").toUpperCase(), sprite: "avatar", spriteGlow: "#ff2040", bg: "#08040a",
+        lines: [
+          { text: T("bossenc.devourer.1") },
+          { text: T("bossenc.devourer.2"), color: "#ff7090" },
+          { text: T("bossenc.devourer.3"), color: "#e0c0ff" },
+        ],
+        sfx: "roar",
+      }];
+    case "mob.warden":
+    case "mob.warden.enraged": // Gardien des Sceaux
+      return [{
+        title: T("mob.warden").toUpperCase(), sprite: "warden", spriteGlow: "#8a5fd0", bg: "#0a0714",
+        lines: [
+          { text: T("bossenc.warden.1") },
+          { text: T("bossenc.warden.2"), color: "#c8a8ff" },
+        ],
+        sfx: "warden",
+      }];
+    default:
+      return null;
+  }
+}
+
 // ===== Écran de fin =====
 export class EndScene implements Scene {
   private victory: boolean;

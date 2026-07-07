@@ -223,6 +223,15 @@ const FR: Dict = {
   "bossintro.5": "Si tu avances… il n'y aura plus de retour.",
   "bossintro.stats": "PV : {hp}/{maxhp}   ATK : {atk}   ARM : {arm}",
 
+  "bossenc.king.1": "Le Roi de l'Abîme lève lentement les yeux. \"Tu as brisé mes sceaux, petit.\"",
+  "bossenc.king.2": "\"Trois gardiens. Trois serrures. Et te voilà, seul, devant la dernière porte.\"",
+  "bossenc.king.3": "\"Approche. Que je voie de quel bois est fait celui qui a osé me réveiller.\"",
+  "bossenc.devourer.1": "L'ombre se replie et prend forme. \"Le Roi n'était qu'une promesse. Moi, je suis la faim.\"",
+  "bossenc.devourer.2": "\"Combien d'âmes as-tu laissées derrière toi pour descendre jusqu'ici ?\"",
+  "bossenc.devourer.3": "\"Peu importe. La tienne les rejoindra. Viens.\"",
+  "bossenc.warden.1": "Le Gardien des Sceaux dresse sa masse de pierre. \"L'Épée… tu n'aurais pas dû la prendre.\"",
+  "bossenc.warden.2": "\"Rends-la, ou sois le dernier à tomber devant ce seuil.\"",
+
   "swordcine.t": "RELIQUE",
   "swordcine.1": "Le socle attend…",
   "swordcine.2": "Tu poses ta main sur la garde.",
@@ -777,6 +786,15 @@ const EN: Dict = {
   "bossintro.4": "At the end of the corridor: a cracked throne.",
   "bossintro.5": "If you step forward… there is no way back.",
   "bossintro.stats": "HP: {hp}/{maxhp}   ATK: {atk}   ARM: {arm}",
+
+  "bossenc.king.1": "The Abyss King slowly raises his eyes. \"You broke my seals, little one.\"",
+  "bossenc.king.2": "\"Three wardens. Three locks. And here you stand, alone, before the last door.\"",
+  "bossenc.king.3": "\"Come closer. Let me see what the one who dared wake me is made of.\"",
+  "bossenc.devourer.1": "The shadow folds in and takes shape. \"The King was merely a promise. I am the hunger.\"",
+  "bossenc.devourer.2": "\"How many souls did you leave behind to descend this far?\"",
+  "bossenc.devourer.3": "\"No matter. Yours will join them. Come.\"",
+  "bossenc.warden.1": "The Seal Warden rises, a mass of stone. \"The Sword… you should not have taken it.\"",
+  "bossenc.warden.2": "\"Return it, or be the last to fall before this threshold.\"",
 
   "swordcine.t": "RELIC",
   "swordcine.1": "The pedestal waits…",

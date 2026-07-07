@@ -9,7 +9,7 @@ import { SceneManager, Scene } from "./scenes";
 import { MainMenuScene } from "./menuScenes";
 import { ExploreScene, MerchantScene } from "./exploreScene";
 import { CombatScene } from "./combatScene";
-import { CinematicScene, introPages, swordPages, bossIntroPages, depthsIntroPages, EndScene } from "./cinematics";
+import { CinematicScene, introPages, swordPages, bossIntroPages, depthsIntroPages, bossEncounterPages, EndScene } from "./cinematics";
 import { EndlessHubScene, RelicDraftScene, RunSummaryScene } from "./endlessScenes";
 import { G, Flow } from "./game";
 import { loadSettings, loadGame, clearSave, saveGame } from "./save";
@@ -67,6 +67,15 @@ Flow.continueGame = () => {
 Flow.startCombat = (monster: Monster) => {
   SceneManager.switchTo(() => new CombatScene(monster));
   SceneManager.fadeSpeed = 5;
+};
+
+// Rencontre de boss : la musique boss se lance, le boss prononce son dialogue,
+// puis le combat démarre à la fin du dialogue.
+Flow.bossEncounter = (monster: Monster) => {
+  const pages = bossEncounterPages(monster.nameKey);
+  if (!pages) { Flow.startCombat(monster); return; }
+  Audio.setMode("boss");
+  SceneManager.switchTo(() => new CinematicScene(pages, () => Flow.startCombat(monster), "#c02840"));
 };
 
 Flow.merchant = (merchant: Merchant) => SceneManager.switchTo(() => new MerchantScene(merchant));

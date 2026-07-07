@@ -8,6 +8,7 @@ import { G, Flow } from "./game";
 import { LogKind, GameEvent } from "./context";
 import { StatType, Merchant, EquipSlot, MAX_WEAPON_UPGRADE, Monster, MonsterRank, TalentCatalog, chooseTalent, Altar } from "./entities";
 import { RelicDraftScene } from "./endlessScenes";
+import { bossEncounterPages } from "./cinematics";
 import { Item, ItemCatalog, sellPrice, MERCHANT_STOCK, NIGHT_MERCHANT_STOCK, NIGHT_MERCHANT_NAME } from "./items";
 import { getSprite } from "./sprites";
 import { saveGame, saveSettings } from "./save";
@@ -91,12 +92,20 @@ export class ExploreScene implements Scene {
         case "shake": G.world.addShake(e.power); break;
         case "altar": SceneManager.push(new AltarScene(e.altar)); return;
         case "shrine": break; // le fx/log est déjà géré ; rien d'autre à faire
-        case "combat":
-          this.pendingCombat = e.monster;
+        case "combat": {
+          const m = e.monster;
+          // Boss : dialogue de rencontre (musique + le boss te parle) puis combat
+          if (bossEncounterPages(m.nameKey) && !m.spokeIntro) {
+            m.spokeIntro = true;
+            Flow.bossEncounter(m);
+            return;
+          }
+          this.pendingCombat = m;
           this.flashT = 0;
-          Audio.setMode(e.monster.rank === MonsterRank.Boss ? "boss" : "combat");
+          Audio.setMode(m.rank === MonsterRank.Boss ? "boss" : "combat");
           Audio.sfx("hit");
           return;
+        }
         case "merchant": Flow.merchant(e.merchant); return;
         case "swordCinematic": Flow.swordCinematic(); return;
         case "bossIntro": Flow.bossIntroThenLevel4(); return;

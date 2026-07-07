@@ -21,6 +21,7 @@ export const Flow: {
   toMenu: () => void;
   toExplore: () => void;
   startCombat: (monster: any) => void;
+  bossEncounter: (monster: any) => void;
   bossIntroThenLevel4: () => void;
   depthsIntroThenLevel5: () => void;
   swordCinematic: () => void;

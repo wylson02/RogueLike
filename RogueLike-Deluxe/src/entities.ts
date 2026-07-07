@@ -285,6 +285,7 @@ export class Monster extends Character {
   nightBuffed = false; // équilibrage : buff nocturne appliqué une fois
   elite = false;       // variante élite (mode Descente Infinie) : boostée, récompense majorée
   affix: EliteAffix | null = null; // twist de combat des élites (Épines, Vampirique…)
+  spokeIntro = false;  // le boss a-t-il déjà prononcé son dialogue de rencontre ?
   aiKind: AiKind;
   spawnPos: Pos;               // pour le comportement "patrol"
   patrolDir: Dir | null = null; // direction courante de patrouille
