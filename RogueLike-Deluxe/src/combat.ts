@@ -574,7 +574,8 @@ export class CombatSession {
     if (pierce) { dmg = raw; this.player.hp -= raw; }
     else {
       const bonus = this.playerBonusArmor();
-      dmg = Math.max(0, raw - (this.player.armor + bonus));
+      // Symétrie : une attaque inflige toujours au moins 1 dégât.
+      dmg = raw <= 0 ? 0 : Math.max(1, raw - (this.player.armor + bonus));
       this.player.hp -= dmg;
     }
     // Cendres : encaisser embrase l'agresseur

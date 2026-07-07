@@ -25,7 +25,8 @@ export abstract class Character {
   get isDead() { return this.hp <= 0; }
   setPosition(p: Pos) { this.pos = P(p.x, p.y); }
   takeDamage(amount: number): number {
-    const dmg = Math.max(0, amount - this.armor);
+    // Une attaque inflige toujours au moins 1 dégât (évite les impasses d'armure).
+    const dmg = amount <= 0 ? 0 : Math.max(1, amount - this.armor);
     this.hp -= dmg;
     return dmg;
   }
