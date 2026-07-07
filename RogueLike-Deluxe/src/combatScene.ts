@@ -1,6 +1,6 @@
 // ===== Scène de combat : mise en scène du CombatSession =====
 import { Scene } from "./scenes";
-import { VW, VH, text, textShadow, Particles, FONT } from "./render";
+import { VW, VH, text, textShadow, Particles, FONT, wrapLine } from "./render";
 import { Input } from "./input";
 import { Audio } from "./audio";
 import { T } from "./i18n";
@@ -680,16 +680,25 @@ export class CombatScene implements Scene {
     text(g, `⬤ ${p.gold}`, px + 100, py + 96, 12, "#ffd84a");
 
     // ===== journal (droite, glisse depuis la droite pendant l'intro) =====
-    const lx = VW - 350 + (1 - slide) * 380, ly = VH - 214, lw = 330, lh = 120;
+    const lw = 356, lh = 120, lx = VW - lw - 14 + (1 - slide) * 380, ly = VH - 214;
     g.fillStyle = "rgba(8,6,14,.72)";
     g.beginPath(); g.roundRect(lx, ly, lw, lh, 10); g.fill();
-    const lines = this.session.log.slice(-6);
-    let budget = Math.floor(this.logReveal + 200);
-    lines.forEach((l, i) => {
-      let s = l.length > 42 ? l.slice(0, 41) + "…" : l;
-      const isLast = i === lines.length - 1;
-      if (isLast && this.state === "anim") s = s.slice(0, Math.max(0, Math.floor(this.logReveal * 3)));
-      text(g, s, lx + 12, ly + 16 + i * 17, 11, isLast ? "#fff" : "#9a92ac");
+    // retour à la ligne des messages longs (les répliques de PNJ/spéciales dépassent la boîte)
+    g.font = `bold 11px ${FONT}`;
+    const maxTextW = lw - 24, rowH = 16, maxRows = 6;
+    const wrapped: { text: string; last: boolean }[] = [];
+    const raw = this.session.log.slice(-6);
+    raw.forEach((l, li) => {
+      const isLastEntry = li === raw.length - 1;
+      const parts = wrapLine(g, l, maxTextW, 2);
+      parts.forEach((pt, pi) => wrapped.push({ text: pt, last: isLastEntry && pi === parts.length - 1 }));
+    });
+    const shown = wrapped.slice(-maxRows);
+    shown.forEach((row, i) => {
+      let s = row.text;
+      // effet machine à écrire : seule la toute dernière ligne se révèle pendant l'anim
+      if (row.last && this.state === "anim") s = s.slice(0, Math.max(0, Math.floor(this.logReveal * 3)));
+      text(g, s, lx + 12, ly + 16 + i * rowH, 11, row.last ? "#fff" : "#9a92ac");
     });
 
     // ===== boutons d'action =====
