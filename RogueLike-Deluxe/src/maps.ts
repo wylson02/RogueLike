@@ -30,59 +30,39 @@ export const MapCatalog = {
     return map;
   },
 
+  // Niveau 2 — Les Catacombes du Serment. Labyrinthe designé : tout est mur,
+  // on CREUSE salles + couloirs 1-large formant des boucles (routes tressées).
+  // Ancres préservées : départ (1,11), sortie (33,18), coffre-prison (28,4).
   level2(): GameMap {
-    return new MapBuilder(35, 22)
-      .drawBorder(Tile.Wall)
-      .drawRect(1, 10, 5, 1, Tile.Wall)
-      .drawRect(1, 12, 5, 1, Tile.Wall)
-      .drawRect(7, 8, 1, 10, Tile.Wall)
-      .drawRect(3, 14, 4, 1, Tile.Wall)
-      .drawRect(1, 16, 4, 1, Tile.Wall)
-      .drawRect(1, 19, 11, 1, Tile.Wall)
-      .drawRect(8, 17, 6, 1, Tile.Wall)
-      .drawRect(14, 15, 1, 5, Tile.Wall)
-      .drawRect(16, 17, 1, 4, Tile.Wall)
-      .drawRect(14, 15, 5, 1, Tile.Wall)
-      .drawRect(19, 15, 1, 4, Tile.Wall)
-      .drawRect(19, 20, 1, 1, Tile.Wall)
-      .drawRect(21, 13, 1, 8, Tile.Wall)
-      .drawRect(9, 13, 12, 1, Tile.Wall)
-      .drawRect(9, 14, 1, 2, Tile.Wall)
-      .drawRect(10, 15, 3, 1, Tile.Wall)
-      .drawRect(8, 11, 9, 1, Tile.Wall)
-      .drawRect(18, 11, 7, 1, Tile.Wall)
-      .drawRect(24, 12, 1, 8, Tile.Wall)
-      .drawRect(25, 19, 2, 1, Tile.Wall)
-      .drawRect(29, 19, 5, 1, Tile.Wall)
-      .drawRect(25, 11, 8, 1, Tile.Wall)
-      .drawRect(32, 12, 1, 5, Tile.Wall)
-      .drawRect(30, 12, 1, 7, Tile.Wall)
-      .drawRect(26, 17, 4, 1, Tile.Wall)
-      .drawRect(25, 15, 4, 1, Tile.Wall)
-      .drawRect(26, 13, 4, 1, Tile.Wall)
-      .drawRect(13, 8, 1, 3, Tile.Wall)
-      .drawRect(14, 8, 7, 1, Tile.Wall)
-      .drawRect(21, 8, 1, 3, Tile.Wall)
-      .drawRect(5, 6, 1, 3, Tile.Wall)
-      .drawRect(6, 6, 4, 1, Tile.Wall)
-      .drawRect(9, 7, 1, 3, Tile.Wall)
-      .drawRect(2, 4, 1, 5, Tile.Wall)
-      .drawRect(3, 4, 9, 1, Tile.Wall)
-      .drawRect(11, 5, 1, 5, Tile.Wall)
-      .drawRect(12, 6, 12, 1, Tile.Wall)
-      .drawRect(23, 7, 1, 4, Tile.Wall)
-      .drawRect(1, 2, 12, 1, Tile.Wall)
-      .drawRect(14, 3, 7, 1, Tile.Wall)
-      .drawRect(21, 3, 1, 3, Tile.Wall)
-      .drawRect(25, 2, 1, 8, Tile.Wall)
-      .drawRect(26, 9, 7, 1, Tile.Wall)
-      .drawRect(32, 10, 1, 1, Tile.Wall)
-      .drawRect(14, 1, 10, 1, Tile.Wall)
-      .drawRect(26, 2, 7, 1, Tile.Wall)
-      .drawRect(27, 4, 7, 1, Tile.Wall)
-      .drawRect(26, 6, 7, 1, Tile.Wall)
-      .setTile(33, 18, Tile.Exit)
-      .build();
+    const F = Tile.Floor;
+    const b = new MapBuilder(35, 22).drawRect(0, 0, 35, 22, Tile.Wall);
+
+    // ---- Salles (points de repère) ----
+    b.drawRect(13, 9, 8, 5, F);   // Rotonde centrale (x13-20, y9-13)
+    b.drawRect(2, 15, 7, 5, F);   // Salle-refuge SO — Orin & Aelis (x2-8, y15-19)
+    b.drawRect(25, 2, 6, 5, F);   // Quartier-prison NE — Torvin + coffre (x25-30, y2-6)
+    b.drawRect(27, 15, 7, 5, F);  // Salle de la sortie SE — gargouille (x27-33, y15-19)
+    b.drawRect(2, 2, 4, 4, F);    // Alcôve NO à trésor (x2-5, y2-5)
+    b.drawRect(13, 2, 5, 3, F);   // Alcôve N à trésor (x13-17, y2-4)
+
+    // ---- Couloirs (les boucles tressées) ----
+    b.drawRect(1, 11, 13, 1, F);  // Épine d'entrée : départ → rotonde
+    b.drawRect(2, 5, 1, 7, F);    // vertical NO : alcôve NO ↔ entrée
+    b.drawRect(2, 11, 1, 5, F);   // vertical refuge : entrée ↔ refuge
+    b.drawRect(5, 3, 9, 1, F);    // couloir étroit N (embuscade araignée) : alcôve NO ↔ alcôve N
+    b.drawRect(15, 4, 1, 6, F);   // alcôve N → rotonde
+    b.drawRect(19, 4, 1, 6, F);   // rotonde → haut (vers prison)
+    b.drawRect(19, 4, 7, 1, F);   // → prison (rejoint 25,4)
+    b.drawRect(30, 6, 1, 6, F);   // prison → bas (2e accès prison = boucle)
+    b.drawRect(16, 13, 1, 5, F);  // rotonde → route sud
+    b.drawRect(16, 17, 12, 1, F); // route sud → salle sortie (rejoint 27,17)
+    b.drawRect(20, 11, 11, 1, F); // route est (boucle) : rotonde → salle sortie
+    b.drawRect(30, 11, 1, 5, F);  // route est → salle sortie
+    b.drawRect(8, 17, 8, 1, F);   // refuge → route sud
+    b.drawRect(23, 18, 1, 2, F);  // cul-de-sac sud à trésor
+
+    b.setTile(33, 18, Tile.Exit);
+    return b.build();
   },
 
   level3(): GameMap {

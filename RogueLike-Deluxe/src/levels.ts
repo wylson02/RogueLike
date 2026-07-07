@@ -59,28 +59,29 @@ function level1(): LevelData {
   };
 }
 
+// Niveau 2 — Les Catacombes du Serment (labyrinthe designé, cf. MapCatalog.level2)
 function level2(): LevelData {
   return {
     map: MapCatalog.level2(),
     playerStart: P(1, 11),
     monsters: [
-      MonsterCatalog.slime(P(10, 5)),
-      MonsterCatalog.slime(P(18, 16)),
-      MonsterCatalog.golem(P(26, 8)),
-      MonsterCatalog.spider(P(10, 3)),
-      MonsterCatalog.gargoyle(P(22, 20)),
+      MonsterCatalog.spider(P(9, 3)),      // embuscade dans le couloir étroit du nord
+      MonsterCatalog.slime(P(15, 3)),      // alcôve nord
+      MonsterCatalog.golem(P(16, 11)),     // patrouille la rotonde centrale
+      MonsterCatalog.slime(P(22, 17)),     // route sud
+      MonsterCatalog.gargoyle(P(30, 17)),  // garde la salle de la sortie
     ],
     items: [],
     chests: [
-      new Chest(P(3, 3), ChestType.Normal),
-      new Chest(P(16, 18), ChestType.Normal),
-      new Chest(P(28, 4), ChestType.Legendary),
+      new Chest(P(3, 3), ChestType.Normal),      // alcôve NO (hors chemin optimal)
+      new Chest(P(23, 19), ChestType.Normal),    // cul-de-sac sud
+      new Chest(P(28, 4), ChestType.Legendary),  // coffre-prison (clé de Torvin) — ancre MAP2_PRISON_CHEST
     ],
     pnjs: [
-      new Pnj(P(6, 18), "Orin", "pnj.orin"),
-      new Pnj(P(9, 18), "Aelis", "pnj.aelis"),
-      new Pnj(P(12, 12), "Rival", "rival.lvl2"),
-      new Pnj(P(28, 5), "Torvin", "prisoner.locked"),
+      new Pnj(P(3, 17), "Orin", "pnj.orin"),     // salle-refuge SO
+      new Pnj(P(5, 17), "Aelis", "pnj.aelis"),   // salle-refuge SO
+      new Pnj(P(10, 11), "Rival", "rival.lvl2"), // sur l'épine d'entrée (chemin principal)
+      new Pnj(P(28, 5), "Torvin", "prisoner.locked"), // quartier-prison, à côté du coffre
     ],
     seals: [],
     merchant: null,
