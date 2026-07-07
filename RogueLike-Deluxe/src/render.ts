@@ -238,11 +238,19 @@ export class WorldRenderer {
             g.stroke();
           }
         } else {
-          // sol
+          // sol + joints de dalles pour casser la platitude
           g.fillStyle = h > 0.5 ? biome.floorA : biome.floorB;
           g.fillRect(sx, sy, TS, TS);
-          if (h > 0.93) { g.fillStyle = biome.deco; g.fillRect(sx + TS * 0.3, sy + TS * 0.4, 4, 3); g.fillRect(sx + TS * 0.6, sy + TS * 0.55, 3, 3); }
-          else if (h < 0.06) { g.fillStyle = biome.wallLine; g.fillRect(sx + TS * 0.45, sy + TS * 0.3, 5, 2); }
+          g.fillStyle = biome.wallLine;
+          g.globalAlpha = 0.22;
+          g.fillRect(sx, sy + TS - 1, TS, 1); g.fillRect(sx + TS - 1, sy, 1, TS); // joints subtils
+          g.globalAlpha = 1;
+          // détails procéduraux variés (fissures, mousse, dalles, taches, gravats)
+          const h2 = hash(x * 7 + 3, y * 13 + 1);
+          if (h > 0.95) { g.fillStyle = biome.deco; g.globalAlpha = 0.7; g.fillRect(sx + TS * 0.28, sy + TS * 0.4, 4, 3); g.fillRect(sx + TS * 0.58, sy + TS * 0.55, 3, 3); g.fillRect(sx + TS * 0.42, sy + TS * 0.68, 2, 2); g.globalAlpha = 1; }
+          else if (h > 0.9) { g.strokeStyle = biome.wallLine; g.globalAlpha = 0.5; g.lineWidth = 1; g.beginPath(); g.moveTo(sx + TS * 0.25, sy + TS * 0.3); g.lineTo(sx + TS * 0.5, sy + TS * 0.55); g.lineTo(sx + TS * 0.4, sy + TS * 0.75); g.stroke(); g.globalAlpha = 1; } // fissure
+          else if (h < 0.05) { g.fillStyle = biome.wallLine; g.globalAlpha = 0.6; g.fillRect(sx + TS * 0.4, sy + TS * 0.35, 5, 4); g.fillRect(sx + TS * 0.55, sy + TS * 0.5, 3, 3); g.globalAlpha = 1; } // gravats
+          else if (h2 > 0.92) { g.fillStyle = biome.deco; g.globalAlpha = 0.28; g.fillRect(sx + TS * 0.15, sy + TS * 0.6, 8, 5); g.globalAlpha = 1; } // tache de mousse
 
           if (tile === Tile.Exit) this.drawPortal(g, sx, sy, t);
           else if (tile === Tile.DoorClosed) g.drawImage(getSprite("door_closed"), sx + 2, sy + 2, TS - 4, TS - 4);
@@ -275,6 +283,31 @@ export class WorldRenderer {
       this.drawShrine(g, sx, sy, t, s.used);
       if (!s.used && ctx.visible.has(key(s.pos)) && Math.random() < dt * 5)
         this.particles.spawn({ x: s.pos.x * TS + TS / 2 + (Math.random() - 0.5) * 14, y: s.pos.y * TS + TS / 2, vx: 0, vy: -16, life: 0.9, maxLife: 0.9, size: 2, color: "#7ae8c8", glow: true });
+    }
+
+    // ---- Décor (props) : ossements, colonnes, toiles, flaques, torches ----
+    for (const pr of ctx.props) {
+      const k = key(pr.pos);
+      if (!ctx.discovered.has(k)) continue;
+      const sx = pr.pos.x * TS - cx, sy = pr.pos.y * TS - cy;
+      const spr = getSprite("prop_" + pr.kind);
+      if (spr) g.drawImage(spr, sx, sy, TS, TS);
+      // flamme vacillante des torches
+      if (pr.kind === "torch" && ctx.visible.has(k) && Math.random() < dt * 20)
+        this.particles.spawn({ x: pr.pos.x * TS + TS / 2, y: pr.pos.y * TS + TS * 0.32, vx: (Math.random() - 0.5) * 6, vy: -20 - Math.random() * 16, life: 0.5 + Math.random() * 0.4, maxLife: 0.9, size: 2 + Math.random() * 1.5, color: Math.random() < 0.6 ? "#ff9d2e" : "#ffd84a", glow: true });
+    }
+
+    // ---- Pièges du labyrinthe ----
+    for (const tr of ctx.traps) {
+      const k = key(tr.pos);
+      if (!ctx.discovered.has(k)) continue;
+      const sx = tr.pos.x * TS - cx, sy = tr.pos.y * TS - cy;
+      const name = (tr.kind === "spikes" ? "trap_spikes" : "trap_gas") + (tr.sprung ? "_on" : "");
+      const spr = getSprite(name);
+      if (spr) g.drawImage(spr, sx, sy, TS, TS);
+      // avertissement discret quand le piège est visible et armé (reflet des pointes / gaz qui suinte)
+      if (!tr.sprung && ctx.visible.has(k) && Math.random() < dt * 4)
+        this.particles.spawn({ x: tr.pos.x * TS + TS / 2 + (Math.random() - 0.5) * 16, y: tr.pos.y * TS + TS / 2, vx: 0, vy: -14, life: 0.8, maxLife: 0.8, size: 2, color: tr.kind === "gas" ? "#7ae87a" : "#c8b0a0", glow: true });
     }
 
     // ---- Objets ----
@@ -513,6 +546,9 @@ export class WorldRenderer {
     const flicker = 1 + Math.sin(t * 9) * 0.04 + Math.sin(t * 23.7) * 0.025;
     const px = ctx.player.pos.x, py = ctx.player.pos.y;
     const ambient = ctx.time.isNight ? 0.30 : 0.16;
+    // Torches découvertes : halos lumineux persistants (vacillants)
+    const torchR = 3.4 * flicker;
+    const torches = ctx.props.filter(p => p.kind === "torch" && ctx.discovered.has(p.pos.x + "," + p.pos.y));
     for (let y = 0; y < lh; y++) {
       for (let x = 0; x < lw; x++) {
         const k = x + "," + y;
@@ -522,6 +558,13 @@ export class WorldRenderer {
         else {
           const d = Math.sqrt((x - px) * (x - px) + (y - py) * (y - py)) / (radius * flicker);
           a = clamp(ambient + d * d * 0.55, 0, 0.75);
+        }
+        // Une torche proche éclaire (baisse l'obscurité), même hors du halo du joueur
+        if (a > ambient && ctx.discovered.has(k)) {
+          for (const tr of torches) {
+            const td = Math.sqrt((x - tr.pos.x) * (x - tr.pos.x) + (y - tr.pos.y) * (y - tr.pos.y)) / torchR;
+            if (td < 1) { a = Math.min(a, clamp(ambient + td * td * 0.5, 0, a)); }
+          }
         }
         const idx = (y * lw + x) * 4;
         img.data[idx] = 6; img.data[idx + 1] = 4; img.data[idx + 2] = 12;

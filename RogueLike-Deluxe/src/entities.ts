@@ -430,3 +430,17 @@ export class Shrine {
   pos: Pos; used = false;
   constructor(pos: Pos) { this.pos = pos; }
 }
+
+// Piège du labyrinthe : visible dans le halo, se déclenche quand on marche dessus.
+export type TrapKind = "spikes" | "gas";
+export class Trap {
+  pos: Pos; kind: TrapKind; sprung = false;
+  constructor(pos: Pos, kind: TrapKind) { this.pos = pos; this.kind = kind; }
+}
+
+// Décor purement visuel (non bloquant). Les torches émettent de la lumière.
+export type PropKind = "torch" | "bones" | "column" | "cobweb" | "puddle" | "skull";
+export class Prop {
+  pos: Pos; kind: PropKind;
+  constructor(pos: Pos, kind: PropKind) { this.pos = pos; this.kind = kind; }
+}

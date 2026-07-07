@@ -553,6 +553,10 @@ const FR: Dict = {
   "curse.attrition": "Attrition", "curse.attrition.d": "Les soins en combat sont réduits de moitié.",
   "shrine.used": "L'eau claire referme tes plaies (+{n} PV).",
   "shrine.toast": "SANCTUAIRE : +40% PV",
+  "trap.spikes": "Des pointes jaillissent du sol ! Tu perds {n} PV (l'armure n'y peut rien).",
+  "trap.spikes.toast": "PIÈGE À POINTES !",
+  "trap.gas": "Un nuage de gaz toxique s'échappe des dalles... tu es empoisonné.",
+  "trap.gas.toast": "GAZ TOXIQUE !",
   "secret.crumble": "Le mur fissuré s'effondre ! Une salle secrète se dévoile.",
   "secret.toast": "SALLE SECRÈTE DÉCOUVERTE !",
 };
@@ -1104,6 +1108,10 @@ const EN: Dict = {
   "curse.attrition": "Attrition", "curse.attrition.d": "Combat heals are halved.",
   "shrine.used": "The clear water seals your wounds (+{n} HP).",
   "shrine.toast": "SHRINE: +40% HP",
+  "trap.spikes": "Spikes burst from the floor! You lose {n} HP (armor can't help).",
+  "trap.spikes.toast": "SPIKE TRAP!",
+  "trap.gas": "A cloud of toxic gas seeps from the slabs... you are poisoned.",
+  "trap.gas.toast": "TOXIC GAS!",
   "secret.crumble": "The cracked wall collapses! A secret room is revealed.",
   "secret.toast": "SECRET ROOM DISCOVERED!",
 };

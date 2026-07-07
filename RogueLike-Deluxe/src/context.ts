@@ -2,7 +2,7 @@
 // Port de App/GameContext.cs, ExplorationState.cs, VisionService, DoorService,
 // SafeZoneService, MonsterSpawnService, Map3Scripting, ConnectivityFixService, BossSpawnFixService
 import { Pos, P, key, eqPos, move, Dir, DIRS4, Tile, GameMap, RNG, TimeSystem, manhattan } from "./core";
-import { Player, Monster, MonsterCatalog, MonsterRank, Pnj, Chest, ChestType, Seal, Merchant, Altar, Shrine } from "./entities";
+import { Player, Monster, MonsterCatalog, MonsterRank, Pnj, Chest, ChestType, Seal, Merchant, Altar, Shrine, Trap, Prop } from "./entities";
 import { Item, ItemCatalog, rollLoot, NIGHT_MERCHANT_NAME } from "./items";
 import { createLevel, hasLevel } from "./levels";
 import { generateFloor, isBossDepth } from "./procgen";
@@ -47,6 +47,8 @@ export class GameContext {
   nightMerchant: Merchant | null = null;
   altars: Altar[] = [];   // autels maudits (Descente) : boon épique contre malédiction
   shrines: Shrine[] = []; // sanctuaires (Descente) : soin unique
+  traps: Trap[] = [];     // pièges du labyrinthe (map 2)
+  props: Prop[] = [];     // décor immersif (torches éclairantes, ossements...)
 
   sealsActivated = 0;
   hasLegendarySword = false;
@@ -115,6 +117,7 @@ export class GameContext {
   sealAt(p: Pos): Seal | null { return this.seals.find(s => !s.isActivated && eqPos(s.pos, p)) ?? null; }
   altarAt(p: Pos): Altar | null { return this.altars.find(a => !a.used && eqPos(a.pos, p)) ?? null; }
   shrineAt(p: Pos): Shrine | null { return this.shrines.find(s => !s.used && eqPos(s.pos, p)) ?? null; }
+  trapAt(p: Pos): Trap | null { return this.traps.find(t => eqPos(t.pos, p)) ?? null; }
   isMerchantAt(p: Pos): boolean { return !!this.merchant && eqPos(this.merchant.pos, p); }
   isDoorClosed(p: Pos): boolean { return this.map.inBounds(p) && this.map.get(p) === Tile.DoorClosed; }
   openDoor(p: Pos) { if (this.map.inBounds(p) && this.map.get(p) === Tile.DoorClosed) this.map.set(p.x, p.y, Tile.DoorOpen); }
@@ -159,6 +162,8 @@ export class GameContext {
     this.merchant = data.merchant;
     this.altars = [];
     this.shrines = [];
+    this.traps = data.traps ?? [];
+    this.props = data.props ?? [];
 
     this.visible.clear(); this.discovered.clear();
     this.sealsActivated = 0;
@@ -209,6 +214,8 @@ export class GameContext {
     this.merchant = data.merchant;
     this.altars = data.altars ?? [];
     this.shrines = data.shrines ?? [];
+    this.traps = []; // pas de pièges scriptés en Descente procédurale
+    this.props = [];
 
     this.visible.clear(); this.discovered.clear();
     this.sealsActivated = 0;
@@ -684,6 +691,29 @@ export class GameContext {
       this.emit({ type: "shrine", amount });
       this.emit({ type: "sfx", name: "shrine" });
       this.emit({ type: "fx", name: "shrine", pos: next });
+      this.updateVision();
+      this.advanceTimeAfterPlayerMove();
+      this.monstersTurn();
+      return;
+    }
+
+    // Piège du labyrinthe : se déclenche quand on marche dessus (une fois)
+    const trap = this.trapAt(next);
+    if (trap && !trap.sprung) {
+      trap.sprung = true;
+      if (trap.kind === "spikes") {
+        const dmg = 8; // danger environnemental : ignore l'armure
+        this.player.hp -= dmg;
+        this.pushLog(T("trap.spikes", { n: dmg }), LogKind.Warning);
+        this.showToast(T("trap.spikes.toast"), "#ffd0d0", "#3a0a0a", 6);
+      } else {
+        this.player.addStatus("poison", 3, 2); // le poison mordra dès le prochain combat
+        this.pushLog(T("trap.gas"), LogKind.Warning);
+        this.showToast(T("trap.gas.toast"), "#d0ffd0", "#0a2a0a", 6);
+      }
+      this.emit({ type: "sfx", name: "trap" });
+      this.emit({ type: "fx", name: trap.kind === "spikes" ? "trap_spikes" : "trap_gas", pos: next });
+      if (this.player.isDead) { this.emit({ type: "end", victory: false }); return; }
       this.updateVision();
       this.advanceTimeAfterPlayerMove();
       this.monstersTurn();

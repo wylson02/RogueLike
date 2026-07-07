@@ -1,6 +1,6 @@
 // ===== Niveaux — port 1:1 de App/Services/LevelCatalog.cs =====
 import { GameMap, Pos, P } from "./core";
-import { Monster, MonsterCatalog, Pnj, Chest, ChestType, Seal, Merchant, Altar, Shrine } from "./entities";
+import { Monster, MonsterCatalog, Pnj, Chest, ChestType, Seal, Merchant, Altar, Shrine, Trap, Prop } from "./entities";
 import { Item, ItemCatalog } from "./items";
 import { MapCatalog } from "./maps";
 
@@ -15,6 +15,8 @@ export interface LevelData {
   merchant: Merchant | null;
   altars?: Altar[];   // événements d'étage (Descente Infinie uniquement)
   shrines?: Shrine[];
+  traps?: Trap[];     // pièges du labyrinthe (map 2)
+  props?: Prop[];     // décor immersif (torches, ossements, colonnes...)
 }
 
 export const FIRST_LEVEL = 1;
@@ -65,26 +67,50 @@ function level2(): LevelData {
     map: MapCatalog.level2(),
     playerStart: P(1, 11),
     monsters: [
-      MonsterCatalog.spider(P(9, 3)),      // embuscade dans le couloir étroit du nord
-      MonsterCatalog.slime(P(15, 3)),      // alcôve nord
+      MonsterCatalog.spider(P(13, 4)),     // embuscade dans le couloir sinueux du nord
+      MonsterCatalog.slime(P(18, 4)),      // couloir nord
       MonsterCatalog.golem(P(16, 11)),     // patrouille la rotonde centrale
-      MonsterCatalog.slime(P(22, 17)),     // route sud
+      MonsterCatalog.slime(P(15, 17)),     // route sud
       MonsterCatalog.gargoyle(P(30, 17)),  // garde la salle de la sortie
     ],
     items: [],
     chests: [
-      new Chest(P(3, 3), ChestType.Normal),      // alcôve NO (hors chemin optimal)
-      new Chest(P(23, 19), ChestType.Normal),    // cul-de-sac sud
+      new Chest(P(2, 4), ChestType.Normal),      // impasse NO
+      new Chest(P(11, 19), ChestType.Normal),    // impasse sud
       new Chest(P(28, 4), ChestType.Legendary),  // coffre-prison (clé de Torvin) — ancre MAP2_PRISON_CHEST
     ],
     pnjs: [
-      new Pnj(P(3, 17), "Orin", "pnj.orin"),     // salle-refuge SO
-      new Pnj(P(5, 17), "Aelis", "pnj.aelis"),   // salle-refuge SO
-      new Pnj(P(10, 11), "Rival", "rival.lvl2"), // sur l'épine d'entrée (chemin principal)
+      new Pnj(P(3, 18), "Orin", "pnj.orin"),     // salle-refuge SO
+      new Pnj(P(5, 18), "Aelis", "pnj.aelis"),   // salle-refuge SO
+      new Pnj(P(8, 12), "Rival", "rival.lvl2"),  // sur le chemin principal (couloir d'entrée)
       new Pnj(P(28, 5), "Torvin", "prisoner.locked"), // quartier-prison, à côté du coffre
     ],
     seals: [],
     merchant: null,
+    // Pièges du labyrinthe : impasses (garde des trésors) + un ou deux chemins
+    traps: [
+      new Trap(P(8, 4), "spikes"),   // impasse nord
+      new Trap(P(18, 9), "gas"),     // courte impasse près de la rotonde
+      new Trap(P(27, 14), "spikes"), // impasse est
+      new Trap(P(3, 14), "gas"),     // impasse refuge
+      new Trap(P(26, 20), "spikes"), // impasse SE
+      new Trap(P(10, 2), "gas"),     // impasse nord (garde une vue sur le coffre voisin)
+      new Trap(P(4, 8), "spikes"),   // carrefour du chemin d'entrée (piège de passage)
+    ],
+    // Décor immersif : torches (braseros) qui éclairent + ossements/colonnes/toiles/flaques
+    props: [
+      new Prop(P(14, 10), "torch"), new Prop(P(18, 13), "torch"),   // rotonde
+      new Prop(P(4, 11), "torch"),                                  // couloir d'entrée
+      new Prop(P(26, 2), "torch"),                                  // prison
+      new Prop(P(6, 16), "torch"),                                  // refuge
+      new Prop(P(33, 16), "torch"),                                 // salle de sortie
+      new Prop(P(23, 12), "torch"),                                 // carrefour est
+      new Prop(P(16, 7), "cobweb"), new Prop(P(13, 7), "cobweb"),   // repaire de l'araignée
+      new Prop(P(24, 11), "bones"), new Prop(P(15, 13), "bones"),
+      new Prop(P(22, 7), "column"), new Prop(P(17, 10), "column"),
+      new Prop(P(11, 12), "puddle"), new Prop(P(17, 12), "puddle"),
+      new Prop(P(10, 4), "skull"), new Prop(P(30, 5), "skull"),
+    ],
   };
 }
 

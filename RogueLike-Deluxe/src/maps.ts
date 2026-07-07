@@ -30,36 +30,44 @@ export const MapCatalog = {
     return map;
   },
 
-  // Niveau 2 — Les Catacombes du Serment. Labyrinthe designé : tout est mur,
-  // on CREUSE salles + couloirs 1-large formant des boucles (routes tressées).
+  // Niveau 2 — Les Catacombes du Serment. Vrai labyrinthe tressé : tout est mur,
+  // on CREUSE 4 salles-repères + des couloirs qui serpentent + des IMPASSES qui
+  // payent (trésor ou piège au bout). Deux boucles pour ne pas être un pur arbre.
   // Ancres préservées : départ (1,11), sortie (33,18), coffre-prison (28,4).
   level2(): GameMap {
     const F = Tile.Floor;
     const b = new MapBuilder(35, 22).drawRect(0, 0, 35, 22, Tile.Wall);
+    // Creuse un couloir 1-large le long d'une polyligne (segments horiz./vert.).
+    const carve = (pts: [number, number][]) => {
+      for (let i = 0; i < pts.length - 1; i++) {
+        const [x1, y1] = pts[i], [x2, y2] = pts[i + 1];
+        if (x1 === x2) for (let y = Math.min(y1, y2); y <= Math.max(y1, y2); y++) b.setTile(x1, y, F);
+        else for (let x = Math.min(x1, x2); x <= Math.max(x1, x2); x++) b.setTile(x, y1, F);
+      }
+    };
 
-    // ---- Salles (points de repère) ----
-    b.drawRect(13, 9, 8, 5, F);   // Rotonde centrale (x13-20, y9-13)
-    b.drawRect(2, 15, 7, 5, F);   // Salle-refuge SO — Orin & Aelis (x2-8, y15-19)
-    b.drawRect(25, 2, 6, 5, F);   // Quartier-prison NE — Torvin + coffre (x25-30, y2-6)
-    b.drawRect(27, 15, 7, 5, F);  // Salle de la sortie SE — gargouille (x27-33, y15-19)
-    b.drawRect(2, 2, 4, 4, F);    // Alcôve NO à trésor (x2-5, y2-5)
-    b.drawRect(13, 2, 5, 3, F);   // Alcôve N à trésor (x13-17, y2-4)
+    // ---- Salles-repères ----
+    b.drawRect(14, 10, 5, 4, F);  // Rotonde centrale (x14-18, y10-13)
+    b.drawRect(26, 2, 5, 4, F);   // Quartier-prison NE — Torvin + coffre (x26-30, y2-5)
+    b.drawRect(2, 16, 5, 4, F);   // Salle-refuge SO — Orin & Aelis (x2-6, y16-19)
+    b.drawRect(29, 16, 5, 4, F);  // Salle de la sortie SE — gargouille (x29-33, y16-19)
 
-    // ---- Couloirs (les boucles tressées) ----
-    b.drawRect(1, 11, 13, 1, F);  // Épine d'entrée : départ → rotonde
-    b.drawRect(2, 5, 1, 7, F);    // vertical NO : alcôve NO ↔ entrée
-    b.drawRect(2, 11, 1, 5, F);   // vertical refuge : entrée ↔ refuge
-    b.drawRect(5, 3, 9, 1, F);    // couloir étroit N (embuscade araignée) : alcôve NO ↔ alcôve N
-    b.drawRect(15, 4, 1, 6, F);   // alcôve N → rotonde
-    b.drawRect(19, 4, 1, 6, F);   // rotonde → haut (vers prison)
-    b.drawRect(19, 4, 7, 1, F);   // → prison (rejoint 25,4)
-    b.drawRect(30, 6, 1, 6, F);   // prison → bas (2e accès prison = boucle)
-    b.drawRect(16, 13, 1, 5, F);  // rotonde → route sud
-    b.drawRect(16, 17, 12, 1, F); // route sud → salle sortie (rejoint 27,17)
-    b.drawRect(20, 11, 11, 1, F); // route est (boucle) : rotonde → salle sortie
-    b.drawRect(30, 11, 1, 5, F);  // route est → salle sortie
-    b.drawRect(8, 17, 8, 1, F);   // refuge → route sud
-    b.drawRect(23, 18, 1, 2, F);  // cul-de-sac sud à trésor
+    // ---- Couloirs principaux (serpentent) ----
+    carve([[1, 11], [4, 11], [4, 8], [8, 8], [8, 12], [11, 12], [11, 11], [14, 11]]); // départ → rotonde
+    carve([[17, 10], [17, 7], [13, 7], [13, 4], [18, 4], [18, 7], [22, 7], [22, 4], [26, 4]]); // rotonde → prison (nord)
+    carve([[15, 13], [15, 17], [6, 17]]);                     // rotonde → sud → refuge
+    carve([[18, 12], [23, 12], [23, 17], [29, 17]]);          // rotonde → est → sortie
+    carve([[30, 5], [30, 11], [24, 11], [24, 12], [23, 12]]); // prison → sud → route est (BOUCLE)
+
+    // ---- Impasses qui payent (trésor / piège au bout) ----
+    carve([[4, 8], [4, 4], [2, 4]]);      // impasse NO → coffre (2,4)
+    carve([[8, 8], [8, 4]]);              // impasse N → piège (8,4)
+    carve([[13, 4], [10, 4], [10, 2]]);   // impasse N → coffre (10,2)
+    carve([[18, 7], [18, 9]]);            // courte impasse (piège 18,9)
+    carve([[23, 14], [27, 14]]);          // impasse est → piège (27,14)
+    carve([[15, 15], [11, 15], [11, 19]]);// impasse sud → coffre (11,19)
+    carve([[3, 16], [3, 14]]);            // impasse refuge (piège 3,14)
+    carve([[29, 18], [26, 18], [26, 20]]);// impasse SE (piège 26,20)
 
     b.setTile(33, 18, Tile.Exit);
     return b.build();

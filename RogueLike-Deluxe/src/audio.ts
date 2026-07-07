@@ -390,6 +390,7 @@ class AudioSys {
       case "hit": this.noise(0.09, 0.16, 900); this.tone("square", 240, 110, 0.1, 0.13); break;
       case "crit": this.noise(0.12, 0.2, 700); this.tone("square", 880, 220, 0.16, 0.15); this.tone("square", 1320, 1760, 0.1, 0.08, 0.03); break;
       case "hurt": this.tone("sawtooth", 300, 90, 0.2, 0.16); this.noise(0.12, 0.1, 500); break;
+      case "trap": this.tone("square", 500, 120, 0.14, 0.14); this.noise(0.18, 0.16, 400); this.tone("sawtooth", 160, 70, 0.25, 0.12, 0.05); break;
       case "heal": this.tone("sine", 520, 780, 0.18, 0.1); this.tone("sine", 780, 1040, 0.2, 0.08, 0.12); break;
       case "dodge": this.noise(0.1, 0.08, 3000); this.tone("sine", 900, 1400, 0.08, 0.05); break;
       case "flee": this.tone("square", 400, 800, 0.15, 0.07); this.noise(0.15, 0.06, 2000, 0.05); break;

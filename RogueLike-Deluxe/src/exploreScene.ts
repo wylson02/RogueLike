@@ -84,6 +84,8 @@ export class ExploreScene implements Scene {
             G.world.particles.burst(x, y, "#ffe9c0", 14, 90, 0.8, 3, true);
           }
           else if (e.name === "shrine") G.world.particles.burst(x, y, "#7ae8c8", 22, 80, 1, 3, true);
+          else if (e.name === "trap_spikes") { G.world.particles.burst(x, y, "#c8c0cc", 20, 120, 0.7, 3.5); G.world.particles.burst(x, y, "#a02030", 14, 90, 0.9, 3, true); G.world.addShake(0.8); }
+          else if (e.name === "trap_gas") { G.world.particles.burst(x, y, "#6aa84a", 26, 70, 1.4, 4, true); G.world.addShake(0.35); }
           break;
         }
         case "shake": G.world.addShake(e.power); break;

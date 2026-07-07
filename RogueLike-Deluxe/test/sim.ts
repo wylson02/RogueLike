@@ -494,5 +494,37 @@ console.log("=== REBIRTH : PROCGEN (secrets, autels, sanctuaires, affixes) ===")
   check(evs.some(e => e.type === "secret"), "l'événement de salle secrète est émis");
 }
 
+console.log("=== MAP 2 : LABYRINTHE + PIEGES ===");
+{
+  const c = new GameContext();
+  c.loadLevel(2); c.drainEvents(); c.blockNightSpawnsForTicks(1e9);
+  check(c.traps.length >= 5, `des pièges sont posés (${c.traps.length})`);
+  check(c.props.some(p => p.kind === "torch"), "des torches éclairent le labyrinthe");
+
+  // place le joueur sur un voisin praticable du piège puis marche dessus
+  const nb: [number, number, any][] = [[1, 0, Dir.Right], [-1, 0, Dir.Left], [0, 1, Dir.Down], [0, -1, Dir.Up]];
+  const stepOnto = (t: { pos: { x: number; y: number } }): boolean => {
+    for (const [dx, dy, dir] of nb) {
+      const nx = t.pos.x - dx, ny = t.pos.y - dy;
+      if (c.map.isWalkable(P(nx, ny))) { c.player.setPosition(P(nx, ny)); c.tryMove(dir); c.drainEvents(); return true; }
+    }
+    return false;
+  };
+
+  // piège à pointes : blesse malgré l'armure (ignore l'armure)
+  const spike = c.traps.find(t => t.kind === "spikes")!;
+  c.player.modifyArmor(50);
+  const hpBefore = c.player.hp;
+  const okSpike = stepOnto(spike);
+  check(okSpike && spike.sprung, "le piège à pointes se déclenche quand on marche dessus");
+  check(c.player.hp < hpBefore, "le piège à pointes blesse malgré l'armure (ignore l'armure)");
+
+  // piège à gaz : empoisonne pour le prochain combat
+  const gas = c.traps.find(t => t.kind === "gas" && !t.sprung)!;
+  c.player.clearStatuses();
+  const okGas = stepOnto(gas);
+  check(okGas && gas.sprung && c.player.hasStatus("poison"), "le piège à gaz empoisonne le joueur");
+}
+
 console.log(failures === 0 ? "\nSIMULATION COMPLETE REUSSIE" : `\n${failures} echec(s)`);
 process.exit(failures === 0 ? 0 : 1);
