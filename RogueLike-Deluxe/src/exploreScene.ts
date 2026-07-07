@@ -6,7 +6,7 @@ import { Audio } from "./audio";
 import { T } from "./i18n";
 import { G, Flow } from "./game";
 import { LogKind, GameEvent } from "./context";
-import { StatType, Merchant, EquipSlot, MAX_WEAPON_UPGRADE, Monster, MonsterRank } from "./entities";
+import { StatType, Merchant, EquipSlot, MAX_WEAPON_UPGRADE, Monster, MonsterRank, TalentCatalog, chooseTalent } from "./entities";
 import { Item, ItemCatalog, sellPrice, MERCHANT_STOCK, NIGHT_MERCHANT_STOCK, NIGHT_MERCHANT_NAME } from "./items";
 import { getSprite } from "./sprites";
 import { saveGame, saveSettings } from "./save";
@@ -45,6 +45,10 @@ export class ExploreScene implements Scene {
 
     // Descente Infinie : révèle la sortie dès que l'étage de boss est nettoyé.
     if (ctx.endless) { ctx.checkEndlessBossExit(); this.handleEvents(ctx.drainEvents()); }
+
+    // Palier de talent en attente (niveaux 3 et 6) : choix obligatoire avant de continuer
+    const tier = ctx.player.pendingTalentTier();
+    if (tier) { SceneManager.push(new TalentChoiceScene(tier)); return; }
 
     if (Input.consume("cancel")) { Audio.sfx("ui"); SceneManager.push(new PauseScene()); return; }
     if (Input.consume("inventory")) { Audio.sfx("ui"); SceneManager.push(new InventoryScene()); return; }
@@ -102,6 +106,57 @@ export class ExploreScene implements Scene {
   }
 }
 
+// ===== Choix de talent (niveaux 3 et 6) =====
+export class TalentChoiceScene implements Scene {
+  private sel = 0;
+  constructor(private tier: 1 | 2) {}
+
+  update(dt: number) {
+    if (Input.consume("left") || Input.consume("up")) { this.sel = (this.sel + 1) % 2; Audio.sfx("ui"); }
+    if (Input.consume("right") || Input.consume("down")) { this.sel = (this.sel + 1) % 2; Audio.sfx("ui"); }
+    if (Input.consume("confirm")) {
+      const p = G.ctx.player;
+      const def = TalentCatalog[p.classId][this.tier][this.sel];
+      chooseTalent(p, def);
+      G.ctx.pushLog(T("talent.chosen", { name: T(def.nameKey) }), LogKind.System);
+      Audio.sfx("levelup");
+      saveGame(G.ctx);
+      SceneManager.pop();
+    }
+  }
+
+  draw(g: CanvasRenderingContext2D) {
+    dimBackground(g, 0.78);
+    const w = 620, h = 280, x = VW / 2 - w / 2, y = VH / 2 - h / 2;
+    panel(g, x, y, w, h, T("talent.title", { n: this.tier === 1 ? 3 : 6 }));
+    text(g, T("talent.sub"), VW / 2, y + 44, 13, "#a89ec0", "center");
+
+    const defs = TalentCatalog[G.ctx.player.classId][this.tier];
+    const cardW = 270, cardH = 150, gap = 24;
+    const startX = x + (w - (cardW * 2 + gap)) / 2;
+    defs.forEach((def, i) => {
+      const cx = startX + i * (cardW + gap), cy = y + 66;
+      const selected = i === this.sel;
+      g.fillStyle = selected ? "rgba(120,25,25,.55)" : "rgba(30,24,44,.6)";
+      g.beginPath(); g.roundRect(cx, cy, cardW, cardH, 8); g.fill();
+      g.strokeStyle = selected ? "#ffb0a0" : "rgba(140,130,170,.35)";
+      g.lineWidth = selected ? 2 : 1;
+      g.beginPath(); g.roundRect(cx, cy, cardW, cardH, 8); g.stroke();
+      textShadow(g, T(def.nameKey), cx + cardW / 2, cy + 30, 16, selected ? "#fff" : "#c8c0d4", "center");
+      // description sur 2 lignes max
+      const desc = T(def.descKey);
+      const mid = desc.length > 34 ? desc.lastIndexOf(" ", 34) : -1;
+      if (mid > 0) {
+        text(g, desc.slice(0, mid), cx + cardW / 2, cy + 70, 12, selected ? "#e8dfc8" : "#9a92ac", "center");
+        text(g, desc.slice(mid + 1), cx + cardW / 2, cy + 90, 12, selected ? "#e8dfc8" : "#9a92ac", "center");
+      } else {
+        text(g, desc, cx + cardW / 2, cy + 80, 12, selected ? "#e8dfc8" : "#9a92ac", "center");
+      }
+    });
+    text(g, T("talent.hint"), VW / 2, y + h - 16, 12, "#8a8098", "center");
+  }
+}
+
 // ===== Pause =====
 export class PauseScene implements Scene {
   private sel = 0;
@@ -151,11 +206,19 @@ export class InventoryScene implements Scene {
       if (Input.consume("confirm")) {
         this.sel = Math.min(this.sel, n - 1);
         const item = p.inventory[this.sel];
-        p.removeFromInventory(item);
-        item.apply(p);
-        G.ctx.pushLog(T("inv.used", { item: item.name }), LogKind.System);
-        Audio.sfx(item.slot !== undefined ? "confirm" : "heal");
-        this.sel = Math.max(0, Math.min(this.sel, p.inventory.length - 1));
+        if (item.consumable) {
+          G.ctx.pushLog(T("inv.combatonly"), LogKind.Warning);
+          Audio.sfx("locked");
+        } else if (item.quest) {
+          G.ctx.pushLog(T("inv.questitem"), LogKind.Warning);
+          Audio.sfx("locked");
+        } else {
+          p.removeFromInventory(item);
+          item.apply(p);
+          G.ctx.pushLog(T("inv.used", { item: item.name }), LogKind.System);
+          Audio.sfx(item.slot !== undefined ? "confirm" : "heal");
+          this.sel = Math.max(0, Math.min(this.sel, p.inventory.length - 1));
+        }
       }
     }
   }
@@ -420,8 +483,13 @@ export class MerchantScene implements Scene {
     // liste
     const listY = y + 156;
     if (this.tab === "buy") {
-      this.stock().forEach((line, i) => {
-        const ry = listY + i * 44;
+      const stock = this.stock();
+      this.sel = Math.min(this.sel, stock.length - 1);
+      const maxShow = 6;
+      const start = Math.max(0, Math.min(this.sel - 2, stock.length - maxShow));
+      stock.slice(start, start + maxShow).forEach((line, vi) => {
+        const i = start + vi;
+        const ry = listY + vi * 44;
         const selected = i === this.sel;
         const afford = G.ctx.player.gold >= line.price;
         if (selected) {

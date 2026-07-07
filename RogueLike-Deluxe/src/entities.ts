@@ -3,6 +3,10 @@ import { Pos, P, RNG, clamp, Dir } from "./core";
 import type { Item } from "./items";
 import { T } from "./i18n";
 
+// ===== Effets de statut (portée : un combat) =====
+export type StatusKind = "poison" | "stun";
+export interface StatusEffect { kind: StatusKind; turns: number; power: number; }
+
 export abstract class Character {
   pos: Pos;
   maxHp: number; hp: number;
@@ -10,6 +14,7 @@ export abstract class Character {
   critChancePercent = 0;
   lifeStealPercent = 0;
   critMultiplierPercent = 200;
+  statuses: StatusEffect[] = [];
 
   constructor(pos: Pos, hp: number, attack: number) {
     this.pos = pos; this.maxHp = hp; this.hp = hp; this.attack = attack;
@@ -29,6 +34,16 @@ export abstract class Character {
   modifyCritChance(d: number) { this.critChancePercent = clamp(this.critChancePercent + d, 0, 100); }
   modifyLifeSteal(d: number) { this.lifeStealPercent = clamp(this.lifeStealPercent + d, 0, 100); }
   modifyCritMultiplierPercent(d: number) { this.critMultiplierPercent = clamp(this.critMultiplierPercent + d, 150, 400); }
+
+  // Statuts : un même statut se rafraîchit (durée/puissance max) au lieu de s'empiler
+  addStatus(kind: StatusKind, turns: number, power = 0) {
+    const cur = this.statuses.find(s => s.kind === kind);
+    if (cur) { cur.turns = Math.max(cur.turns, turns); cur.power = Math.max(cur.power, power); }
+    else this.statuses.push({ kind, turns, power });
+  }
+  hasStatus(kind: StatusKind): boolean { return this.statuses.some(s => s.kind === kind && s.turns > 0); }
+  getStatus(kind: StatusKind): StatusEffect | null { return this.statuses.find(s => s.kind === kind) ?? null; }
+  clearStatuses() { this.statuses = []; }
 }
 
 export enum EquipSlot { Weapon, Armor, Accessory, Relic }
@@ -55,6 +70,7 @@ export class Player extends Character {
   armorUpgradeLevel = 0;
   dodgeBonus = 0;
   classPassiveUnlocked = false;
+  talents: string[] = []; // ids de talents choisis (ex. "w1a")
 
   constructor(pos: Pos) { super(pos, 70, 5); }
 
@@ -122,6 +138,15 @@ export class Player extends Character {
     return this.inventory.some(i => i.slot === EquipSlot.Weapon);
   }
 
+  hasTalent(id: string): boolean { return this.talents.includes(id); }
+
+  // Palier de talent en attente de choix : niv 3 → palier 1, niv 6 → palier 2
+  pendingTalentTier(): 1 | 2 | null {
+    if (this.level >= 3 && !this.talents.some(t => t[1] === "1")) return 1;
+    if (this.level >= 6 && !this.talents.some(t => t[1] === "2")) return 2;
+    return null;
+  }
+
   // Forge du marchand : améliore l'arme (ATK) ou l'armure (ARM) équipée, jusqu'à MAX_WEAPON_UPGRADE paliers.
   nextUpgradeCost(slot: ForgeSlot): number | null {
     const lvl = slot === EquipSlot.Weapon ? this.weaponUpgradeLevel : this.armorUpgradeLevel;
@@ -158,6 +183,49 @@ export const ClassCatalog: Record<ClassId, ClassDef> = {
   mage: { id: "mage", nameKey: "class.mage.name", descKey: "class.mage.desc", abilityNameKey: "act.class.mage" },
   rogue: { id: "rogue", nameKey: "class.rogue.name", descKey: "class.rogue.desc", abilityNameKey: "act.class.rogue" },
 };
+
+// ===== Talents : choix aux niveaux 3 (palier 1) et 6 (palier 2), 2 options par classe =====
+// Les talents "immédiats" appliquent leurs stats au choix ; les autres sont lus par le combat.
+export interface TalentDef { id: string; nameKey: string; descKey: string; apply?: (p: Player) => void; }
+
+export const TalentCatalog: Record<ClassId, Record<1 | 2, [TalentDef, TalentDef]>> = {
+  warrior: {
+    1: [
+      { id: "w1a", nameKey: "talent.w1a", descKey: "talent.w1a.d", apply: p => p.modifyArmor(+2) },
+      { id: "w1b", nameKey: "talent.w1b", descKey: "talent.w1b.d", apply: p => p.modifyAttack(+2) },
+    ],
+    2: [
+      { id: "w2a", nameKey: "talent.w2a", descKey: "talent.w2a.d" }, // soins de combat +4
+      { id: "w2b", nameKey: "talent.w2b", descKey: "talent.w2b.d", apply: p => { p.maxHp += 15; p.hp += 15; } },
+    ],
+  },
+  mage: {
+    1: [
+      { id: "m1a", nameKey: "talent.m1a", descKey: "talent.m1a.d", apply: p => p.modifyCritChance(+10) },
+      { id: "m1b", nameKey: "talent.m1b", descKey: "talent.m1b.d" }, // Explosion Arcanique +50%
+    ],
+    2: [
+      { id: "m2a", nameKey: "talent.m2a", descKey: "talent.m2a.d", apply: p => p.modifyArmor(+2) },
+      { id: "m2b", nameKey: "talent.m2b", descKey: "talent.m2b.d" }, // capacité 2×/combat
+    ],
+  },
+  rogue: {
+    1: [
+      { id: "r1a", nameKey: "talent.r1a", descKey: "talent.r1a.d", apply: p => p.modifyAttack(+2) },
+      { id: "r1b", nameKey: "talent.r1b", descKey: "talent.r1b.d", apply: p => p.modifyLifeSteal(+10) },
+    ],
+    2: [
+      { id: "r2a", nameKey: "talent.r2a", descKey: "talent.r2a.d" }, // 15% d'esquive passive
+      { id: "r2b", nameKey: "talent.r2b", descKey: "talent.r2b.d" }, // capacité 2×/combat
+    ],
+  },
+};
+
+export function chooseTalent(p: Player, def: TalentDef) {
+  if (p.talents.includes(def.id)) return;
+  p.talents.push(def.id);
+  def.apply?.(p);
+}
 
 // Applique les deltas de stats de départ d'une classe à un joueur fraîchement créé.
 export function applyClass(p: Player, id: ClassId) {

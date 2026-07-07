@@ -16,12 +16,18 @@ interface AnimStep { at: number; fn: () => void; }
 
 const INTRO_DUR = 1.7; // intro façon Pokémon : volets, slide-in, bannière
 
+function ItemSpriteFor(id: string): string {
+  return id === "Bomb" ? "it_bomb" : id === "MistPotion" ? "it_mist" : "it_scroll";
+}
+
 export class CombatScene implements Scene {
   private session: CombatSession;
   private enemy: Monster;
   private t = 0;
   private sel = 0;
   private state: "intro" | "input" | "anim" | "done" = "intro";
+  private itemMenu = false; // sous-menu Objet ouvert
+  private itemSel = 0;
   private steps: AnimStep[] = [];
   private animT = 0;
   private particles = new Particles();
@@ -65,10 +71,32 @@ export class CombatScene implements Scene {
       { id: "flee", label: T("act.flee"), enabled: true, key: "4" },
       {
         id: "class",
-        label: s.classAbilityUsed ? T("act.class.used") : T(ClassCatalog[s.player.classId].abilityNameKey),
-        enabled: !s.classAbilityUsed, key: "5",
+        label: s.classAbilityUsesLeft <= 0 ? T("act.class.used")
+          : s.classAbilityUsesLeft > 1
+            ? T(ClassCatalog[s.player.classId].abilityNameKey) + " ×" + s.classAbilityUsesLeft
+            : T(ClassCatalog[s.player.classId].abilityNameKey),
+        enabled: s.classAbilityUsesLeft > 0, key: "5",
+      },
+      {
+        id: "item",
+        label: this.consumables().length > 0
+          ? T("act.item", { n: this.consumables().reduce((a, c) => a + c.count, 0) })
+          : T("act.item.none"),
+        enabled: this.consumables().length > 0, key: "6",
       },
     ];
+  }
+
+  // Consommables de l'inventaire, groupés par type
+  private consumables(): { id: string; name: string; count: number }[] {
+    const map = new Map<string, { id: string; name: string; count: number }>();
+    for (const it of G.ctx.player.inventory) {
+      if (!it.consumable) continue;
+      const cur = map.get(it.id);
+      if (cur) cur.count++;
+      else map.set(it.id, { id: it.id, name: it.name, count: 1 });
+    }
+    return [...map.values()];
   }
 
   update(dt: number) {
@@ -115,6 +143,20 @@ export class CombatScene implements Scene {
         break;
 
       case "input": {
+        // Sous-menu Objet : navigation prioritaire
+        if (this.itemMenu) {
+          const list = this.consumables();
+          if (Input.consume("cancel") || list.length === 0) { this.itemMenu = false; Audio.sfx("back"); Input.clear(); break; }
+          if (Input.consume("up")) { this.itemSel = (this.itemSel + list.length - 1) % list.length; Audio.sfx("ui"); }
+          if (Input.consume("down")) { this.itemSel = (this.itemSel + 1) % list.length; Audio.sfx("ui"); }
+          if (Input.consume("confirm")) {
+            const it = list[Math.min(this.itemSel, list.length - 1)];
+            this.itemMenu = false;
+            Audio.sfx("confirm");
+            this.playRound("item", it.id);
+          }
+          break;
+        }
         const n = this.actions.length;
         if (Input.consume("left") || Input.consume("up")) { this.sel = (this.sel + n - 1) % n; Audio.sfx("ui"); }
         if (Input.consume("right") || Input.consume("down")) { this.sel = (this.sel + 1) % n; Audio.sfx("ui"); }
@@ -124,11 +166,13 @@ export class CombatScene implements Scene {
         if (Input.consume("act3")) chosen = 2;
         if (Input.consume("act4")) chosen = 3;
         if (Input.consume("act5")) chosen = 4;
+        if (Input.consume("act6")) chosen = 5;
         if (Input.consume("confirm")) chosen = this.sel;
         if (chosen >= 0) {
           const a = this.actions[chosen];
           if (!a.enabled) { Audio.sfx("locked"); break; }
           this.sel = chosen;
+          if (a.id === "item") { this.itemMenu = true; this.itemSel = 0; Audio.sfx("ui"); break; }
           this.playRound(a.id);
         }
         break;
@@ -162,8 +206,8 @@ export class CombatScene implements Scene {
     return 1 - Math.pow(1 - p, 3);
   }
 
-  private playRound(action: CombatActionId) {
-    this.session.playTurn(action);
+  private playRound(action: CombatActionId, itemId?: string) {
+    this.session.playTurn(action, itemId);
     const events = this.session.drainEvents();
     this.steps = [];
     this.animT = 0;
@@ -240,6 +284,28 @@ export class CombatScene implements Scene {
           case "enemyBuff":
             Audio.sfx("dodge");
             this.particles.burst(ex, ey, "#8fd4ff", 20, 130, 0.8, 3.5, true);
+            break;
+          case "itemUse":
+            Audio.sfx("crit");
+            this.enemyShake = 1.4; this.enemyFlash = 1; this.screenShake = 0.8;
+            this.particles.burst(ex, ey, "#ff9d2e", 26, 180, 0.9, 4, true);
+            if (e.value) this.floaters.push({ x: ex, y: ey - 55, text: "-" + e.value, color: "#ff9d2e", life: 1.2, size: 28 });
+            break;
+          case "poisonEnemy":
+            this.particles.burst(ex, ey, "#7ae87a", 10, 70, 0.6, 2.5, true);
+            this.floaters.push({ x: ex, y: ey - 40, text: "-" + e.value, color: "#7ae87a", life: 1, size: 20 });
+            break;
+          case "poisonPlayer":
+            this.playerFlash = 0.5;
+            this.floaters.push({ x: 240, y: VH - 180, text: "-" + e.value, color: "#7ae87a", life: 1, size: 20 });
+            break;
+          case "stunEnemy":
+            Audio.sfx("dodge");
+            this.floaters.push({ x: ex, y: ey - 50, text: T("status.stun").toUpperCase() + " !", color: "#ffd84a", life: 1.1, size: 22 });
+            break;
+          case "stunPlayer":
+            Audio.sfx("hurt");
+            this.floaters.push({ x: 240, y: VH - 190, text: T("status.stun").toUpperCase() + " !", color: "#ffd84a", life: 1.1, size: 22 });
             break;
         }
       };
@@ -410,7 +476,7 @@ export class CombatScene implements Scene {
 
     // ===== boutons d'action =====
     const acts = this.actions;
-    const btnW = acts.length > 4 ? 150 : 190, btnGap = 10, btnH = 46;
+    const btnW = acts.length > 5 ? 124 : acts.length > 4 ? 150 : 190, btnGap = acts.length > 5 ? 8 : 10, btnH = 46;
     const bx0 = VW / 2 - (btnW * acts.length + btnGap * (acts.length - 1)) / 2, by = VH - 66;
     g.globalAlpha = slide; // les boutons apparaissent en fin d'intro
     acts.forEach((a, i) => {
@@ -421,11 +487,51 @@ export class CombatScene implements Scene {
       g.strokeStyle = selected ? "#ffb0a0" : "rgba(140,130,170,.35)";
       g.lineWidth = selected ? 2 : 1;
       g.beginPath(); g.roundRect(bx, by, btnW, btnH, 8); g.stroke();
-      textShadow(g, a.key, bx + 16, by + btnH / 2, 15, selected ? "#ffd84a" : "#7a7090", "center");
-      text(g, a.label, bx + 32, by + btnH / 2, 13, !a.enabled ? "#5a5470" : selected ? "#fff" : "#c8c0d4");
+      textShadow(g, a.key, bx + 14, by + btnH / 2, 14, selected ? "#ffd84a" : "#7a7090", "center");
+      const maxChars = btnW < 150 ? 12 : 18;
+      const lbl = a.label.length > maxChars ? a.label.slice(0, maxChars - 1) + "…" : a.label;
+      text(g, lbl, bx + 26, by + btnH / 2, btnW < 150 ? 11 : 13, !a.enabled ? "#5a5470" : selected ? "#fff" : "#c8c0d4");
     });
     g.globalAlpha = 1;
-    if (this.state === "input")
+    // Sous-menu Objet
+    if (this.itemMenu && this.state === "input") {
+      const list = this.consumables();
+      const rowH = 30, w2 = 280, h2 = list.length * rowH + 34;
+      const x2 = VW / 2 - w2 / 2, y2 = by - 14 - h2;
+      g.fillStyle = "rgba(8,6,14,.94)";
+      g.beginPath(); g.roundRect(x2, y2, w2, h2, 8); g.fill();
+      g.strokeStyle = "rgba(255,157,46,.5)";
+      g.lineWidth = 1.5;
+      g.beginPath(); g.roundRect(x2, y2, w2, h2, 8); g.stroke();
+      list.forEach((it, i) => {
+        const ry = y2 + 12 + i * rowH;
+        const selected = i === this.itemSel;
+        if (selected) {
+          g.fillStyle = "rgba(140,70,20,.6)";
+          g.beginPath(); g.roundRect(x2 + 8, ry - 3, w2 - 16, 26, 5); g.fill();
+        }
+        const spr = getSprite(ItemSpriteFor(it.id));
+        if (spr) { g.imageSmoothingEnabled = false; g.drawImage(spr, x2 + 14, ry - 2, 24, 24); }
+        text(g, `${it.name} ×${it.count}`, x2 + 46, ry + 10, 13, selected ? "#fff" : "#c8c0d4");
+      });
+      text(g, T("combat.itemmenu.hint"), VW / 2, y2 + h2 - 12, 10, "#8a8098", "center");
+    }
+
+    // Statuts actifs (pastilles)
+    const chip = (s: { kind: string; turns: number }) =>
+      `${T(s.kind === "poison" ? "status.poison" : "status.stun")} (${s.turns})`;
+    if (this.enemy.statuses.length > 0 && !this.enemy.isDead) {
+      const parts = this.enemy.statuses.map(chip).join("   ");
+      textShadow(g, parts, ex, 92, 12, "#7ae87a", "center");
+    }
+    if (G.ctx.player.statuses.length > 0) {
+      const parts = G.ctx.player.statuses.map(chip).join("   ");
+      text(g, parts, px + 14, py + 124, 12, "#7ae87a");
+    }
+    if (this.session.mistTurns > 0)
+      text(g, T("status.mist"), px + 200, py + 124, 12, "#8fd4ff");
+
+    if (this.state === "input" && !this.itemMenu)
       text(g, T("combat.yourturn"), VW / 2, by - 16, 12, "#8fd4ff", "center");
     if (this.state === "done" && Math.sin(this.t * 4) > -0.2)
       textShadow(g, T("combat.continue"), VW / 2, by - 16, 13, "#ffd84a", "center");

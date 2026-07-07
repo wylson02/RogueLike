@@ -3,12 +3,13 @@ import { GameContext, LogKind } from "./context";
 import { Monster, MonsterRank } from "./entities";
 import { T } from "./i18n";
 
-export type CombatActionId = "attack" | "heal" | "dodge" | "flee" | "class";
+export type CombatActionId = "attack" | "heal" | "dodge" | "flee" | "class" | "item";
 
 export interface CombatEvent {
   type: "playerHit" | "playerCrit" | "enemyHit" | "playerDodge" | "heal" | "dodgeUp"
       | "fleeOk" | "fleeFail" | "enemyDead" | "playerDead" | "phase2" | "levelup" | "reward"
-      | "classAbility" | "enemySpecial" | "enemyBuff";
+      | "classAbility" | "enemySpecial" | "enemyBuff"
+      | "itemUse" | "poisonEnemy" | "poisonPlayer" | "stunEnemy" | "stunPlayer";
   value?: number;
 }
 
@@ -18,7 +19,8 @@ export class CombatSession {
   log: string[] = [];
   healsLeft = 2;
   readonly healAmount = 8;
-  classAbilityUsed = false;
+  classAbilityUsesLeft = 1;
+  mistTurns = 0; // Potion de brume : esquive garantie (même contre les spéciales)
   enemySpecialUsed = false;
   private pendingSpecial: "golem" | "nightslime" | "boss" | "spider" | "superboss" | "rival" | null = null;
   dodgeTurnsLeft = 0;
@@ -36,6 +38,8 @@ export class CombatSession {
   constructor(ctx: GameContext, enemy: Monster) {
     this.ctx = ctx;
     this.enemy = enemy;
+    // Écho arcanique / furtif : capacité de classe utilisable 2 fois
+    if (ctx.player.hasTalent("m2b") || ctx.player.hasTalent("r2b")) this.classAbilityUsesLeft = 2;
 
     if (enemy.nameKey === "mob.superboss") {
       this.addLog(T("combat.sboss1"));
@@ -70,28 +74,64 @@ export class CombatSession {
   drainEvents(): CombatEvent[] { const e = this.events; this.events = []; return e; }
   private roll(pct: number) { return this.ctx.rng.next(0, 100) < pct; }
 
-  // Joue un tour complet : action joueur → phase 2 → récompense → tour ennemi
-  playTurn(action: CombatActionId) {
+  // Joue un tour complet : action joueur → phase 2 → récompense → tour ennemi → statuts
+  playTurn(action: CombatActionId, itemId?: string) {
     if (this.over) return;
 
-    this.executePlayerAction(action);
+    // Étourdi : le joueur perd son action
+    if (this.player.hasStatus("stun")) {
+      this.addLog(T("combat.stunned.player"));
+      this.emit({ type: "stunPlayer" });
+    } else {
+      this.executePlayerAction(action, itemId);
+    }
     this.checkPhase2();
     this.checkEnemySpecial();
     this.checkEnemyDead();
 
     if (this.isOver) { this.finish(); return; }
 
-    this.resolveEnemyTurn();
+    if (this.enemy.hasStatus("stun")) {
+      this.addLog(T("combat.stunned.enemy", { name: this.enemy.name }));
+      this.emit({ type: "stunEnemy" });
+    } else {
+      this.resolveEnemyTurn();
+    }
     if (this.dodgeTurnsLeft > 0) this.dodgeTurnsLeft--;
+
+    this.tickStatuses();
+    this.checkEnemyDead(); // mort par poison
 
     if (this.player.isDead) {
       this.addLog(T("combat.playerdead"));
       this.emit({ type: "playerDead" });
       this.finish();
+      return;
+    }
+    if (this.isOver) this.finish();
+  }
+
+  // Fin de tour : le poison ronge les deux camps, les statuts expirent
+  private tickStatuses() {
+    const pPoison = this.player.getStatus("poison");
+    if (pPoison && pPoison.turns > 0) {
+      this.player.hp -= pPoison.power;
+      this.addLog(T("combat.poison.player", { n: pPoison.power }));
+      this.emit({ type: "poisonPlayer", value: pPoison.power });
+    }
+    const ePoison = this.enemy.getStatus("poison");
+    if (ePoison && ePoison.turns > 0 && !this.enemy.isDead) {
+      this.enemy.hp -= ePoison.power;
+      this.addLog(T("combat.poison.enemy", { name: this.enemy.name, n: ePoison.power }));
+      this.emit({ type: "poisonEnemy", value: ePoison.power });
+    }
+    for (const c of [this.player, this.enemy]) {
+      for (const s of c.statuses) s.turns--;
+      c.statuses = c.statuses.filter(s => s.turns > 0);
     }
   }
 
-  private executePlayerAction(action: CombatActionId) {
+  private executePlayerAction(action: CombatActionId, itemId?: string) {
     switch (action) {
       case "attack": {
         const baseDmg = Math.max(1, this.player.attack);
@@ -116,9 +156,11 @@ export class CombatSession {
       case "heal": {
         if (this.healsLeft <= 0) return;
         this.healsLeft--;
-        this.player.heal(this.healAmount);
-        this.addLog(T("combat.heal", { n: this.healAmount }));
-        this.emit({ type: "heal", value: this.healAmount });
+        // Second souffle (Guerrier palier 2) : soins de combat renforcés
+        const amount = this.healAmount + (this.player.hasTalent("w2a") ? 4 : 0);
+        this.player.heal(amount);
+        this.addLog(T("combat.heal", { n: amount }));
+        this.emit({ type: "heal", value: amount });
         break;
       }
       case "dodge": {
@@ -139,8 +181,8 @@ export class CombatSession {
         break;
       }
       case "class": {
-        if (this.classAbilityUsed) return;
-        this.classAbilityUsed = true;
+        if (this.classAbilityUsesLeft <= 0) return;
+        this.classAbilityUsesLeft--;
         const p = this.player;
         switch (p.classId) {
           case "warrior": {
@@ -151,7 +193,9 @@ export class CombatSession {
             break;
           }
           case "mage": {
-            const dmg = Math.round(p.attack * 2.2 + 5);
+            // Surcharge (Mage palier 1) : Explosion Arcanique +50%
+            const mul = p.hasTalent("m1b") ? 1.5 : 1;
+            const dmg = Math.round((p.attack * 2.2 + 5) * mul);
             this.enemy.hp -= dmg; // ignore l'armure de la cible
             this.addLog(T("combat.classability.mage", { n: dmg }));
             this.emit({ type: "classAbility", value: dmg });
@@ -168,6 +212,34 @@ export class CombatSession {
             this.dodgeTurnsLeft = Math.max(this.dodgeTurnsLeft, 2);
             this.addLog(T("combat.classability.rogue", { n: dmg }));
             this.emit({ type: "classAbility", value: dmg });
+            break;
+          }
+        }
+        break;
+      }
+      case "item": {
+        const item = this.player.inventory.find(i => i.consumable && i.id === itemId);
+        if (!item) return;
+        this.player.removeFromInventory(item);
+        switch (item.id) {
+          case "Bomb": {
+            const dmg = 12;
+            this.enemy.hp -= dmg; // ignore l'armure
+            this.enemy.addStatus("stun", 1);
+            this.addLog(T("combat.item.bomb", { n: dmg, name: this.enemy.name }));
+            this.emit({ type: "itemUse", value: dmg });
+            break;
+          }
+          case "MistPotion": {
+            this.mistTurns = 1;
+            this.addLog(T("combat.item.mist"));
+            this.emit({ type: "itemUse" });
+            break;
+          }
+          case "RecallScroll": {
+            this.playerFled = true;
+            this.addLog(T("combat.item.scroll"));
+            this.emit({ type: "fleeOk" });
             break;
           }
         }
@@ -277,14 +349,28 @@ export class CombatSession {
 
   private resolveEnemyTurn() {
     if (this.enemy.isDead) return;
+    // Potion de brume : esquive garantie, y compris contre les attaques spéciales
+    if (this.mistTurns > 0) {
+      this.mistTurns--;
+      this.addLog(T("combat.mist.dodge", { name: this.enemy.name }));
+      this.emit({ type: "playerDodge" });
+      return;
+    }
     // Les attaques spéciales ignorent l'esquive du joueur.
-    if (this.dodgeTurnsLeft > 0 && !this.pendingSpecial) {
-      if (this.roll(this.dodgeChance)) {
+    if (!this.pendingSpecial) {
+      if (this.dodgeTurnsLeft > 0) {
+        if (this.roll(this.dodgeChance)) {
+          this.addLog(T("combat.dodged", { name: this.enemy.name }));
+          this.emit({ type: "playerDodge" });
+          return;
+        }
+        this.addLog(T("combat.nododge", { name: this.enemy.name }));
+      } else if (this.player.hasTalent("r2a") && this.roll(15)) {
+        // Ombre (Voleur palier 2) : esquive passive permanente
         this.addLog(T("combat.dodged", { name: this.enemy.name }));
         this.emit({ type: "playerDodge" });
         return;
       }
-      this.addLog(T("combat.nododge", { name: this.enemy.name }));
     }
     const atk = Math.max(1, this.enemy.attack);
     if (this.pendingSpecial === "golem") {
@@ -313,6 +399,7 @@ export class CombatSession {
     if (this.pendingSpecial === "spider") {
       this.pendingSpecial = null;
       const dmg = this.player.takeDamage(Math.round(atk * 2 + 3));
+      this.player.addStatus("poison", 3, 2); // venin : 2 dégâts/tour pendant 3 tours
       this.addLog(T("combat.special.spider", { n: dmg }));
       this.emit({ type: "enemySpecial", value: dmg });
       return;
@@ -351,6 +438,7 @@ export class CombatSession {
   private finish() {
     this.over = true;
     this.victory = this.enemy.isDead;
+    this.player.clearStatuses(); // les statuts ne survivent pas au combat
     if (this.empowerApplied) {
       this.player.modifyAttack(-this.empowerAtkBonus);
       this.empowerApplied = false;
