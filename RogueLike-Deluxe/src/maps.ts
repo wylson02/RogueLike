@@ -111,6 +111,22 @@ export const MapCatalog = {
     return b.build();
   },
 
+  // Donjon post-jeu : nef sombre à colonnades, le Dévoreur d'Âmes au fond
+  level5Depths(): GameMap {
+    const b = new MapBuilder(30, 19).drawBorder(Tile.Wall);
+    for (const px of [7, 13, 19]) {
+      b.drawRect(px, 4, 2, 2, Tile.Wall);
+      b.drawRect(px, 13, 2, 2, Tile.Wall);
+    }
+    // alcôves latérales aux trésors
+    b.drawRect(3, 5, 3, 1, Tile.Wall);
+    b.drawRect(3, 13, 3, 1, Tile.Wall);
+    // estrade du Dévoreur
+    b.drawRect(24, 6, 1, 2, Tile.Wall);
+    b.drawRect(24, 11, 1, 2, Tile.Wall);
+    return b.build();
+  },
+
   level4BossArena(): GameMap {
     const b = new MapBuilder(44, 19).drawBorder(Tile.Wall);
     b.drawRect(1, 7, 18, 1, Tile.Wall);

@@ -137,7 +137,7 @@ handle(ctx.drainEvents());
 ctx.blockNightSpawnsForTicks(1e9);
 check(ctx.map.width === 30 && ctx.map.height === 18, "carte 30x18");
 check(eqPos(ctx.player.pos, P(14, 8)), "départ (14,8)");
-check(ctx.monsters.length === 2, "2 monstres");
+check(ctx.monsters.length === 3, "3 monstres (slime, golem, araignée)");
 
 // Kael donne l'épée
 goTo(P(12, 6));

@@ -12,7 +12,7 @@ import { CombatScene } from "./combatScene";
 import { CinematicScene, introPages, swordPages, bossIntroPages, EndScene } from "./cinematics";
 import { G, Flow } from "./game";
 import { loadSettings, loadGame, clearSave, saveGame } from "./save";
-import { Monster, Merchant } from "./entities";
+import { Monster, Merchant, ClassId, applyClass } from "./entities";
 
 const canvas = document.getElementById("game") as HTMLCanvasElement;
 const g = canvas.getContext("2d")!;
@@ -40,9 +40,10 @@ Input.onAny = () => { Audio.ensure(); Audio.setMusicVol(G.settings.musicVol); Au
 Flow.toMenu = () => SceneManager.switchTo(() => new MainMenuScene());
 Flow.toExplore = () => SceneManager.switchTo(() => new ExploreScene());
 
-Flow.startNew = () => {
+Flow.startNew = (classId: ClassId) => {
   clearSave();
   G.ctx = new GameContext();
+  applyClass(G.ctx.player, classId);
   SceneManager.switchTo(() => new CinematicScene(introPages(), () => {
     G.ctx.pushLog(T("level.enter1"), LogKind.System);
     G.ctx.loadLevel(1);

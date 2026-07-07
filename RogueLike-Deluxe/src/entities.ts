@@ -1,5 +1,5 @@
 // ===== Entités — port de Domain/Entities + Builders + AI =====
-import { Pos, P, RNG, clamp } from "./core";
+import { Pos, P, RNG, clamp, Dir } from "./core";
 import type { Item } from "./items";
 import { T } from "./i18n";
 
@@ -31,20 +31,26 @@ export abstract class Character {
   modifyCritMultiplierPercent(d: number) { this.critMultiplierPercent = clamp(this.critMultiplierPercent + d, 150, 400); }
 }
 
-export enum EquipSlot { Weapon, Armor, Accessory }
+export enum EquipSlot { Weapon, Armor, Accessory, Relic }
+export const MAX_WEAPON_UPGRADE = 5;
 export enum StatType { MaxHp, Attack, Armor, CritChance, LifeSteal }
+
+export type ClassId = "warrior" | "mage" | "rogue";
 
 export class Player extends Character {
   inventory: Item[] = [];
   equippedWeapon: Item | null = null;
   equippedArmor: Item | null = null;
   equippedAccessory: Item | null = null;
+  equippedRelic: Item | null = null;
   gold = 0;
   level = 1;
   xp = 0;
   statPoints = 0;
   visionRadius = 3;
   lightBonus = 0;
+  classId: ClassId = "warrior";
+  weaponUpgradeLevel = 0;
 
   constructor(pos: Pos) { super(pos, 70, 5); }
 
@@ -99,6 +105,7 @@ export class Player extends Character {
     };
     if (item.slot === EquipSlot.Weapon) this.equippedWeapon = swap(this.equippedWeapon);
     else if (item.slot === EquipSlot.Armor) this.equippedArmor = swap(this.equippedArmor);
+    else if (item.slot === EquipSlot.Relic) this.equippedRelic = swap(this.equippedRelic);
     else this.equippedAccessory = swap(this.equippedAccessory);
   }
 
@@ -106,10 +113,53 @@ export class Player extends Character {
     if (this.equippedWeapon) return true;
     return this.inventory.some(i => i.slot === EquipSlot.Weapon);
   }
+
+  // Forge du marchand : améliore l'arme équipée en ATK, jusqu'à MAX_WEAPON_UPGRADE.
+  nextWeaponUpgradeCost(): number | null {
+    if (this.weaponUpgradeLevel >= MAX_WEAPON_UPGRADE) return null;
+    return 40 + this.weaponUpgradeLevel * 30;
+  }
+  upgradeWeapon(): boolean {
+    const cost = this.nextWeaponUpgradeCost();
+    if (cost === null || !this.equippedWeapon || !this.spendGold(cost)) return false;
+    this.weaponUpgradeLevel++;
+    this.modifyAttack(+2);
+    return true;
+  }
+}
+
+// ===== Classes jouables : stats de départ + capacité active (1×/combat) =====
+export interface ClassDef { id: ClassId; nameKey: string; descKey: string; abilityNameKey: string; }
+
+export const ClassCatalog: Record<ClassId, ClassDef> = {
+  warrior: { id: "warrior", nameKey: "class.warrior.name", descKey: "class.warrior.desc", abilityNameKey: "act.class.warrior" },
+  mage: { id: "mage", nameKey: "class.mage.name", descKey: "class.mage.desc", abilityNameKey: "act.class.mage" },
+  rogue: { id: "rogue", nameKey: "class.rogue.name", descKey: "class.rogue.desc", abilityNameKey: "act.class.rogue" },
+};
+
+// Applique les deltas de stats de départ d'une classe à un joueur fraîchement créé.
+export function applyClass(p: Player, id: ClassId) {
+  p.classId = id;
+  switch (id) {
+    case "warrior":
+      p.maxHp += 20; p.hp = p.maxHp;
+      p.addArmor(3);
+      break;
+    case "mage":
+      p.maxHp -= 15; p.hp = p.maxHp;
+      p.modifyAttack(+3);
+      p.modifyCritChance(+10);
+      break;
+    case "rogue":
+      p.modifyLifeSteal(+15);
+      p.modifyCritChance(+10);
+      p.increaseVision(1);
+      break;
+  }
 }
 
 export enum MonsterRank { Normal, MiniBoss, Boss }
-export type AiKind = "aggro" | "random";
+export type AiKind = "aggro" | "random" | "patrol" | "ambush" | "flee";
 
 export class Monster extends Character {
   nameKey: string;
@@ -118,12 +168,16 @@ export class Monster extends Character {
   sprite: string;
   minGold: number; maxGold: number;
   minXp: number; maxXp: number;
+  feminine: boolean; // accord grammatical FR de "combat.appear" (Un/Une {name} surgit !)
   nightBuffed = false; // équilibrage : buff nocturne appliqué une fois
+  aiKind: AiKind;
+  spawnPos: Pos;               // pour le comportement "patrol"
+  patrolDir: Dir | null = null; // direction courante de patrouille
 
   constructor(o: {
     nameKey: string; pos: Pos; hp: number; attack: number;
     minGold: number; maxGold: number; minXp: number; maxXp: number;
-    rank?: MonsterRank; aggroRange?: number; sprite: string;
+    rank?: MonsterRank; aggroRange?: number; sprite: string; feminine?: boolean; aiKind?: AiKind;
   }) {
     super(o.pos, o.hp, o.attack);
     this.nameKey = o.nameKey;
@@ -132,6 +186,9 @@ export class Monster extends Character {
     this.sprite = o.sprite;
     this.minGold = o.minGold; this.maxGold = o.maxGold;
     this.minXp = o.minXp; this.maxXp = o.maxXp;
+    this.feminine = o.feminine ?? false;
+    this.aiKind = o.aiKind ?? "aggro";
+    this.spawnPos = P(o.pos.x, o.pos.y);
   }
   get name() { return T(this.nameKey); }
   rollGold(rng: RNG) { return this.minGold === this.maxGold ? this.minGold : rng.next(this.minGold, this.maxGold + 1); }
@@ -141,16 +198,24 @@ export class Monster extends Character {
 // ===== Catalogue de monstres — port de MonsterCatalog.cs =====
 export const MonsterCatalog = {
   slime: (pos: Pos) => new Monster({
-    nameKey: "mob.slime", pos, hp: 6, attack: 5,
+    nameKey: "mob.slime", pos, hp: 11, attack: 6,
     minGold: 3, maxGold: 7, minXp: 6, maxXp: 10, aggroRange: 3, sprite: "slime",
   }),
   golem: (pos: Pos) => new Monster({
-    nameKey: "mob.golem", pos, hp: 20, attack: 1,
-    minGold: 10, maxGold: 18, minXp: 6, maxXp: 10, aggroRange: 3, sprite: "golem",
+    nameKey: "mob.golem", pos, hp: 24, attack: 5,
+    minGold: 10, maxGold: 18, minXp: 6, maxXp: 10, aggroRange: 3, sprite: "golem", aiKind: "patrol",
   }),
   nightSlime: (pos: Pos) => new Monster({
     nameKey: "mob.nightslime", pos, hp: 6, attack: 2,
-    minGold: 2, maxGold: 5, minXp: 6, maxXp: 10, aggroRange: 3, sprite: "nightslime",
+    minGold: 2, maxGold: 5, minXp: 6, maxXp: 10, aggroRange: 3, sprite: "nightslime", aiKind: "flee",
+  }),
+  spider: (pos: Pos) => new Monster({
+    nameKey: "mob.spider", pos, hp: 10, attack: 6,
+    minGold: 6, maxGold: 11, minXp: 9, maxXp: 15, aggroRange: 5, sprite: "spider", feminine: true, aiKind: "ambush",
+  }),
+  gargoyle: (pos: Pos) => new Monster({
+    nameKey: "mob.gargoyle", pos, hp: 26, attack: 6,
+    minGold: 16, maxGold: 26, minXp: 16, maxXp: 24, aggroRange: 4, sprite: "gargoyle", feminine: true,
   }),
   sealWarden: (pos: Pos) => new Monster({
     nameKey: "mob.warden", pos, hp: 32, attack: 7,
@@ -170,6 +235,18 @@ export const MonsterCatalog = {
     });
     m.addArmor(2);
     m.modifyCritChance(12);
+    m.modifyCritMultiplierPercent(50);
+    return m;
+  },
+  // Super-boss du donjon post-jeu (niveau 5)
+  soulDevourer: (pos: Pos) => {
+    const m = new Monster({
+      nameKey: "mob.superboss", pos, hp: 140, attack: 13,
+      minGold: 300, maxGold: 400, minXp: 200, maxXp: 300,
+      rank: MonsterRank.Boss, aggroRange: 10, sprite: "avatar",
+    });
+    m.addArmor(3);
+    m.modifyCritChance(15);
     m.modifyCritMultiplierPercent(50);
     return m;
   },
@@ -195,7 +272,7 @@ export class Pnj {
   }
 }
 
-export enum ChestType { Normal, TorchOnly, Legendary, LanternChest }
+export enum ChestType { Normal, TorchOnly, Legendary, LanternChest, AbyssKeyChest }
 export class Chest {
   pos: Pos; isOpened = false; type: ChestType;
   constructor(pos: Pos, type = ChestType.Normal) { this.pos = pos; this.type = type; }

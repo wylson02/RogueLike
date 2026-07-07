@@ -6,8 +6,8 @@ import { Audio } from "./audio";
 import { T } from "./i18n";
 import { G, Flow } from "./game";
 import { LogKind, GameEvent } from "./context";
-import { StatType, Merchant, EquipSlot } from "./entities";
-import { Item, ItemCatalog, sellPrice, MERCHANT_STOCK } from "./items";
+import { StatType, Merchant, EquipSlot, MAX_WEAPON_UPGRADE, Monster, MonsterRank } from "./entities";
+import { Item, ItemCatalog, sellPrice, MERCHANT_STOCK, NIGHT_MERCHANT_STOCK, NIGHT_MERCHANT_NAME } from "./items";
 import { getSprite } from "./sprites";
 import { saveGame, saveSettings } from "./save";
 import { TS } from "./render";
@@ -16,6 +16,8 @@ import { OptionsScene } from "./menuScenes";
 export class ExploreScene implements Scene {
   private t = 0;
   private lastDt = 1 / 60;
+  private pendingCombat: Monster | null = null; // flash façon Pokémon avant le combat
+  private flashT = 0;
 
   enter() {
     Audio.setMode(G.ctx.time.isNight ? "night" : "explore");
@@ -27,6 +29,17 @@ export class ExploreScene implements Scene {
     this.t += dt;
     this.lastDt = dt;
     const ctx = G.ctx;
+
+    // Flash d'entrée en combat : inputs bloqués, la musique de combat démarre déjà
+    if (this.pendingCombat) {
+      this.flashT += dt;
+      if (this.flashT >= 0.75) {
+        const m = this.pendingCombat;
+        this.pendingCombat = null;
+        Flow.startCombat(m);
+      }
+      return;
+    }
 
     Audio.setMode(ctx.time.isNight ? "night" : "explore");
 
@@ -53,7 +66,12 @@ export class ExploreScene implements Scene {
           else if (e.name === "spawn") G.world.particles.burst(x, y, "#8a5fd0", 20, 80, 0.9, 3, true);
           break;
         }
-        case "combat": Flow.startCombat(e.monster); return;
+        case "combat":
+          this.pendingCombat = e.monster;
+          this.flashT = 0;
+          Audio.setMode(e.monster.rank === MonsterRank.Boss ? "boss" : "combat");
+          Audio.sfx("hit");
+          return;
         case "merchant": Flow.merchant(e.merchant); return;
         case "swordCinematic": Flow.swordCinematic(); return;
         case "bossIntro": Flow.bossIntroThenLevel4(); return;
@@ -70,6 +88,12 @@ export class ExploreScene implements Scene {
   draw(g: CanvasRenderingContext2D) {
     G.world.draw(g, G.ctx, Math.min(0.05, this.lastDt));
     drawHud(g, G.ctx, this.t);
+    // 3 éclairs blancs façon Pokémon avant la bascule en combat
+    if (this.pendingCombat) {
+      const a = Math.abs(Math.sin(this.flashT * Math.PI * 4)) * 0.85;
+      g.fillStyle = `rgba(255,255,255,${a})`;
+      g.fillRect(0, 0, VW, VH);
+    }
   }
 }
 
@@ -129,7 +153,7 @@ export class InventoryScene implements Scene {
 
   draw(g: CanvasRenderingContext2D) {
     dimBackground(g, 0.68);
-    const w = 640, h = 420, x = VW / 2 - w / 2, y = VH / 2 - h / 2;
+    const w = 760, h = 420, x = VW / 2 - w / 2, y = VH / 2 - h / 2;
     panel(g, x, y, w, h, T("inv.title"));
     const p = G.ctx.player;
 
@@ -138,13 +162,15 @@ export class InventoryScene implements Scene {
       { it: p.equippedWeapon, label: T("inv.equipped.w") },
       { it: p.equippedArmor, label: T("inv.equipped.a") },
       { it: p.equippedAccessory, label: T("inv.equipped.acc") },
+      { it: p.equippedRelic, label: T("inv.equipped.relic") },
     ];
+    const slotW = 155, slotGap = 15;
     eq.forEach((e, i) => {
-      const ex = x + 30 + i * 200;
+      const ex = x + 30 + i * (slotW + slotGap);
       g.fillStyle = "rgba(40,32,60,.6)";
-      g.beginPath(); g.roundRect(ex, y + 30, 185, 56, 8); g.fill();
+      g.beginPath(); g.roundRect(ex, y + 30, slotW, 56, 8); g.fill();
       g.strokeStyle = "rgba(150,140,190,.3)";
-      g.beginPath(); g.roundRect(ex, y + 30, 185, 56, 8); g.stroke();
+      g.beginPath(); g.roundRect(ex, y + 30, slotW, 56, 8); g.stroke();
       if (e.it) {
         const spr = getSprite(e.it.sprite);
         if (spr) { g.imageSmoothingEnabled = false; g.drawImage(spr, ex + 8, y + 38, 40, 40); }
@@ -238,9 +264,11 @@ export class ProgressionScene implements Scene {
 }
 
 // ===== Marchand =====
+type ShopTab = "buy" | "sell" | "forge" | "arena";
+
 export class MerchantScene implements Scene {
   private merchant: Merchant;
-  private tab: "buy" | "sell" = "buy";
+  private tab: ShopTab = "buy";
   private sel = 0;
   private t = 0;
   private flash = "";
@@ -250,15 +278,28 @@ export class MerchantScene implements Scene {
   enter() { Audio.sfx("talk"); }
 
   private sellables(): Item[] { return G.ctx.player.inventory.filter(i => i.canSell); }
+  private stock() { return this.merchant.name === NIGHT_MERCHANT_NAME ? NIGHT_MERCHANT_STOCK : MERCHANT_STOCK; }
+  // L'arène est le privilège de Vesna — pas de la rôdeuse nocturne
+  private tabOrder(): ShopTab[] {
+    return this.merchant.name === NIGHT_MERCHANT_NAME ? ["buy", "sell", "forge"] : ["buy", "sell", "forge", "arena"];
+  }
+
+  private cycleTab(dir: 1 | -1) {
+    const order = this.tabOrder();
+    const i = (order.indexOf(this.tab) + dir + order.length) % order.length;
+    this.tab = order[i];
+    this.sel = 0;
+    Audio.sfx("ui");
+  }
 
   update(dt: number) {
     this.t += dt;
     this.flashT = Math.max(0, this.flashT - dt);
     if (Input.consume("cancel")) { Audio.sfx("back"); Flow.toExplore(); return; }
-    if (Input.consume("left") || Input.consume("tabL")) { this.tab = "buy"; this.sel = 0; Audio.sfx("ui"); }
-    if (Input.consume("right") || Input.consume("tabR")) { this.tab = "sell"; this.sel = 0; Audio.sfx("ui"); }
+    if (Input.consume("left") || Input.consume("tabL")) this.cycleTab(-1);
+    if (Input.consume("right") || Input.consume("tabR")) this.cycleTab(1);
 
-    const n = this.tab === "buy" ? MERCHANT_STOCK.length : this.sellables().length;
+    const n = this.tab === "buy" ? this.stock().length : this.tab === "sell" ? this.sellables().length : 0;
     if (n > 0) {
       if (Input.consume("up")) { this.sel = (this.sel - 1 + n) % n; Audio.sfx("ui"); }
       if (Input.consume("down")) { this.sel = (this.sel + 1) % n; Audio.sfx("ui"); }
@@ -267,7 +308,7 @@ export class MerchantScene implements Scene {
     if (Input.consume("confirm")) {
       const p = G.ctx.player;
       if (this.tab === "buy") {
-        const line = MERCHANT_STOCK[this.sel];
+        const line = this.stock()[this.sel];
         if (p.gold < line.price) {
           G.ctx.pushLog(T("shop.poor"), LogKind.Warning);
           this.flash = T("shop.poor"); this.flashT = 1.4;
@@ -280,7 +321,7 @@ export class MerchantScene implements Scene {
           this.flash = T("shop.bought", { item: item.name, n: line.price }); this.flashT = 1.4;
           Audio.sfx("coin");
         }
-      } else {
+      } else if (this.tab === "sell") {
         const list = this.sellables();
         if (list.length > 0) {
           this.sel = Math.min(this.sel, list.length - 1);
@@ -292,6 +333,28 @@ export class MerchantScene implements Scene {
           this.flash = T("shop.sold", { item: item.name, n: price }); this.flashT = 1.4;
           Audio.sfx("coin");
           this.sel = Math.max(0, Math.min(this.sel, this.sellables().length - 1));
+        }
+      } else if (this.tab === "arena") {
+        Audio.sfx("confirm");
+        const first = G.ctx.startArenaWave();
+        Flow.startCombat(first);
+        return;
+      } else {
+        if (!p.equippedWeapon) {
+          this.flash = T("shop.forge.noweapon"); this.flashT = 1.4;
+          Audio.sfx("locked");
+        } else if (p.nextWeaponUpgradeCost() === null) {
+          this.flash = T("shop.forge.max"); this.flashT = 1.4;
+          Audio.sfx("locked");
+        } else if (p.gold < (p.nextWeaponUpgradeCost() ?? Infinity)) {
+          G.ctx.pushLog(T("shop.poor"), LogKind.Warning);
+          this.flash = T("shop.poor"); this.flashT = 1.4;
+          Audio.sfx("locked");
+        } else {
+          p.upgradeWeapon();
+          G.ctx.pushLog(T("shop.forge.done", { n: p.weaponUpgradeLevel }), LogKind.Loot);
+          this.flash = T("shop.forge.done", { n: p.weaponUpgradeLevel }); this.flashT = 1.4;
+          Audio.sfx("coin");
         }
       }
     }
@@ -322,20 +385,22 @@ export class MerchantScene implements Scene {
       x + w - 36, y + 74, 12, "#a89ec0", "right");
 
     // onglets
-    const tabs: ["buy" | "sell", string][] = [["buy", T("shop.buy")], ["sell", T("shop.sell")]];
-    tabs.forEach(([id, label], i) => {
-      const tx = x + 120 + i * 150;
+    const labels: Record<ShopTab, string> = { buy: T("shop.buy"), sell: T("shop.sell"), forge: T("shop.forge"), arena: T("shop.arena") };
+    const order = this.tabOrder();
+    const tabW = order.length > 3 ? 128 : 135, tabGap = order.length > 3 ? 138 : 150;
+    order.forEach((id, i) => {
+      const tx = x + 110 + i * tabGap;
       const active = this.tab === id;
       g.fillStyle = active ? "rgba(150,90,30,.85)" : "rgba(50,38,26,.7)";
-      g.beginPath(); g.roundRect(tx, y + 100, 135, 32, 6); g.fill();
-      if (active) { g.strokeStyle = "#e8c078"; g.beginPath(); g.roundRect(tx, y + 100, 135, 32, 6); g.stroke(); }
-      textShadow(g, label, tx + 67, y + 117, 14, active ? "#fff" : "#9a8a70", "center");
+      g.beginPath(); g.roundRect(tx, y + 100, tabW, 32, 6); g.fill();
+      if (active) { g.strokeStyle = "#e8c078"; g.beginPath(); g.roundRect(tx, y + 100, tabW, 32, 6); g.stroke(); }
+      textShadow(g, labels[id], tx + tabW / 2, y + 117, 14, active ? "#fff" : "#9a8a70", "center");
     });
 
     // liste
     const listY = y + 156;
     if (this.tab === "buy") {
-      MERCHANT_STOCK.forEach((line, i) => {
+      this.stock().forEach((line, i) => {
         const ry = listY + i * 44;
         const selected = i === this.sel;
         const afford = G.ctx.player.gold >= line.price;
@@ -349,7 +414,7 @@ export class MerchantScene implements Scene {
         text(g, T(line.labelKey), x + 80, ry + 14, 14, selected ? "#fff" : "#c8bca8");
         textShadow(g, line.price + " ⬤", x + w - 48, ry + 14, 14, afford ? "#ffd84a" : "#8a5050", "right");
       });
-    } else {
+    } else if (this.tab === "sell") {
       const list = this.sellables();
       if (list.length === 0) {
         text(g, T("shop.empty"), VW / 2, listY + 60, 15, "#8a80a0", "center");
@@ -370,6 +435,30 @@ export class MerchantScene implements Scene {
           text(g, it.name, x + 80, ry + 14, 14, selected ? "#fff" : "#c8bca8");
           textShadow(g, "+" + sellPrice(it) + " ⬤", x + w - 48, ry + 14, 14, "#7ae87a", "right");
         });
+      }
+    } else if (this.tab === "arena") {
+      // arène : vagues de monstres contre récompenses
+      const ctx = G.ctx;
+      textShadow(g, T("arena.wave", { n: ctx.arenaWave }), VW / 2, listY + 20, 20, "#e8c078", "center");
+      if (ctx.isArenaChampionWave())
+        textShadow(g, T("arena.champion"), VW / 2, listY + 50, 13, "#c8a8ff", "center");
+      else
+        text(g, T("arena.desc"), VW / 2, listY + 50, 13, "#a89ec0", "center");
+      text(g, T("arena.reward", { n: ctx.arenaNextReward() }), VW / 2, listY + 84, 14, "#ffd84a", "center");
+      text(g, T("arena.warn"), VW / 2, listY + 112, 12, "#c88a7a", "center");
+      text(g, T("arena.hint"), VW / 2, listY + 140, 12, "#8a80a0", "center");
+    } else {
+      // forge : amélioration de l'arme équipée
+      const cost = p.nextWeaponUpgradeCost();
+      const wname = p.equippedWeapon ? p.equippedWeapon.name : T("shop.forge.noweapon");
+      textShadow(g, wname, VW / 2, listY + 20, 18, p.equippedWeapon ? "#ffd84a" : "#8a5470", "center");
+      text(g, T("shop.forge.level", { n: p.weaponUpgradeLevel, max: MAX_WEAPON_UPGRADE }), VW / 2, listY + 50, 13, "#a89ec0", "center");
+      if (cost === null) {
+        text(g, T("shop.forge.max"), VW / 2, listY + 90, 14, "#7ae87a", "center");
+      } else {
+        const afford = G.ctx.player.gold >= cost;
+        text(g, T("shop.forge.next", { n: cost }), VW / 2, listY + 90, 14, afford ? "#ffd84a" : "#8a5050", "center");
+        text(g, T("shop.forge.hint"), VW / 2, listY + 118, 12, "#8a80a0", "center");
       }
     }
 

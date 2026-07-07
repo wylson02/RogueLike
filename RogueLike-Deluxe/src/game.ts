@@ -2,6 +2,7 @@
 import { GameContext } from "./context";
 import { WorldRenderer } from "./render";
 import { Settings } from "./save";
+import { ClassId } from "./entities";
 
 export const G: {
   ctx: GameContext;
@@ -15,7 +16,7 @@ export const G: {
 
 // Navigation — les implémentations sont assignées dans main.ts pour éviter les imports circulaires
 export const Flow: {
-  startNew: () => void;
+  startNew: (classId: ClassId) => void;
   continueGame: () => void;
   toMenu: () => void;
   toExplore: () => void;

@@ -7,6 +7,7 @@ import { T, setLang, Lang } from "./i18n";
 import { hasSave, savedLevel, saveSettings } from "./save";
 import { G, Flow } from "./game";
 import { getSprite } from "./sprites";
+import { ClassId, ClassCatalog } from "./entities";
 
 export class MainMenuScene implements Scene {
   private sel = 0;
@@ -23,7 +24,7 @@ export class MainMenuScene implements Scene {
     this.items = [];
     if (hasSave())
       this.items.push({ key: "menu.continue", args: { level: savedLevel() }, action: () => Flow.continueGame() });
-    this.items.push({ key: "menu.new", action: () => Flow.startNew() });
+    this.items.push({ key: "menu.new", action: () => SceneManager.push(new ClassSelectScene()) });
     this.items.push({ key: "menu.options", action: () => SceneManager.push(new OptionsScene()) });
     this.items.push({ key: "menu.credits", action: () => SceneManager.push(new CreditsScene()) });
     this.items.push({ key: "menu.quit", action: () => { try { window.close(); } catch { } } });
@@ -122,6 +123,45 @@ export class MainMenuScene implements Scene {
 
     const blink = Math.sin(this.t * 4) > -0.3;
     if (blink) text(g, T("menu.hint"), VW / 2, VH - 26, 12, "#6e6584", "center");
+  }
+}
+
+// ===== Sélection de classe (overlay, avant la nouvelle partie) =====
+const CLASS_ORDER: ClassId[] = ["warrior", "mage", "rogue"];
+
+export class ClassSelectScene implements Scene {
+  private sel = 0;
+
+  update(dt: number) {
+    if (Input.consume("cancel")) { Audio.sfx("back"); SceneManager.pop(); return; }
+    if (Input.consume("left") || Input.consume("up")) { this.sel = (this.sel + 2) % 3; Audio.sfx("ui"); }
+    if (Input.consume("right") || Input.consume("down")) { this.sel = (this.sel + 1) % 3; Audio.sfx("ui"); }
+    if (Input.consume("confirm")) { Audio.sfx("confirm"); Flow.startNew(CLASS_ORDER[this.sel]); }
+  }
+
+  draw(g: CanvasRenderingContext2D) {
+    dimBackground(g, 0.78);
+    const w = 640, h = 300, x = VW / 2 - w / 2, y = VH / 2 - h / 2;
+    panel(g, x, y, w, h, T("classselect.title"));
+
+    const cardW = 180, cardH = 210, gap = 20;
+    const startX = x + (w - (cardW * 3 + gap * 2)) / 2;
+    CLASS_ORDER.forEach((id, i) => {
+      const def = ClassCatalog[id];
+      const cx = startX + i * (cardW + gap), cy = y + 46;
+      const selected = i === this.sel;
+      g.fillStyle = selected ? "rgba(120,25,25,.55)" : "rgba(30,24,44,.6)";
+      g.beginPath(); g.roundRect(cx, cy, cardW, cardH, 8); g.fill();
+      g.strokeStyle = selected ? "#ffb0a0" : "rgba(140,130,170,.35)";
+      g.lineWidth = selected ? 2 : 1;
+      g.beginPath(); g.roundRect(cx, cy, cardW, cardH, 8); g.stroke();
+      textShadow(g, T(def.nameKey), cx + cardW / 2, cy + 28, 18, selected ? "#fff" : "#c8c0d4", "center");
+      text(g, T(def.descKey), cx + cardW / 2, cy + 60, 12, selected ? "#e8dfc8" : "#9a92ac", "center");
+      textShadow(g, "★", cx + cardW / 2, cy + cardH - 40, 16, "#ffd84a", "center");
+      text(g, T(def.abilityNameKey), cx + cardW / 2, cy + cardH - 18, 12, "#ffd84a", "center");
+    });
+
+    text(g, T("classselect.hint"), VW / 2, y + h - 12, 12, "#8a8098", "center");
   }
 }
 

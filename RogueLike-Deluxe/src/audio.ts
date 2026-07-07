@@ -53,7 +53,7 @@ class AudioSys {
 
   private schedule() {
     if (!this.ac || this.mode === "none") return;
-    const bpm = this.mode === "combat" ? 132 : this.mode === "boss" ? 100 : 66;
+    const bpm = this.mode === "combat" ? 138 : this.mode === "boss" ? 116 : 66;
     const stepDur = 60 / bpm / 2; // croches
     while (this.nextTime < this.ac.currentTime + 0.18) {
       this.playStep(this.step, this.nextTime, stepDur);
@@ -86,23 +86,51 @@ class AudioSys {
         const arp = [0, 3, 7, 10, 12, 10, 7, 3];
         this.pluck(this.N(arp[(s / 4) % 8 | 0], 293.66), t, dur * 1.5, 0.03);
       }
-    } else if (m === "combat" || m === "boss") {
-      const boss = m === "boss";
-      // Kick
-      if (s % 4 === 0 || (boss && s % 16 === 14)) this.kick(t, boss ? 0.30 : 0.22);
-      // Hat
+    } else if (m === "combat") {
+      // ===== Combat : cavalcade héroïque =====
+      // Batterie martiale
+      if (s % 4 === 0) this.kick(t, 0.24);
+      if (s % 8 === 4) this.snare(t, 0.11);
       if (s % 2 === 1) this.hat(t, 0.05);
-      // Basse martelée
-      const bl = boss ? [0, 0, 1, 0, -2, 0, 1, 3] : [0, 0, 3, 0, -2, 0, 5, 3];
-      if (s % 2 === 0) this.bass(this.N(bl[(s / 2) % 8 | 0]), t, dur * 1.6, boss ? 0.14 : 0.11);
+      if (s % 16 === 14) this.tom(t, 160, 0.12);
+      if (s % 16 === 15) this.tom(t, 110, 0.13);
+      // Ostinato de basse galopant
+      const bl = [0, 0, 3, 0, -2, 0, 5, 3];
+      if (s % 2 === 0) this.bass(this.N(bl[(s / 2) % 8 | 0]), t, dur * 1.6, 0.12);
       // Nappe de tension
       if (s % 32 === 0) {
-        const ch = boss ? [0, 1, 7] : [0, 3, 7];
-        for (const semi of ch) this.pad(this.N(semi, 146.83), t, dur * 32, 0.035);
+        for (const semi of [0, 3, 7]) this.pad(this.N(semi, 146.83), t, dur * 32, 0.035);
       }
-      // Lead
-      if (!boss && s % 8 === 4) this.pluck(this.N([12, 10, 7, 15][(s / 8) % 4 | 0], 293.66), t, dur * 2, 0.035);
-      if (boss && s % 8 === 6) this.bell(this.N([0, 1, 0, -2][(s / 8) % 4 | 0], 587.33), t, 0.03);
+      // Lead + arpège rapide (l'élan "épique")
+      if (s % 8 === 4) this.pluck(this.N([12, 10, 7, 15][(s / 8) % 4 | 0], 293.66), t, dur * 2, 0.04);
+      const arp = [12, 15, 19, 24];
+      if (s % 4 === 2) this.pluck(this.N(arp[(s / 4) % 4 | 0], 293.66), t, dur, 0.028);
+      // Stab de cuivres à la relance de la boucle
+      if (s % 64 === 32) this.stab([0, 7, 12], t, dur * 3, 0.07);
+    } else if (m === "boss") {
+      // ===== Boss : marche funèbre écrasante, seconde mineure + triton =====
+      // Grosse artillerie : double kick syncopé, snare lourde, toms descendants
+      if (s % 8 === 0 || s % 8 === 5) this.kick(t, 0.34);
+      if (s % 8 === 4) this.snare(t, 0.14);
+      if (s % 2 === 1) this.hat(t, 0.045);
+      if (s % 32 === 28) this.tom(t, 180, 0.14);
+      if (s % 32 === 29) this.tom(t, 140, 0.15);
+      if (s % 32 === 30) this.tom(t, 100, 0.16);
+      if (s % 32 === 31) this.tom(t, 75, 0.18);
+      // Ostinato de doubles-croches menaçant (Ré / Mib : seconde mineure)
+      const ost = [0, 0, 1, 0, 0, 0, 3, 1];
+      this.bass(this.N(ost[s % 8]), t, dur * 0.9, 0.10);
+      // Chœur d'orgue dissonant
+      if (s % 32 === 0) {
+        const ch = (s % 64 === 0) ? [0, 1, 7, 12] : [0, 1, 6, 12]; // triton un cycle sur deux
+        for (const semi of ch) this.pad(this.N(semi, 146.83), t, dur * 32, 0.032);
+      }
+      // Stabs de cuivres — l'Abîme répond
+      if (s % 32 === 16) this.stab([0, 1, 7], t, dur * 2.5, 0.10);
+      if (s % 64 === 48) this.stab([-2, 4, 10], t, dur * 4, 0.08);
+      // Glas
+      if (s % 16 === 6) this.bell(this.N([0, 1, 0, -2][(s / 16) % 4 | 0], 587.33), t, 0.035);
+      if (s % 64 === 0) this.bell(this.N(0, 146.83), t, 0.06);
     }
   }
 
@@ -172,6 +200,62 @@ class AudioSys {
     g.gain.exponentialRampToValueAtTime(0.001, t + 0.16);
     o.connect(g); g.connect(this.musicBus);
     o.start(t); o.stop(t + 0.2);
+  }
+
+  private snare(t: number, vol: number) {
+    if (!this.ac || !this.noiseBuf) return;
+    const src = this.ac.createBufferSource();
+    src.buffer = this.noiseBuf;
+    const f = this.ac.createBiquadFilter();
+    f.type = "bandpass"; f.frequency.value = 1900; f.Q.value = 0.7;
+    const g = this.ac.createGain();
+    g.gain.setValueAtTime(vol, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.11);
+    src.connect(f); f.connect(g); g.connect(this.musicBus);
+    src.start(t); src.stop(t + 0.15);
+    const o = this.ac.createOscillator();
+    o.type = "triangle";
+    o.frequency.setValueAtTime(220, t);
+    o.frequency.exponentialRampToValueAtTime(140, t + 0.06);
+    const g2 = this.ac.createGain();
+    g2.gain.setValueAtTime(vol * 0.6, t);
+    g2.gain.exponentialRampToValueAtTime(0.001, t + 0.08);
+    o.connect(g2); g2.connect(this.musicBus);
+    o.start(t); o.stop(t + 0.1);
+  }
+
+  // Stab "cuivres" : accord bref de saws saturées, attaque sèche
+  private stab(semis: number[], t: number, dur: number, vol: number) {
+    if (!this.ac) return;
+    const f = this.ac.createBiquadFilter();
+    f.type = "lowpass";
+    f.frequency.setValueAtTime(2200, t);
+    f.frequency.exponentialRampToValueAtTime(500, t + dur);
+    const g = this.ac.createGain();
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(vol, t + 0.015);
+    g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    f.connect(g); g.connect(this.musicBus);
+    for (const semi of semis) {
+      for (const det of [-8, 7]) {
+        const o = this.ac.createOscillator();
+        o.type = "sawtooth"; o.frequency.value = this.N(semi, 146.83); o.detune.value = det;
+        o.connect(f); o.start(t); o.stop(t + dur + 0.05);
+      }
+    }
+  }
+
+  private tom(t: number, freq: number, vol: number) {
+    if (!this.ac) return;
+    const o = this.ac.createOscillator();
+    o.type = "sine";
+    o.frequency.setValueAtTime(freq, t);
+    o.frequency.exponentialRampToValueAtTime(freq * 0.55, t + 0.16);
+    const g = this.ac.createGain();
+    g.gain.setValueAtTime(vol, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
+    o.connect(g); g.connect(this.musicBus);
+    o.start(t); o.stop(t + 0.26);
   }
 
   private hat(t: number, vol: number) {

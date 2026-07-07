@@ -4,7 +4,7 @@ import { Dir } from "./core";
 export type GameKey =
   | "up" | "down" | "left" | "right"
   | "confirm" | "cancel" | "inventory" | "progression"
-  | "act1" | "act2" | "act3" | "act4" | "tabL" | "tabR";
+  | "act1" | "act2" | "act3" | "act4" | "act5" | "tabL" | "tabR";
 
 class InputSys {
   private pressed = new Set<GameKey>();       // appuis "frais" (consommés une fois)
@@ -45,6 +45,7 @@ class InputSys {
       case "Digit2": case "Numpad2": return "act2";
       case "Digit3": case "Numpad3": return "act3";
       case "Digit4": case "Numpad4": return "act4";
+      case "Digit5": case "Numpad5": return "act5";
       case "KeyH": return "act2";  // Soigner
       case "KeyF": return "act4";  // Fuir
       case "KeyQ": return "tabL";
@@ -73,6 +74,7 @@ class InputSys {
     fresh(2, "inventory"); // X
     fresh(3, "progression"); // Y
     fresh(4, "tabL"); fresh(5, "tabR");
+    fresh(6, "act5"); // gâchette gauche (LT)
     // Stick gauche
     const ax = gp.axes[0] ?? 0, ay = gp.axes[1] ?? 0;
     const th = 0.55;

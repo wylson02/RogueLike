@@ -68,6 +68,7 @@ export class Item {
     if (this.slot === EquipSlot.Weapon) out.push(T("stat.equip.w"));
     if (this.slot === EquipSlot.Armor) out.push(T("stat.equip.a"));
     if (this.slot === EquipSlot.Accessory) out.push(T("stat.equip.acc"));
+    if (this.slot === EquipSlot.Relic) out.push(T("stat.equip.relic"));
     if (this.legendary) out.push(T("stat.legendary"));
     if (this.quest) out.push(T("stat.quest"));
     return out;
@@ -109,9 +110,21 @@ export const ItemCatalog = {
     autoApply: false, canSell: false, autoEquip: true, legendary: true,
     slot: EquipSlot.Weapon, bonuses: { atk: 6, crit: 10, ls: 5 },
   }),
+  sunRelic: (pos: Pos) => new Item({
+    id: "SunRelic", pos, sprite: "it_sunrelic", nameKey: "item.sunrelic", descKey: "item.sunrelic.d",
+    autoApply: false, slot: EquipSlot.Relic, bonuses: { arm: 2, crit: 8 },
+  }),
+  abyssRelic: (pos: Pos) => new Item({
+    id: "AbyssRelic", pos, sprite: "it_abyssrelic", nameKey: "item.abyssrelic", descKey: "item.abyssrelic.d",
+    autoApply: false, slot: EquipSlot.Relic, bonuses: { atk: 2, ls: 8 },
+  }),
   map1ArmoryKey: (pos: Pos) => new Item({
     id: "Map1ArmoryKey", pos, sprite: "it_key", nameKey: "item.armorykey", descKey: "item.armorykey.d",
     autoApply: false, canSell: false, quest: true,
+  }),
+  abyssKey: (pos: Pos) => new Item({
+    id: "AbyssKey", pos, sprite: "it_abysskey", nameKey: "item.abysskey", descKey: "item.abysskey.d",
+    autoApply: false, canSell: false, quest: true, legendary: true,
   }),
   create(id: string, pos: Pos): Item {
     switch (id) {
@@ -124,13 +137,16 @@ export const ItemCatalog = {
       case "Lantern": return this.lantern(pos);
       case "LegendarySword": return this.legendarySword(pos);
       case "Map1ArmoryKey": return this.map1ArmoryKey(pos);
+      case "AbyssKey": return this.abyssKey(pos);
+      case "SunRelic": return this.sunRelic(pos);
+      case "AbyssRelic": return this.abyssRelic(pos);
       default: throw new Error("Item inconnu: " + id);
     }
   },
 };
 
 // ===== Table de butin — port de LootTable.cs =====
-const LOOT_POOL = ["LifeGem", "LifeGem", "Sword", "Armor", "CritCharm", "VampRing", "LegendarySword"];
+const LOOT_POOL = ["LifeGem", "LifeGem", "Sword", "Armor", "CritCharm", "VampRing", "LegendarySword", "SunRelic"];
 export function rollLoot(rng: RNG, pos: Pos): Item {
   return ItemCatalog.create(LOOT_POOL[rng.next(0, LOOT_POOL.length)], pos);
 }
@@ -139,6 +155,8 @@ export function rollLoot(rng: RNG, pos: Pos): Item {
 export function sellPrice(item: Item): number {
   switch (item.id) {
     case "LegendarySword": return 50;
+    case "AbyssRelic": return 20;
+    case "SunRelic": return 18;
     case "VampRing": return 13;
     case "CritCharm": return 12;
     case "LifeGem": return 11;
@@ -155,4 +173,13 @@ export const MERCHANT_STOCK: { labelKey: string; id: string; price: number }[] =
   { labelKey: "shop.stock.gem", id: "LifeGem", price: 22 },
   { labelKey: "shop.stock.charm", id: "CritCharm", price: 24 },
   { labelKey: "shop.stock.ring", id: "VampRing", price: 26 },
+  { labelKey: "shop.stock.abyssrelic", id: "AbyssRelic", price: 34 },
+];
+
+// ===== Marchande ambulante (nocturne, rare) — objets rares à prix majoré =====
+export const NIGHT_MERCHANT_NAME = "Nyx la Rôdeuse";
+export const NIGHT_MERCHANT_STOCK: { labelKey: string; id: string; price: number }[] = [
+  { labelKey: "shop.stock.night.sunrelic", id: "SunRelic", price: 46 },
+  { labelKey: "shop.stock.night.abyssrelic", id: "AbyssRelic", price: 48 },
+  { labelKey: "shop.stock.night.lantern", id: "Lantern", price: 40 },
 ];

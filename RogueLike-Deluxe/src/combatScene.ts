@@ -6,13 +6,15 @@ import { Audio } from "./audio";
 import { T } from "./i18n";
 import { G, Flow } from "./game";
 import { CombatSession, CombatActionId } from "./combat";
-import { Monster, MonsterRank } from "./entities";
+import { Monster, MonsterRank, ClassCatalog } from "./entities";
 import { getSprite } from "./sprites";
 import { clamp, lerp } from "./core";
 import { saveGame } from "./save";
 
 interface Floater { x: number; y: number; text: string; color: string; life: number; size: number; }
 interface AnimStep { at: number; fn: () => void; }
+
+const INTRO_DUR = 1.7; // intro façon Pokémon : volets, slide-in, bannière
 
 export class CombatScene implements Scene {
   private session: CombatSession;
@@ -61,11 +63,36 @@ export class CombatScene implements Scene {
         enabled: true, key: "3",
       },
       { id: "flee", label: T("act.flee"), enabled: true, key: "4" },
+      {
+        id: "class",
+        label: s.classAbilityUsed ? T("act.class.used") : T(ClassCatalog[s.player.classId].abilityNameKey),
+        enabled: !s.classAbilityUsed, key: "5",
+      },
     ];
   }
 
   update(dt: number) {
     this.t += dt;
+    // Braises sombres montant autour des boss / mini-boss : présence oppressante
+    const rank = this.enemy.rank;
+    if (rank !== MonsterRank.Normal && !this.enemy.isDead) {
+      const rate = rank === MonsterRank.Boss ? 16 : 8;
+      if (Math.random() < dt * rate) {
+        const boss = rank === MonsterRank.Boss;
+        this.particles.spawn({
+          x: VW / 2 + (Math.random() - 0.5) * (boss ? 230 : 170),
+          y: 200 + 60 + Math.random() * 40,
+          vx: (Math.random() - 0.5) * 14,
+          vy: -18 - Math.random() * 26,
+          life: 1.6 + Math.random() * 1.4, maxLife: 3,
+          size: 1.5 + Math.random() * 2,
+          color: boss
+            ? (Math.random() < 0.6 ? "#c02840" : "#5a1830")
+            : (Math.random() < 0.6 ? "#8a5fd0" : "#3a2258"),
+          glow: true,
+        });
+      }
+    }
     this.particles.update(dt);
     this.enemyShake = Math.max(0, this.enemyShake - dt * 3);
     this.screenShake = Math.max(0, this.screenShake - dt * 3);
@@ -83,17 +110,20 @@ export class CombatScene implements Scene {
 
     switch (this.state) {
       case "intro":
-        if (this.t > 0.7 || Input.consume("confirm")) { this.state = "input"; Input.clear(); }
+        if (Input.consume("confirm")) this.t = Math.max(this.t, INTRO_DUR);
+        if (this.t >= INTRO_DUR) { this.state = "input"; Input.clear(); }
         break;
 
       case "input": {
-        if (Input.consume("left") || Input.consume("up")) { this.sel = (this.sel + 3) % 4; Audio.sfx("ui"); }
-        if (Input.consume("right") || Input.consume("down")) { this.sel = (this.sel + 1) % 4; Audio.sfx("ui"); }
+        const n = this.actions.length;
+        if (Input.consume("left") || Input.consume("up")) { this.sel = (this.sel + n - 1) % n; Audio.sfx("ui"); }
+        if (Input.consume("right") || Input.consume("down")) { this.sel = (this.sel + 1) % n; Audio.sfx("ui"); }
         let chosen: number = -1;
         if (Input.consume("act1")) chosen = 0;
         if (Input.consume("act2")) chosen = 1;
         if (Input.consume("act3")) chosen = 2;
         if (Input.consume("act4")) chosen = 3;
+        if (Input.consume("act5")) chosen = 4;
         if (Input.consume("confirm")) chosen = this.sel;
         if (chosen >= 0) {
           const a = this.actions[chosen];
@@ -123,6 +153,13 @@ export class CombatScene implements Scene {
         }
         break;
     }
+  }
+
+  // Progression du slide-in d'intro (0 = hors écran, 1 = en place), avec easing
+  private introSlide(): number {
+    if (this.state !== "intro") return 1;
+    const p = clamp((this.t - 0.35) / 0.6, 0, 1);
+    return 1 - Math.pow(1 - p, 3);
   }
 
   private playRound(action: CombatActionId) {
@@ -188,10 +225,26 @@ export class CombatScene implements Scene {
             this.floaters.push({ x: 240, y: VH - 210, text: "LEVEL UP!", color: "#7ae87a", life: 1.6, size: 26 });
             break;
           case "reward": Audio.sfx("coin"); break;
+          case "classAbility":
+            Audio.sfx("crit");
+            this.enemyShake = 1.8; this.enemyFlash = 1; this.screenShake = 1;
+            this.particles.burst(ex, ey, "#ffd84a", 30, 200, 0.9, 4.2, true);
+            this.floaters.push({ x: ex, y: ey - 60, text: "-" + e.value, color: "#ffd84a", life: 1.3, size: 32 });
+            break;
+          case "enemySpecial":
+            Audio.sfx("hurt");
+            this.screenShake = 1.8; this.playerFlash = 1;
+            this.particles.burst(240, VH - 180, "#c02840", 28, 190, 1, 4.2, true);
+            this.floaters.push({ x: 240, y: VH - 200, text: "-" + e.value, color: "#ff5060", life: 1.3, size: 30 });
+            break;
+          case "enemyBuff":
+            Audio.sfx("dodge");
+            this.particles.burst(ex, ey, "#8fd4ff", 20, 130, 0.8, 3.5, true);
+            break;
         }
       };
       this.steps.push({ at, fn });
-      at += e.type === "phase2" ? 1.6 : e.type === "enemyDead" ? 0.8 : 0.55;
+      at += e.type === "phase2" ? 1.6 : e.type === "enemyDead" || e.type === "enemySpecial" ? 0.8 : 0.55;
     }
     this.state = "anim";
     this.logReveal = 0;
@@ -200,7 +253,30 @@ export class CombatScene implements Scene {
   private resolveOutcome() {
     const s = this.session;
     if (s.player.isDead) { Flow.endScreen(false); return; }
-    if (s.victory && this.enemy.rank === MonsterRank.Boss) { Flow.endScreen(true); return; }
+    // Arène : victoire → combat suivant de la vague, ou récompense ; fuite → abandon
+    if (G.ctx.arenaActive) {
+      if (s.victory) {
+        const next = G.ctx.nextArenaFight();
+        if (next) { Flow.startCombat(next); return; }
+        G.ctx.finishArenaWave();
+      } else {
+        G.ctx.abortArena();
+      }
+      saveGame(G.ctx);
+      Flow.toExplore();
+      return;
+    }
+    if (s.victory && this.enemy.rank === MonsterRank.Boss) {
+      // Post-jeu : le Roi vaincu avec la Clé de l'Abîme → le portail des Profondeurs s'ouvre
+      if (G.ctx.currentLevel === 4 && G.ctx.player.inventory.some(i => i.id === "AbyssKey")) {
+        G.ctx.openAbyssPortal();
+        saveGame(G.ctx);
+        Flow.toExplore();
+        return;
+      }
+      Flow.endScreen(true);
+      return;
+    }
     saveGame(G.ctx);
     Flow.toExplore();
   }
@@ -233,8 +309,9 @@ export class CombatScene implements Scene {
     v.addColorStop(1, "rgba(0,0,0,.65)");
     g.fillStyle = v; g.fillRect(-12, -12, VW + 24, VH + 24);
 
-    // ===== ennemi =====
-    const ex = VW / 2, ey = 200;
+    // ===== ennemi ===== (glisse depuis la droite pendant l'intro)
+    const slide = this.introSlide();
+    const ex = VW / 2 + (1 - slide) * (VW / 2 + 220), ey = 200;
     const size = boss ? 190 : mini ? 150 : 120;
     const bob = Math.sin(this.t * (boss ? 1.6 : 2.6)) * 6;
     const shakeX = this.enemyShake > 0 ? (Math.random() - 0.5) * this.enemyShake * 14 : 0;
@@ -247,8 +324,8 @@ export class CombatScene implements Scene {
     if (!this.session.victory || this.enemy.hp > 0 || this.shownEnemyHp > 0.5) {
       g.save();
       g.imageSmoothingEnabled = false;
-      if (boss) { g.shadowColor = "#ff3040"; g.shadowBlur = 34; }
-      else if (mini) { g.shadowColor = "#8a5fd0"; g.shadowBlur = 26; }
+      if (boss) { g.shadowColor = "#ff3040"; g.shadowBlur = 34 + Math.sin(this.t * 2.6) * 14; }
+      else if (mini) { g.shadowColor = "#8a5fd0"; g.shadowBlur = 26 + Math.sin(this.t * 2.2) * 10; }
       const dying = this.enemy.isDead;
       if (dying) g.globalAlpha = clamp(this.shownEnemyHp / 8, 0, 1);
       if (spr) g.drawImage(spr, ex - size / 2 + shakeX, ey - size / 2 + bob, size, size);
@@ -276,8 +353,8 @@ export class CombatScene implements Scene {
     g.fillStyle = ehGrad;
     g.beginPath(); g.roundRect(ex - bw / 2 + 4, 66, (bw - 8) * ehr, 10, 4); g.fill();
 
-    // ===== joueur (panneau bas-gauche) =====
-    const px = 20, py = VH - 210, pw = 300;
+    // ===== joueur (panneau bas-gauche, glisse depuis la gauche pendant l'intro) =====
+    const px = 20 - (1 - slide) * 360, py = VH - 210, pw = 300;
     g.fillStyle = "rgba(8,6,14,.8)";
     g.beginPath(); g.roundRect(px, py, pw, 116, 10); g.fill();
     g.strokeStyle = this.playerFlash > 0 ? `rgba(255,80,80,${this.playerFlash})` : "rgba(140,130,170,.4)";
@@ -305,8 +382,8 @@ export class CombatScene implements Scene {
     text(g, `${T("hud.lvl")} ${p.level}`, px + 14, py + 96, 12, "#7ab8e8");
     text(g, `⬤ ${p.gold}`, px + 100, py + 96, 12, "#ffd84a");
 
-    // ===== journal (droite) =====
-    const lx = VW - 350, ly = VH - 214, lw = 330, lh = 120;
+    // ===== journal (droite, glisse depuis la droite pendant l'intro) =====
+    const lx = VW - 350 + (1 - slide) * 380, ly = VH - 214, lw = 330, lh = 120;
     g.fillStyle = "rgba(8,6,14,.72)";
     g.beginPath(); g.roundRect(lx, ly, lw, lh, 10); g.fill();
     const lines = this.session.log.slice(-6);
@@ -320,9 +397,11 @@ export class CombatScene implements Scene {
 
     // ===== boutons d'action =====
     const acts = this.actions;
-    const btnW = 190, btnH = 46, bx0 = VW / 2 - (btnW * 4 + 30) / 2, by = VH - 66;
+    const btnW = acts.length > 4 ? 150 : 190, btnGap = 10, btnH = 46;
+    const bx0 = VW / 2 - (btnW * acts.length + btnGap * (acts.length - 1)) / 2, by = VH - 66;
+    g.globalAlpha = slide; // les boutons apparaissent en fin d'intro
     acts.forEach((a, i) => {
-      const bx = bx0 + i * (btnW + 10);
+      const bx = bx0 + i * (btnW + btnGap);
       const selected = i === this.sel && this.state === "input";
       g.fillStyle = !a.enabled ? "rgba(30,26,40,.7)" : selected ? "rgba(140,30,30,.9)" : "rgba(30,24,44,.85)";
       g.beginPath(); g.roundRect(bx, by, btnW, btnH, 8); g.fill();
@@ -332,6 +411,7 @@ export class CombatScene implements Scene {
       textShadow(g, a.key, bx + 16, by + btnH / 2, 15, selected ? "#ffd84a" : "#7a7090", "center");
       text(g, a.label, bx + 32, by + btnH / 2, 13, !a.enabled ? "#5a5470" : selected ? "#fff" : "#c8c0d4");
     });
+    g.globalAlpha = 1;
     if (this.state === "input")
       text(g, T("combat.yourturn"), VW / 2, by - 16, 12, "#8fd4ff", "center");
     if (this.state === "done" && Math.sin(this.t * 4) > -0.2)
@@ -350,15 +430,28 @@ export class CombatScene implements Scene {
       g.globalAlpha = 1;
     }
 
-    // bannière d'intro
-    if (this.state === "intro") {
-      const a = clamp(this.t / 0.15, 0, 1) * clamp((0.75 - this.t) / 0.2 + 1, 0, 1);
+    // bannière d'intro (après le slide-in des combattants)
+    if (this.state === "intro" && this.t > 0.85) {
+      const bt = this.t - 0.85;
+      const a = clamp(bt / 0.15, 0, 1) * clamp((0.65 - bt) / 0.2 + 1, 0, 1);
       g.globalAlpha = Math.min(1, a);
       g.fillStyle = boss ? "rgba(120,10,20,.92)" : "rgba(60,20,80,.92)";
       g.fillRect(0, VH / 2 - 46, VW, 92);
       textShadow(g, boss ? T("combat.boss", { name: this.enemy.name }) : T("combat.title", { name: this.enemy.name }),
         VW / 2, VH / 2, 30, "#fff", "center");
       g.globalAlpha = 1;
+    }
+
+    // Volets d'ouverture façon Pokémon (stores vénitiens alternés)
+    if (this.state === "intro" && this.t < 0.5) {
+      const cov = Math.pow(1 - clamp(this.t / 0.5, 0, 1), 2);
+      const barH = VH / 8;
+      g.fillStyle = "#050409";
+      for (let i = 0; i < 8; i++) {
+        const h = barH * cov;
+        const y = i % 2 === 0 ? i * barH : (i + 1) * barH - h;
+        g.fillRect(-12, y, VW + 24, h + 0.5);
+      }
     }
 
     // bannière PHASE II

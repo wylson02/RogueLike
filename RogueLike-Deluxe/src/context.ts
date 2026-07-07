@@ -3,7 +3,7 @@
 // SafeZoneService, MonsterSpawnService, Map3Scripting, ConnectivityFixService, BossSpawnFixService
 import { Pos, P, key, eqPos, move, Dir, DIRS4, Tile, GameMap, RNG, TimeSystem, manhattan } from "./core";
 import { Player, Monster, MonsterCatalog, MonsterRank, Pnj, Chest, ChestType, Seal, Merchant } from "./entities";
-import { Item, ItemCatalog, rollLoot } from "./items";
+import { Item, ItemCatalog, rollLoot, NIGHT_MERCHANT_NAME } from "./items";
 import { createLevel, hasLevel } from "./levels";
 import { T } from "./i18n";
 
@@ -23,6 +23,7 @@ export type GameEvent =
 export interface ToastData { text: string; color: string; bg: string; until: number; }
 
 const MAP1_ARMORY_DOOR: Pos = P(5, 13);
+const MAP2_PRISON_CHEST: Pos = P(28, 4);
 const MAP3_CENTRAL_DOORS: Pos[] = [P(18, 6), P(25, 6), P(21, 4), P(21, 9)];
 const MAP3_EXIT_DOORS: Pos[] = [P(35, 7), P(35, 11)];
 
@@ -35,12 +36,19 @@ export class GameContext {
   pnjs: Pnj[] = [];
   seals: Seal[] = [];
   merchant: Merchant | null = null;
+  nightMerchant: Merchant | null = null;
 
   sealsActivated = 0;
   hasLegendarySword = false;
   miniBossDefeated = false;
   legendaryEmpowerNextFight = false;
   map3LastSealHintShown = false;
+  prisonerFreed = false;
+
+  // ===== Arène de Vesna (mode défi par vagues) =====
+  arenaWave = 1;           // prochaine vague à affronter (persisté)
+  arenaActive = false;     // une vague est en cours
+  arenaQueue: Monster[] = []; // combats restants dans la vague courante
 
   rng = new RNG();
   time = new TimeSystem(24);
@@ -139,8 +147,12 @@ export class GameContext {
     this.player.healToFull();
     this.currentLevel = level;
     this.nightSpawnBlockUntil = 0;
+    this.nightMerchant = null;
+    this.arenaActive = false;
+    this.arenaQueue = [];
 
     this.pushLog(T("level.loaded", { level }), LogKind.System);
+    if (level === 5) this.pushLog(T("level.enter5"), LogKind.Warning);
     this.ensureAllExitsReachable(this.player.pos);
     if (level >= 4) this.ensureBossReachable();
     this.updateVision();
@@ -164,10 +176,28 @@ export class GameContext {
         this.pushLog(T("day.breaks"), LogKind.System);
         this.emit({ type: "sfx", name: "day" });
         for (const m of this.monsters) if (m.nightBuffed) { m.modifyAttack(-2); m.nightBuffed = false; }
+        if (this.nightMerchant) {
+          this.nightMerchant = null;
+          this.pushLog(T("night.merchant.gone"), LogKind.System);
+        }
       }
     }
     this.tryNightSpawn();
+    this.tryNightMerchantSpawn();
     this.clearToastIfExpired();
+  }
+
+  private tryNightMerchantSpawn() {
+    if (!this.time.isNight) return;
+    if (this.nightMerchant) return;
+    if (this.currentLevel === 4) return;
+    if (this.rng.next(0, 100) > 8) return;
+    const pos = this.findSpawnCell();
+    if (!pos) return;
+    this.nightMerchant = new Merchant(pos, NIGHT_MERCHANT_NAME);
+    this.pushLog(T("night.merchant.spawn"), LogKind.Warning);
+    this.emit({ type: "sfx", name: "spawn" });
+    this.emit({ type: "fx", name: "spawn", pos });
   }
 
   private tryNightSpawn() {
@@ -203,7 +233,8 @@ export class GameContext {
   private isValidSpawnCell(p: Pos): boolean {
     if (!this.map.isWalkable(p)) return false;
     if (eqPos(p, this.player.pos)) return false;
-    if (this.monsterAt(p) || this.itemAt(p) || this.chestAt(p) || this.sealAt(p) || this.isMerchantAt(p)) return false;
+    if (this.monsterAt(p) || this.itemAt(p) || this.chestAt(p) || this.sealAt(p) || this.isMerchantAt(p) || this.pnjAt(p)) return false;
+    if (this.nightMerchant && eqPos(this.nightMerchant.pos, p)) return false;
     if (this.isSafeZone(p)) return false;
     // évite les cases collées aux murs
     for (const d of DIRS4) {
@@ -239,11 +270,14 @@ export class GameContext {
   openChest(chest: Chest) {
     if (chest.isOpened) return;
     chest.open();
-    const loot = rollLoot(this.rng, chest.pos);
+    const loot = chest.type === ChestType.AbyssKeyChest
+      ? ItemCatalog.create("AbyssKey", chest.pos)
+      : rollLoot(this.rng, chest.pos);
     const chestLabel =
       chest.type === ChestType.TorchOnly ? T("chest.torch") :
       chest.type === ChestType.Legendary ? T("chest.legendary") :
-      chest.type === ChestType.LanternChest ? T("chest.lantern") : T("chest.normal");
+      chest.type === ChestType.LanternChest ? T("chest.lantern") :
+      chest.type === ChestType.AbyssKeyChest ? T("chest.abyss") : T("chest.normal");
     if (loot.autoApply) {
       loot.apply(this.player);
       this.pushLog(T("chest.open", { chest: chestLabel, item: loot.name, how: T("chest.used") }), LogKind.Loot);
@@ -251,8 +285,75 @@ export class GameContext {
       this.player.addToInventory(loot);
       this.pushLog(T("chest.open", { chest: chestLabel, item: loot.name, how: T("chest.inv") }), LogKind.Loot);
     }
+    if (chest.type === ChestType.AbyssKeyChest) {
+      this.pushLog(T("abyss.key"), LogKind.System);
+      this.showToast(T("abyss.key.toast"), "#ffe6e6", "#3a0a14", 10);
+    }
     this.emit({ type: "sfx", name: "chest" });
     this.emit({ type: "fx", name: "chest", pos: chest.pos });
+  }
+
+  // ===== Arène de Vesna : vagues de monstres enchaînées, sans soin entre les combats =====
+  arenaNextReward(): number { return 25 + this.arenaWave * 15; }
+  isArenaChampionWave(): boolean { return this.arenaWave % 5 === 0; }
+
+  private buildArenaWave(wave: number): Monster[] {
+    const mk = MonsterCatalog;
+    const defs: ((p: Pos) => Monster)[] = [];
+    if (wave % 5 === 0) {
+      // vague champion : le Gardien (enragé toutes les 10 vagues)
+      defs.push(wave % 10 === 0 ? mk.sealWardenEnraged : mk.sealWarden);
+    } else {
+      const pool = [mk.slime, mk.spider, mk.nightSlime, mk.golem, mk.gargoyle];
+      const count = Math.min(3, 1 + Math.floor(wave / 3));
+      for (let i = 0; i < count; i++) defs.push(pool[this.rng.next(0, pool.length)]);
+    }
+    return defs.map(f => {
+      const m = f(P(-1, -1));
+      m.maxHp = Math.round(m.maxHp * (1 + wave * 0.12));
+      m.hp = m.maxHp;
+      m.modifyAttack(Math.floor(wave / 2));
+      return m;
+    });
+  }
+
+  startArenaWave(): Monster {
+    this.arenaQueue = this.buildArenaWave(this.arenaWave);
+    this.arenaActive = true;
+    this.pushLog(T("arena.start", { wave: this.arenaWave, n: this.arenaQueue.length }), LogKind.Combat);
+    return this.arenaQueue.shift()!;
+  }
+
+  nextArenaFight(): Monster | null { return this.arenaQueue.shift() ?? null; }
+
+  finishArenaWave() {
+    this.arenaActive = false;
+    const gold = this.arenaNextReward();
+    this.player.addGold(gold);
+    this.pushLog(T("arena.cleared", { wave: this.arenaWave, gold }), LogKind.Loot);
+    this.showToast(T("arena.toast", { wave: this.arenaWave }), "#ffe9c0", "#4a3010", 10);
+    if (this.arenaWave % 5 === 0) {
+      const relic = ItemCatalog.create(this.arenaWave % 10 === 0 ? "AbyssRelic" : "SunRelic", P(-1, -1));
+      this.player.addToInventory(relic);
+      this.pushLog(T("arena.bonus", { item: relic.name }), LogKind.Loot);
+    }
+    this.arenaWave++;
+  }
+
+  abortArena() {
+    if (!this.arenaActive) return;
+    this.arenaActive = false;
+    this.arenaQueue = [];
+    this.pushLog(T("arena.fled"), LogKind.Warning);
+  }
+
+  // Post-jeu : le Roi vaincu, la clé en poche → un passage s'ouvre derrière le trône
+  openAbyssPortal() {
+    this.map.set(40, 9, Tile.Exit);
+    this.map.set(41, 9, Tile.Floor);
+    this.pushLog(T("abyss.portal"), LogKind.System);
+    this.showToast(T("abyss.portal.toast"), "#ffe6e6", "#3a0a14", 12);
+    this.updateVision();
   }
 
   // ===== Map3 scripting =====
@@ -281,6 +382,7 @@ export class GameContext {
   }
 
   onMiniBossDefeated() {
+    if (this.arenaActive) return; // un Gardien d'arène ne déclenche pas le script des portes
     if (this.currentLevel !== 3 || !this.hasLegendarySword) return;
     this.miniBossDefeated = true;
     this.openDoors(MAP3_CENTRAL_DOORS);
@@ -378,6 +480,12 @@ export class GameContext {
       this.emit({ type: "merchant", merchant: this.merchant });
       return;
     }
+    // Marchande ambulante (nocturne)
+    if (this.nightMerchant && eqPos(this.nightMerchant.pos, next)) {
+      this.updateVision();
+      this.emit({ type: "merchant", merchant: this.nightMerchant });
+      return;
+    }
 
     // Sceaux (Map3)
     const seal = this.sealAt(next);
@@ -420,6 +528,27 @@ export class GameContext {
             this.pushLog(T("pnj.gift", { item: gift.name }), LogKind.Loot);
             this.emit({ type: "sfx", name: "pickup" });
           }
+        }
+      } else if (pnj.name === "Rival") {
+        let key = "rival.lvl1";
+        if (this.currentLevel === 2) key = "rival.lvl2";
+        else if (this.currentLevel === 3) key = this.hasLegendarySword ? "rival.lvl3.sword" : "rival.lvl3.nosword";
+        pnj.setMessageKey(key);
+        this.pushLog(T("pnj.talk", { name: pnj.name, msg: pnj.talk() }), LogKind.System);
+      } else if (pnj.name === "Torvin") {
+        const chestOpened = this.chests.find(c => eqPos(c.pos, MAP2_PRISON_CHEST))?.isOpened ?? false;
+        if (!chestOpened) {
+          this.pushLog(T("prisoner.locked"), LogKind.Warning);
+        } else if (!this.prisonerFreed) {
+          this.prisonerFreed = true;
+          this.player.modifyArmor(+1);
+          this.player.modifyCritChance(+3);
+          pnj.setMessageKey("prisoner.thanks");
+          this.pushLog(T("prisoner.freed"), LogKind.System);
+          this.pushLog(T("prisoner.buff"), LogKind.Loot);
+          this.emit({ type: "sfx", name: "levelup" });
+        } else {
+          this.pushLog(T("pnj.talk", { name: pnj.name, msg: pnj.talk() }), LogKind.System);
         }
       } else {
         this.pushLog(T("pnj.talk", { name: pnj.name, msg: pnj.talk() }), LogKind.System);
@@ -494,7 +623,19 @@ export class GameContext {
 
   private chooseMonsterMove(m: Monster): Dir {
     const dist = manhattan(m.pos, this.player.pos);
-    if (dist > m.aggroRange) return this.rng.pick(DIRS4); // RandomWalk fallback
+    const inRange = dist <= m.aggroRange;
+
+    if (inRange) {
+      if (m.aiKind === "flee") return this.chooseFleeMove(m, dist);
+      return this.chooseChaseMove(m, dist);
+    }
+    // Hors de portée d'aggro : comportement idle propre à chaque type d'IA.
+    if (m.aiKind === "ambush") return Dir.None; // reste tapi, n'erre pas
+    if (m.aiKind === "patrol") return this.choosePatrolMove(m);
+    return this.rng.pick(DIRS4); // aggro / random / flee (hors de portée) : errance
+  }
+
+  private chooseChaseMove(m: Monster, dist: number): Dir {
     let bestDir = Dir.None;
     let bestDist = dist;
     for (const d of DIRS4) {
@@ -507,6 +648,39 @@ export class GameContext {
     }
     if (bestDir === Dir.None) return this.rng.pick(DIRS4);
     return bestDir;
+  }
+
+  private chooseFleeMove(m: Monster, dist: number): Dir {
+    let bestDir = Dir.None;
+    let bestDist = dist;
+    for (const d of DIRS4) {
+      const next = move(m.pos, d);
+      if (!this.map.isWalkable(next)) continue;
+      if (this.monsterAt(next)) continue;
+      if (eqPos(next, this.player.pos)) continue;
+      const nd = manhattan(next, this.player.pos);
+      if (nd > bestDist) { bestDist = nd; bestDir = d; }
+    }
+    if (bestDir === Dir.None) return this.rng.pick(DIRS4); // acculé : s'agite au hasard
+    return bestDir;
+  }
+
+  private choosePatrolMove(m: Monster): Dir {
+    const maxRange = 3;
+    const isValid = (d: Dir) => {
+      const next = move(m.pos, d);
+      if (!this.map.isWalkable(next)) return false;
+      if (this.monsterAt(next)) return false;
+      if (eqPos(next, this.player.pos)) return false;
+      if (manhattan(next, m.spawnPos) > maxRange) return false;
+      return true;
+    };
+    if (m.patrolDir !== null && isValid(m.patrolDir)) return m.patrolDir;
+    const options = DIRS4.filter(isValid);
+    if (options.length === 0) { m.patrolDir = null; return Dir.None; }
+    const chosen = options[this.rng.next(0, options.length)];
+    m.patrolDir = chosen;
+    return chosen;
   }
 
   private tryMoveGuardAside(guard: Pnj, playerFrom: Pos): boolean {

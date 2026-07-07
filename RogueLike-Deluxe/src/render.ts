@@ -35,6 +35,7 @@ const BIOMES: Record<number, Biome> = {
   2: { floorA: "#262b36", floorB: "#2b303d", wallTop: "#46506a", wallFace: "#333c52", wallLine: "#28304a", deco: "#2e4258" },
   3: { floorA: "#37322a", floorB: "#3d372e", wallTop: "#6a5a40", wallFace: "#4e4230", wallLine: "#3e3426", deco: "#5a5038" },
   4: { floorA: "#221a24", floorB: "#281e2a", wallTop: "#48283a", wallFace: "#341c2a", wallLine: "#26141e", deco: "#6e2230" },
+  5: { floorA: "#170d14", floorB: "#1c1018", wallTop: "#3e1420", wallFace: "#2a0e18", wallLine: "#1c0810", deco: "#8a1a28" },
 };
 
 const hash = (x: number, y: number) => {

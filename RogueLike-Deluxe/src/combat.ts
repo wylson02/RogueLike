@@ -3,11 +3,12 @@ import { GameContext, LogKind } from "./context";
 import { Monster, MonsterRank } from "./entities";
 import { T } from "./i18n";
 
-export type CombatActionId = "attack" | "heal" | "dodge" | "flee";
+export type CombatActionId = "attack" | "heal" | "dodge" | "flee" | "class";
 
 export interface CombatEvent {
   type: "playerHit" | "playerCrit" | "enemyHit" | "playerDodge" | "heal" | "dodgeUp"
-      | "fleeOk" | "fleeFail" | "enemyDead" | "playerDead" | "phase2" | "levelup" | "reward";
+      | "fleeOk" | "fleeFail" | "enemyDead" | "playerDead" | "phase2" | "levelup" | "reward"
+      | "classAbility" | "enemySpecial" | "enemyBuff";
   value?: number;
 }
 
@@ -17,6 +18,9 @@ export class CombatSession {
   log: string[] = [];
   healsLeft = 2;
   readonly healAmount = 8;
+  classAbilityUsed = false;
+  enemySpecialUsed = false;
+  private pendingSpecial: "golem" | "nightslime" | "boss" | "spider" | "superboss" | null = null;
   dodgeTurnsLeft = 0;
   readonly dodgeChance = 40;
   readonly fleeChance = 55;
@@ -33,12 +37,16 @@ export class CombatSession {
     this.ctx = ctx;
     this.enemy = enemy;
 
-    if (enemy.rank === MonsterRank.Boss) {
+    if (enemy.nameKey === "mob.superboss") {
+      this.addLog(T("combat.sboss1"));
+      this.addLog(T("combat.sboss2", { name: enemy.name }));
+      this.addLog(T("combat.sboss3"));
+    } else if (enemy.rank === MonsterRank.Boss) {
       this.addLog(T("combat.boss1"));
       this.addLog(T("combat.boss2", { name: enemy.name }));
       this.addLog(T("combat.boss3"));
     } else {
-      this.addLog(T("combat.appear", { name: enemy.name }));
+      this.addLog(T(enemy.feminine ? "combat.appear.f" : "combat.appear", { name: enemy.name }));
     }
 
     if (ctx.legendaryEmpowerNextFight) {
@@ -63,6 +71,7 @@ export class CombatSession {
 
     this.executePlayerAction(action);
     this.checkPhase2();
+    this.checkEnemySpecial();
     this.checkEnemyDead();
 
     if (this.isOver) { this.finish(); return; }
@@ -124,6 +133,41 @@ export class CombatSession {
         }
         break;
       }
+      case "class": {
+        if (this.classAbilityUsed) return;
+        this.classAbilityUsed = true;
+        const p = this.player;
+        switch (p.classId) {
+          case "warrior": {
+            const dmg = Math.round(p.attack * 3);
+            this.enemy.takeDamage(dmg);
+            this.addLog(T("combat.classability.warrior", { n: dmg }));
+            this.emit({ type: "classAbility", value: dmg });
+            break;
+          }
+          case "mage": {
+            const dmg = Math.round(p.attack * 2.2 + 5);
+            this.enemy.hp -= dmg; // ignore l'armure de la cible
+            this.addLog(T("combat.classability.mage", { n: dmg }));
+            this.emit({ type: "classAbility", value: dmg });
+            break;
+          }
+          case "rogue": {
+            const baseDmg = Math.max(1, p.attack);
+            const dmg = Math.max(Math.round(baseDmg * (p.critMultiplierPercent / 100)), baseDmg + 1);
+            this.enemy.takeDamage(dmg);
+            if (p.lifeStealPercent > 0) {
+              const heal = Math.floor(dmg * (p.lifeStealPercent / 100));
+              if (heal > 0) p.heal(heal);
+            }
+            this.dodgeTurnsLeft = Math.max(this.dodgeTurnsLeft, 2);
+            this.addLog(T("combat.classability.rogue", { n: dmg }));
+            this.emit({ type: "classAbility", value: dmg });
+            break;
+          }
+        }
+        break;
+      }
     }
   }
 
@@ -137,15 +181,57 @@ export class CombatSession {
     this.enemy.addArmor(2);
     this.enemy.modifyCritChance(+15);
     this.enemy.modifyCritMultiplierPercent(+50);
-    this.addLog(T("combat.phase2.a"));
-    this.addLog(T("combat.phase2.b", { name: this.enemy.name }));
-    this.addLog(T("combat.phase2.c"));
+    const sb = this.enemy.nameKey === "mob.superboss";
+    this.addLog(T(sb ? "combat.sphase.a" : "combat.phase2.a"));
+    this.addLog(T(sb ? "combat.sphase.b" : "combat.phase2.b", { name: this.enemy.name }));
+    this.addLog(T(sb ? "combat.sphase.c" : "combat.phase2.c"));
     this.emit({ type: "phase2" });
+  }
+
+  // Capacités spéciales des monstres — 1 fois par combat, au franchissement d'un seuil de PV.
+  private checkEnemySpecial() {
+    if (this.enemySpecialUsed || this.enemy.isDead || this.enemy.maxHp <= 0) return;
+    const hpPct = this.enemy.hp / this.enemy.maxHp;
+    switch (this.enemy.nameKey) {
+      case "mob.golem":
+        if (hpPct <= 0.5) { this.enemySpecialUsed = true; this.pendingSpecial = "golem"; }
+        break;
+      case "mob.nightslime":
+        if (hpPct <= 0.5) { this.enemySpecialUsed = true; this.pendingSpecial = "nightslime"; }
+        break;
+      case "mob.warden":
+      case "mob.warden.enraged":
+        if (hpPct <= 0.5) {
+          this.enemySpecialUsed = true;
+          this.enemy.addArmor(4);
+          this.addLog(T("combat.special.warden", { name: this.enemy.name }));
+          this.emit({ type: "enemyBuff" });
+        }
+        break;
+      case "mob.boss":
+        if (hpPct <= 0.75) { this.enemySpecialUsed = true; this.pendingSpecial = "boss"; }
+        break;
+      case "mob.spider":
+        if (hpPct <= 0.5) { this.enemySpecialUsed = true; this.pendingSpecial = "spider"; }
+        break;
+      case "mob.superboss":
+        if (hpPct <= 0.75) { this.enemySpecialUsed = true; this.pendingSpecial = "superboss"; }
+        break;
+      case "mob.gargoyle":
+        if (hpPct <= 0.5) {
+          this.enemySpecialUsed = true;
+          const heal = Math.round(this.enemy.maxHp * 0.25);
+          this.enemy.heal(heal);
+          this.addLog(T("combat.special.gargoyle", { name: this.enemy.name, n: heal }));
+          this.emit({ type: "enemyBuff" });
+        }
+        break;
+    }
   }
 
   private checkEnemyDead() {
     if (!this.enemy.isDead) return;
-    this.addLog(T("combat.dead", { name: this.enemy.name }));
+    this.addLog(T(this.enemy.feminine ? "combat.dead.f" : "combat.dead", { name: this.enemy.name }));
     if (!this.rewardGiven && !this.playerFled) {
       this.rewardGiven = true;
       const xp = this.enemy.rollXp(this.ctx.rng);
@@ -170,7 +256,8 @@ export class CombatSession {
 
   private resolveEnemyTurn() {
     if (this.enemy.isDead) return;
-    if (this.dodgeTurnsLeft > 0) {
+    // Les attaques spéciales ignorent l'esquive du joueur.
+    if (this.dodgeTurnsLeft > 0 && !this.pendingSpecial) {
       if (this.roll(this.dodgeChance)) {
         this.addLog(T("combat.dodged", { name: this.enemy.name }));
         this.emit({ type: "playerDodge" });
@@ -178,8 +265,47 @@ export class CombatSession {
       }
       this.addLog(T("combat.nododge", { name: this.enemy.name }));
     }
-    const raw = Math.max(1, this.enemy.attack);
-    const dmg = this.player.takeDamage(raw);
+    const atk = Math.max(1, this.enemy.attack);
+    if (this.pendingSpecial === "golem") {
+      this.pendingSpecial = null;
+      const dmg = this.player.takeDamage(Math.round(atk * 3 + 5));
+      this.addLog(T("combat.special.golem", { n: dmg }));
+      this.emit({ type: "enemySpecial", value: dmg });
+      return;
+    }
+    if (this.pendingSpecial === "nightslime") {
+      this.pendingSpecial = null;
+      const dmg = this.player.takeDamage(Math.round(atk * 2));
+      const heal = Math.round(dmg * 0.5);
+      if (heal > 0) this.enemy.heal(heal);
+      this.addLog(T("combat.special.nightslime", { n: dmg, heal }));
+      this.emit({ type: "enemySpecial", value: dmg });
+      return;
+    }
+    if (this.pendingSpecial === "boss") {
+      this.pendingSpecial = null;
+      const dmg = this.player.takeDamage(Math.round(atk * 3 + 5));
+      this.addLog(T("combat.special.boss", { name: this.enemy.name, n: dmg }));
+      this.emit({ type: "enemySpecial", value: dmg });
+      return;
+    }
+    if (this.pendingSpecial === "spider") {
+      this.pendingSpecial = null;
+      const dmg = this.player.takeDamage(Math.round(atk * 2 + 3));
+      this.addLog(T("combat.special.spider", { n: dmg }));
+      this.emit({ type: "enemySpecial", value: dmg });
+      return;
+    }
+    if (this.pendingSpecial === "superboss") {
+      this.pendingSpecial = null;
+      const dmg = this.player.takeDamage(Math.round(atk * 2.5 + 5));
+      const heal = Math.max(1, Math.round(dmg * 0.8));
+      this.enemy.heal(heal);
+      this.addLog(T("combat.special.superboss", { name: this.enemy.name, n: dmg, heal }));
+      this.emit({ type: "enemySpecial", value: dmg });
+      return;
+    }
+    const dmg = this.player.takeDamage(atk);
     this.addLog(T("combat.enemyhit", { name: this.enemy.name, n: dmg }));
     this.emit({ type: "enemyHit", value: dmg });
   }
