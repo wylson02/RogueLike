@@ -8,9 +8,13 @@ rendu Canvas, audio WebAudio — zéro dépendance à l'exécution, un seul fich
 
 ## 🎮 Jouer immédiatement
 
-Ouvre simplement **`dist/index.html`** dans un navigateur (double-clic). C'est le jeu
-complet : les 4 niveaux, les 3 sceaux, l'Épée de Légende, le Gardien des Sceaux, le
-Roi de l'Abîme et sa phase 2.
+Génère le jeu avec `npm install && npm run build`, puis ouvre **`dist/index.html`**
+dans un navigateur (double-clic). C'est le jeu complet : les 4 niveaux, les 3 sceaux,
+l'Épée de Légende, le Gardien des Sceaux, le Roi de l'Abîme et sa phase 2.
+
+> `dist/index.html` (~14 Mo, musiques MP3 embarquées) est un artefact de build : il
+> n'est pas suivi par git, chacun le régénère localement. Pour distribuer une version
+> jouable sans build, utilisez l'installeur Tauri (voir plus bas) ou zippez le `dist/`.
 
 ### Contrôles
 
