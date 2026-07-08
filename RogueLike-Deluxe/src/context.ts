@@ -71,6 +71,7 @@ export class GameContext {
 
   // ===== Descente Infinie (roguelite procédural) =====
   endless = false;            // le run en cours est-il une Descente Infinie ?
+  pendingFloorBanner = false; // un nouvel étage vient d'être chargé → afficher le bandeau (une seule fois)
   runDepth = 0;               // étage procédural courant
   runEssence = 0;             // essence accumulée pendant le run (banque à la mort/sortie)
   runKills = 0;               // monstres tués ce run
@@ -277,6 +278,7 @@ export class GameContext {
     }
 
     if (this.exitPlaced) this.ensureAllExitsReachable(this.player.pos);
+    this.pendingFloorBanner = true; // le bandeau ne s'affiche qu'à l'arrivée sur un nouvel étage
     this.updateVision();
     this.emit({ type: "levelLoaded", level: depth });
   }
