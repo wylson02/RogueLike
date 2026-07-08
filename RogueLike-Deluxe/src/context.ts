@@ -616,10 +616,9 @@ export class GameContext {
   resolveRivalFate(spare: boolean) {
     this.rivalSpared = spare;
     if (spare) {
-      // Tu relèves le Rival : deux échos se tiennent debout. Sa force te blinde.
-      this.player.modifyArmor(+2);
-      this.player.maxHp += 15;
-      this.player.heal(this.player.maxHp);
+      // Tu relèves le Rival. Pas de boost : sa vraie valeur, c'est qu'il combattra
+      // le Dévoreur d'Âmes à tes côtés (2 v 1). Il te remet d'abord sur pied.
+      this.player.healToFull();
       this.pushLog(T("rival.spared.reward"), LogKind.Loot);
     } else {
       // Tu consumes son écho : sa puissance devient la tienne.

@@ -315,111 +315,342 @@ export function loreMarkPages(cineKey: string): CinePage[] {
   }
 }
 
-// ===== Fins de campagne : après le Dévoreur, la Boucle se joue selon LE SERMENT tenu =====
+// ===== Fins de campagne : de vrais mini-films animés, selon LE SERMENT tenu =====
 export type EndingId = "redemption" | "balance" | "dominion";
 
-export function endingPages(ending: EndingId): CinePage[] {
-  switch (ending) {
-    case "redemption": return redemptionEndingPages();
-    case "dominion":   return dominionEndingPages();
-    default:           return balanceEndingPages();
+// Un plan de film : durée, sous-titre, teinte, et une fonction de rendu paramétrée par u∈[0,1].
+interface Shot {
+  dur: number;
+  captionKey?: string;
+  captionColor?: string;
+  sfx?: string;
+  draw: (g: CanvasRenderingContext2D, u: number, t: number, film: EndingFilmScene) => void;
+}
+
+// ---- primitives de dessin ----
+function drawThrone(g: CanvasRenderingContext2D, cx: number, cy: number, s: number, glow: string) {
+  g.save();
+  g.shadowColor = glow; g.shadowBlur = 34;
+  g.fillStyle = "#161020";
+  g.fillRect(cx - 34 * s, cy, 68 * s, 44 * s);            // assise
+  g.fillRect(cx - 30 * s, cy - 92 * s, 60 * s, 104 * s);  // dossier
+  g.fillRect(cx - 42 * s, cy - 8 * s, 12 * s, 52 * s);    // accoudoirs
+  g.fillRect(cx + 30 * s, cy - 8 * s, 12 * s, 52 * s);
+  g.beginPath();                                          // pointes du dossier
+  for (let i = -2; i <= 2; i++) {
+    const x = cx + i * 20 * s;
+    g.moveTo(x - 8 * s, cy - 90 * s);
+    g.lineTo(x, cy - 118 * s - Math.abs(i) * 6 * s);
+    g.lineTo(x + 8 * s, cy - 90 * s);
+  }
+  g.fill();
+  g.restore();
+  g.strokeStyle = glow; g.globalAlpha = 0.45; g.lineWidth = 2;
+  g.strokeRect(cx - 30 * s, cy - 92 * s, 60 * s, 104 * s);
+  g.globalAlpha = 1;
+}
+
+// Silhouette d'ombre (roi corrompu / champion lointain) avec yeux luisants.
+function drawShadowFigure(g: CanvasRenderingContext2D, cx: number, cy: number, s: number, eye: string, aura = 0) {
+  g.save();
+  if (aura > 0) { g.shadowColor = eye; g.shadowBlur = 20 * aura; }
+  g.fillStyle = "#080510";
+  g.beginPath();
+  g.moveTo(cx, cy - 46 * s);
+  g.quadraticCurveTo(cx - 28 * s, cy - 8 * s, cx - 22 * s, cy + 42 * s);
+  g.lineTo(cx + 22 * s, cy + 42 * s);
+  g.quadraticCurveTo(cx + 28 * s, cy - 8 * s, cx, cy - 46 * s);
+  g.fill();
+  g.beginPath(); g.arc(cx, cy - 52 * s, 13 * s, 0, Math.PI * 2); g.fill();
+  g.restore();
+  g.save();
+  g.fillStyle = eye; g.shadowColor = eye; g.shadowBlur = 12;
+  g.beginPath();
+  g.arc(cx - 5 * s, cy - 53 * s, 2.4 * s, 0, Math.PI * 2);
+  g.arc(cx + 5 * s, cy - 53 * s, 2.4 * s, 0, Math.PI * 2);
+  g.fill();
+  g.restore();
+}
+
+// Figure sprite (joueur / rival), avec voile sombre optionnel (corruption naissante).
+function drawSpriteFigure(g: CanvasRenderingContext2D, key: string, cx: number, cy: number, size: number, alpha = 1, glow?: string) {
+  const spr = getSprite(key);
+  if (!spr) return;
+  g.save();
+  g.imageSmoothingEnabled = false;
+  g.globalAlpha = alpha;
+  if (glow) { g.shadowColor = glow; g.shadowBlur = 22; }
+  g.drawImage(spr, cx - size / 2, cy - size / 2, size, size);
+  g.restore();
+}
+
+// Veines de corruption qui rampent depuis un point, s'étendant avec grow∈[0,1].
+function drawCorruptionVeins(g: CanvasRenderingContext2D, ox: number, oy: number, grow: number, len: number, color: string) {
+  g.save();
+  g.strokeStyle = color; g.shadowColor = color; g.shadowBlur = 8;
+  g.lineWidth = 2;
+  for (let b = 0; b < 7; b++) {
+    const ang = -Math.PI / 2 + (b - 3) * 0.5;
+    g.globalAlpha = 0.5 + 0.5 * grow;
+    g.beginPath(); g.moveTo(ox, oy);
+    let x = ox, y = oy;
+    const steps = 8;
+    for (let i = 1; i <= steps * grow; i++) {
+      const t = i / steps;
+      x = ox + Math.cos(ang + Math.sin(i * 1.3) * 0.4) * len * t;
+      y = oy + Math.sin(ang + Math.sin(i * 1.7) * 0.4) * len * t;
+      g.lineTo(x, y);
+    }
+    g.stroke();
+  }
+  g.restore();
+}
+
+// Porte de lumière (le monde d'en haut), ouverture open∈[0,1].
+function drawDoorOfLight(g: CanvasRenderingContext2D, cx: number, cy: number, h: number, open: number) {
+  const w = 8 + open * 46;
+  g.save();
+  g.shadowColor = "#fff6d8"; g.shadowBlur = 40 * open;
+  const grad = g.createLinearGradient(cx, cy - h / 2, cx, cy + h / 2);
+  grad.addColorStop(0, "rgba(255,246,216,0)");
+  grad.addColorStop(0.5, `rgba(255,248,224,${0.5 + 0.5 * open})`);
+  grad.addColorStop(1, "rgba(255,246,216,0)");
+  g.fillStyle = grad;
+  g.fillRect(cx - w / 2, cy - h / 2, w, h);
+  g.restore();
+}
+
+// ===== La scène de film : enchaîne les plans, fond noir cinéma, letterbox, sous-titre =====
+export class EndingFilmScene implements Scene {
+  private shots: Shot[];
+  private idx = 0;
+  private st = 0;   // temps dans le plan courant
+  private t = 0;    // temps absolu
+  private done: () => void;
+  particles = new Particles();
+  ending: EndingId;
+
+  constructor(ending: EndingId, done: () => void) {
+    this.ending = ending;
+    this.done = done;
+    this.shots = filmFor(ending, G.ctx.rivalSpared);
+  }
+
+  enter() { const s = this.shots[0]; if (s?.sfx) Audio.sfx(s.sfx); }
+
+  private advance() {
+    this.idx++;
+    this.st = 0;
+    if (this.idx >= this.shots.length) { this.done(); return; }
+    const s = this.shots[this.idx];
+    if (s.sfx) Audio.sfx(s.sfx);
+  }
+
+  update(dt: number) {
+    this.t += dt;
+    this.st += dt;
+    this.particles.update(dt);
+    if (Input.consume("cancel")) { Audio.sfx("back"); this.done(); return; } // sauter tout le film
+    if (Input.consume("confirm")) { Audio.sfx("confirm"); this.advance(); return; } // plan suivant
+    if (this.idx < this.shots.length && this.st >= this.shots[this.idx].dur) this.advance();
+  }
+
+  draw(g: CanvasRenderingContext2D) {
+    g.fillStyle = "#05040a"; g.fillRect(0, 0, VW, VH);
+    const shot = this.shots[Math.min(this.idx, this.shots.length - 1)];
+    const u = clamp(this.st / shot.dur, 0, 1);
+
+    shot.draw(g, u, this.t, this);
+    this.particles.draw(g);
+
+    // fondu au noir en entrée/sortie de plan (les plans se répondent à travers le noir)
+    const fade = Math.max(clamp(1 - this.st / 0.6, 0, 1), clamp((this.st - (shot.dur - 0.6)) / 0.6, 0, 1));
+    if (fade > 0) { g.globalAlpha = fade; g.fillStyle = "#05040a"; g.fillRect(0, 0, VW, VH); g.globalAlpha = 1; }
+
+    // letterbox cinéma
+    g.fillStyle = "#000";
+    g.fillRect(0, 0, VW, 58); g.fillRect(0, VH - 58, VW, 58);
+
+    // sous-titre (apparition en fondu)
+    if (shot.captionKey) {
+      const ca = clamp((this.st - 0.4) / 0.6, 0, 1) * (1 - clamp((this.st - (shot.dur - 0.5)) / 0.5, 0, 1));
+      g.globalAlpha = ca;
+      textShadow(g, T(shot.captionKey), VW / 2, VH - 34, 17, shot.captionColor ?? "#e8e0f0", "center");
+      g.globalAlpha = 1;
+    }
+
+    // invite discrète
+    if (Math.sin(this.t * 4) > 0.2) {
+      const last = this.idx >= this.shots.length - 1;
+      text(g, T(last ? "cine.start" : "cine.skip"), VW - 16, VH - 20, 11, "rgba(150,145,170,.7)", "right");
+    }
   }
 }
 
-// ── BRISER LA BOUCLE — l'aube. Tu refuses le trône ; la chaîne des champions se rompt. ──
-function redemptionEndingPages(): CinePage[] {
-  const spared = G.ctx.rivalSpared;
-  const pages: CinePage[] = [
-    {
-      title: T("end.red.t"), bg: "#0a0812",
-      lines: [
-        { text: T("end.red.1") },
-        { text: T("end.red.2"), color: "#ffe6a8" },
-      ],
-      sfx: "phase2",
-    },
-    {
-      // Si le Rival a été épargné, il se tient à tes côtés ; sinon son écho s'apaise enfin.
-      title: T("end.red.t2"), sprite: spared ? "rival" : "rival_blade", spriteGlow: "#ffd76a", bg: "#0c0a14",
-      lines: spared
-        ? [{ text: T("end.red.spared.1") }, { text: T("end.red.spared.2"), color: "#ffe6a8" }, { text: T("end.red.spared.3"), color: "#c8f0ff" }]
-        : [{ text: T("end.red.alone.1") }, { text: T("end.red.alone.2"), color: "#c8a8ff" }],
-      sfx: "seal",
-    },
-    {
-      title: T("end.red.t3"), bg: "#0e0c10",
-      lines: [
-        { text: T("end.red.3"), color: "#ffe6c0" },
-        { text: "" },
-        { text: T("end.red.4"), color: "#8fd4ff", size: 15 },
-      ],
-      sfx: "victory",
-    },
-  ];
-  return pages;
+export function filmFor(ending: EndingId, spared: boolean): Shot[] {
+  if (ending === "dominion") return dominionFilm();
+  if (ending === "redemption") return redemptionFilm(spared);
+  return balanceFilm();
 }
 
-// ── L'ÉQUILIBRE — l'entre-deux. La Boucle plie sans rompre : la révélation ambiguë. ──
-function balanceEndingPages(): CinePage[] {
+// ── PERPÉTUER : le trône, la corruption, la boucle qui recommence ──
+function dominionFilm(): Shot[] {
+  const throneY = 250;
   return [
-    {
-      title: T("finalrev.t"), bg: "#08060f",
-      lines: [
-        { text: T("finalrev.1") },
-        { text: T("finalrev.2"), color: "#c8a8ff" },
-      ],
-      sfx: "phase2",
+    { // 1. le trône appelle ; ta silhouette s'en approche
+      dur: 4.5, captionKey: "end.dom.1", captionColor: "#ff9aa4", sfx: "roar",
+      draw: (g, u, t, f) => {
+        const rise = clamp(u * 1.6, 0, 1);
+        drawThrone(g, VW / 2, throneY - (1 - rise) * 40, 1.1, "#5a1020");
+        const walk = 0.2 + u * 0.3;
+        drawSpriteFigure(g, "player", VW * walk, 400, 60 - u * 6, 0.9);
+        if (Math.random() < 0.5) f.particles.spawn({ x: VW / 2 + (Math.random() - 0.5) * 200, y: 360, vx: (Math.random() - 0.5) * 10, vy: -16 - Math.random() * 20, life: 3, maxLife: 3, size: 2, color: "#7a1828", glow: true });
+      },
     },
-    {
-      title: T("finalrev.t2"), sprite: "rival_blade", spriteGlow: "#c8a0ff", bg: "#0a0812",
-      lines: [
-        { text: T("finalrev.3") },
-        { text: T("finalrev.4"), color: "#ff9090" },
-        { text: T("finalrev.5"), color: "#c8f0ff" },
-      ],
-      sfx: "seal",
+    { // 2. tu t'assieds ; l'Abîme se coule en toi
+      dur: 4, captionKey: "end.dom.3", captionColor: "#ffb0b8", sfx: "phase2",
+      draw: (g, u) => {
+        const s = 1.3 + u * 0.15;
+        drawThrone(g, VW / 2, throneY, s, "#7a1828");
+        drawSpriteFigure(g, "player", VW / 2, throneY - 6, 66, 1 - u * 0.25);
+        drawCorruptionVeins(g, VW / 2, throneY + 30, u, 120, "#c0203a");
+      },
     },
-    {
-      title: T("finalrev.t3"), bg: "#060810",
-      lines: [
-        { text: T("finalrev.6"), color: "#e0d0ff" },
-        { text: "" },
-        { text: T("finalrev.7"), color: "#8fd4ff", size: 15 },
-      ],
-      sfx: "victory",
+    { // 3. ta chair se fait pierre et ténèbre — la corruption engloutit
+      dur: 5, captionKey: "end.dom.4", captionColor: "#ff9aa4", sfx: "warden",
+      draw: (g, u, t, f) => {
+        const pulse = 0.5 + Math.sin(t * 4) * 0.5;
+        // dégradé qui vire au cramoisi
+        const grad = g.createRadialGradient(VW / 2, throneY, 30, VW / 2, throneY, 380);
+        grad.addColorStop(0, `rgba(${80 + u * 100},10,30,${0.25 + u * 0.35})`);
+        grad.addColorStop(1, "rgba(0,0,0,0)");
+        g.fillStyle = grad; g.fillRect(0, 0, VW, VH);
+        drawThrone(g, VW / 2, throneY, 1.45, "#c0203a");
+        drawCorruptionVeins(g, VW / 2, throneY + 30, 1, 150, "#e0304a");
+        // la silhouette du joueur se change en ombre
+        drawSpriteFigure(g, "player", VW / 2, throneY - 6, 66, (1 - u) * 0.8);
+        drawShadowFigure(g, VW / 2, throneY - 6, 1.1 * (0.7 + u * 0.3), "#ff2a44", u * pulse);
+        if (Math.random() < 0.7) f.particles.spawn({ x: VW / 2 + (Math.random() - 0.5) * 160, y: throneY + 40, vx: (Math.random() - 0.5) * 20, vy: -20 - Math.random() * 30, life: 2, maxLife: 2, size: 2 + Math.random() * 2, color: Math.random() < 0.5 ? "#c0203a" : "#3a0810", glow: true });
+      },
+    },
+    { // 4. le nouveau roi : tu es devenu son cœur
+      dur: 4, captionKey: "end.dom.5", captionColor: "#e0c0ff", sfx: "roar",
+      draw: (g, u, t) => {
+        drawThrone(g, VW / 2, throneY, 1.5, "#c0203a");
+        drawShadowFigure(g, VW / 2, throneY - 8 + Math.sin(t * 1.4) * 2, 1.35, "#ff2a44", 0.8 + Math.sin(t * 3) * 0.2);
+        // couronne d'ombre
+        g.save(); g.strokeStyle = "#c0203a"; g.shadowColor = "#ff2a44"; g.shadowBlur = 14; g.lineWidth = 3;
+        g.beginPath();
+        for (let i = -2; i <= 2; i++) { const x = VW / 2 + i * 12; g.moveTo(x - 5, throneY - 74); g.lineTo(x, throneY - 90); g.lineTo(x + 5, throneY - 74); }
+        g.stroke(); g.restore();
+      },
+    },
+    { // 5. la prochaine boucle : un descendeur vient te trouver
+      dur: 5.5, captionKey: "end.dom.7", captionColor: "#ff9090", sfx: "warden",
+      draw: (g, u, t, f) => {
+        drawDoorOfLight(g, VW / 2, 96, 150, clamp(u * 1.4, 0, 1));
+        // le nouveau champion descend depuis la lumière
+        const dy = 120 + u * 150;
+        if (u > 0.2) drawShadowFigure(g, VW / 2, dy, 0.5, "#8fd4ff", 0.4);
+        // toi, en bas, sur le trône cramoisi
+        drawThrone(g, VW / 2, 400, 0.85, "#c0203a");
+        drawShadowFigure(g, VW / 2, 392, 0.8, "#ff2a44", 0.7);
+        if (Math.random() < 0.3) f.particles.spawn({ x: VW / 2 + (Math.random() - 0.5) * 40, y: 110, vx: (Math.random() - 0.5) * 8, vy: 24 + Math.random() * 30, life: 3, maxLife: 3, size: 1.6, color: "#fff2c8", glow: true });
+      },
     },
   ];
 }
 
-// ── PERPÉTUER LA BOUCLE — le trône. Tu prends la place du Dévoreur. Tu ES l'Abîme, désormais. ──
-function dominionEndingPages(): CinePage[] {
+// ── BRISER : tu refuses le trône, (le Rival t'aide,) l'aube se lève ──
+function redemptionFilm(spared: boolean): Shot[] {
+  return [
+    { // 1. le trône appelle ; tu lui tournes le dos
+      dur: 4.5, captionKey: "end.red.1", captionColor: "#ffe6a8", sfx: "phase2",
+      draw: (g, u) => {
+        drawThrone(g, VW * 0.72, 250, 1.05, "#5a1020");
+        // le joueur s'éloigne vers la gauche (vers une lueur)
+        drawDoorOfLight(g, VW * 0.12, VH / 2, 220, clamp(u, 0, 1) * 0.5);
+        drawSpriteFigure(g, "player", VW * (0.62 - u * 0.34), 360, 60, 1);
+      },
+    },
+    spared
+      ? { // 2a. avec le Rival : vous brisez la chaîne à deux
+          dur: 5, captionKey: "end.red.spared.2", captionColor: "#ffe6a8", sfx: "seal",
+          draw: (g, u, t, f) => {
+            // anneau/chaîne central qui se fissure
+            g.save(); g.strokeStyle = "#c8a8ff"; g.shadowColor = "#c8a8ff"; g.shadowBlur = 16 + u * 20; g.lineWidth = 6 - u * 4;
+            g.globalAlpha = 1 - u * 0.5;
+            g.beginPath(); g.arc(VW / 2, 260, 70 - u * 10, u * 0.6, Math.PI * 2 - u * 0.6); g.stroke();
+            g.restore();
+            drawSpriteFigure(g, "player", VW / 2 - 70, 360, 58, 1, "#ffd76a");
+            drawSpriteFigure(g, "rival", VW / 2 + 70, 360, 58, 1, "#8a5fd0");
+            if (u > 0.7 && Math.random() < 0.6) f.particles.spawn({ x: VW / 2 + (Math.random() - 0.5) * 140, y: 260, vx: (Math.random() - 0.5) * 60, vy: (Math.random() - 0.5) * 60, life: 1.5, maxLife: 1.5, size: 2, color: "#e8d0ff", glow: true });
+          },
+        }
+      : { // 2b. seul : les échos des tombés s'apaisent
+          dur: 5, captionKey: "end.red.alone.2", captionColor: "#c8a8ff", sfx: "seal",
+          draw: (g, u) => {
+            drawSpriteFigure(g, "player", VW / 2, 360, 60, 1, "#ffd76a");
+            for (let i = 0; i < 4; i++) {
+              const a = (1 - u) * 0.4 * (1 - i * 0.2);
+              drawShadowFigure(g, VW / 2 + (i - 1.5) * 90, 360, 0.7, "#8fb8ff", a);
+            }
+          },
+        },
+    { // 3. l'aube : les ténèbres refluent
+      dur: 4.5, captionKey: "end.red.3", captionColor: "#ffe6c0", sfx: "victory",
+      draw: (g, u, t, f) => {
+        const grad = g.createLinearGradient(0, 0, 0, VH);
+        grad.addColorStop(0, `rgba(255,224,160,${0.15 + u * 0.4})`);
+        grad.addColorStop(1, "rgba(20,16,30,0)");
+        g.fillStyle = grad; g.fillRect(0, 0, VW, VH);
+        drawDoorOfLight(g, VW / 2, VH / 2 - 40, 300, clamp(u * 1.3, 0, 1));
+        drawSpriteFigure(g, "player", VW / 2, 380 - u * 40, 58, 1);
+        if (Math.random() < 0.6) f.particles.spawn({ x: Math.random() * VW, y: VH, vx: (Math.random() - 0.5) * 10, vy: -20 - Math.random() * 24, life: 3, maxLife: 3, size: 1.8, color: "#ffe6a8", glow: true });
+      },
+    },
+    { // 4. la Boucle brisée : silence
+      dur: 4.5, captionKey: "end.red.4", captionColor: "#8fd4ff",
+      draw: (g, u) => {
+        const grad = g.createRadialGradient(VW / 2, VH / 2, 20, VW / 2, VH / 2, 360);
+        grad.addColorStop(0, `rgba(255,240,210,${0.3 * (1 - u)})`);
+        grad.addColorStop(1, "rgba(10,10,18,0)");
+        g.fillStyle = grad; g.fillRect(0, 0, VW, VH);
+        // un anneau qui se dissout
+        g.save(); g.globalAlpha = 1 - u; g.strokeStyle = "#c8f0ff"; g.shadowColor = "#c8f0ff"; g.shadowBlur = 18; g.lineWidth = 2;
+        g.beginPath(); g.arc(VW / 2, VH / 2 - 10, 60 + u * 120, 0, Math.PI * 2); g.stroke(); g.restore();
+      },
+    },
+  ];
+}
+
+// ── ÉQUILIBRE : la Boucle plie sans rompre (ambigu) ──
+function balanceFilm(): Shot[] {
   return [
     {
-      title: T("end.dom.t"), bg: "#0c0308",
-      lines: [
-        { text: T("end.dom.1") },
-        { text: T("end.dom.2"), color: "#ff7080" },
-      ],
-      sfx: "roar",
+      dur: 4.5, captionKey: "finalrev.1", captionColor: "#c8a8ff", sfx: "phase2",
+      draw: (g, u, t) => {
+        drawSpriteFigure(g, "rival_blade", VW / 2, 250, 120, 1, "#c8a0ff");
+        g.save(); g.globalAlpha = 0.5; g.strokeStyle = "#8a5fd0"; g.lineWidth = 2;
+        g.beginPath(); g.arc(VW / 2, 250, 90, t * 0.4, t * 0.4 + Math.PI * 1.6); g.stroke(); g.restore();
+      },
     },
     {
-      title: T("end.dom.t2"), sprite: "avatar", spriteGlow: "#c0203a", bg: "#0e0206",
-      lines: [
-        { text: T("end.dom.3") },
-        { text: T("end.dom.4"), color: "#ffb0b8" },
-        { text: T("end.dom.5"), color: "#e0c0ff" },
-      ],
-      sfx: "phase2",
+      dur: 4.5, captionKey: "finalrev.4", captionColor: "#ff9090", sfx: "seal",
+      draw: (g, u) => {
+        // à un seuil : moitié sombre, moitié claire
+        g.fillStyle = "rgba(255,232,180,.12)"; g.fillRect(0, 0, VW / 2, VH);
+        drawSpriteFigure(g, "player", VW / 2, 340, 60, 1);
+      },
     },
     {
-      // La chute : un prochain descendeur viendra. Il te trouvera sur le trône — TU seras son Rival.
-      title: T("end.dom.t3"), bg: "#080204",
-      lines: [
-        { text: T("end.dom.6"), color: "#ffd0d0" },
-        { text: "" },
-        { text: T("end.dom.7"), color: "#ff9090", size: 16 },
-      ],
-      sfx: "warden",
+      dur: 5, captionKey: "finalrev.6", captionColor: "#e0d0ff", sfx: "victory",
+      draw: (g, u, t) => {
+        // un anneau qui se fissure puis se referme : ni brisé, ni scellé
+        const crack = Math.sin(u * Math.PI); // 0→1→0
+        g.save(); g.strokeStyle = "#c8a8ff"; g.shadowColor = "#c8a8ff"; g.shadowBlur = 16; g.lineWidth = 4;
+        g.beginPath(); g.arc(VW / 2, VH / 2 - 10, 80, crack * 0.5, Math.PI * 2 - crack * 0.5); g.stroke(); g.restore();
+      },
     },
   ];
 }

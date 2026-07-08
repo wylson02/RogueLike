@@ -583,9 +583,8 @@ console.log("=== LE SERMENT : choix moraux, verdicts, fins ===");
 
   // Verdict : épargner vs achever donnent des récompenses distinctes.
   const cs = new GameContext(); cs.player.maxHp = 100; cs.player.hp = 40;
-  const armBefore = cs.player.armor;
   cs.resolveRivalFate(true);
-  check(cs.rivalSpared && cs.player.maxHp === 115 && cs.player.armor === armBefore + 2, "Verdict épargner : +15 PV max, +2 armure, plein PV");
+  check(cs.rivalSpared && cs.player.hp === cs.player.maxHp, "Verdict épargner : remis à plein PV (récompense = allié 2v1)");
   check(!cs.player.inventory.some(i => i.id === "EchoShard"), "épargner ne donne pas l'Éclat d'Écho");
 
   const ck = new GameContext();
@@ -627,6 +626,48 @@ console.log("=== LE SERMENT : choix moraux, verdicts, fins ===");
   clearSave();
 }
 
+console.log("=== FIN ALLIÉE : combat 2 v 1 contre le Dévoreur ===");
+{
+  // L'allié n'apparaît QUE si le Rival a été épargné (rivalSpared) et contre le Dévoreur.
+  const c = new GameContext();
+  c.loadLevel(5); c.drainEvents(); c.blockNightSpawnsForTicks(1e9);
+  const dev = c.monsters.find(m => m.nameKey === "mob.superboss")!;
+
+  const noAlly = new CombatSession(c, MonsterCatalog.soulDevourer(P(5, 5)));
+  check(noAlly.ally === null, "sans épargne : pas d'allié (combat 1 v 1)");
+
+  c.rivalSpared = true;
+  c.player.maxHp = 400; c.player.healToFull();
+  const s = new CombatSession(c, dev);
+  check(!!s.ally && s.ally.alive, "Rival épargné : l'allié rejoint le combat contre le Dévoreur");
+
+  // L'allié inflige des dégâts au Dévoreur au fil des tours.
+  let sawAllyHit = false, sawAllyCover = false;
+  const devHp0 = dev.hp;
+  for (let i = 0; i < 30 && !s.over; i++) {
+    s.playTurn("attack");
+    const evs = s.drainEvents();
+    if (evs.some(e => e.type === "allyHit")) sawAllyHit = true;
+    if (evs.some(e => e.type === "allyCover")) sawAllyCover = true;
+  }
+  check(sawAllyHit, "l'allié frappe le Dévoreur (allyHit émis)");
+  check(sawAllyCover, "l'allié encaisse des coups à ta place (allyCover émis)");
+
+  // La couverture : l'allié peut tomber, et alors le joueur encaisse à nouveau tout.
+  const c2 = new GameContext();
+  c2.loadLevel(5); c2.drainEvents(); c2.blockNightSpawnsForTicks(1e9);
+  c2.rivalSpared = true; c2.player.maxHp = 5000; c2.player.healToFull();
+  const dev2 = MonsterCatalog.soulDevourer(P(5, 5)); dev2.maxHp = 5000; dev2.hp = 5000;
+  const s2 = new CombatSession(c2, dev2);
+  s2.ally!.hp = 3; // au bord de tomber
+  let sawFall = false;
+  for (let i = 0; i < 40 && !s2.over && !sawFall; i++) {
+    s2.playTurn("dodge");
+    if (s2.drainEvents().some(e => e.type === "allyFall")) sawFall = true;
+  }
+  check(sawFall && !s2.ally!.alive, "l'allié peut s'effondrer sous les coups (allyFall)");
+}
+
 console.log("=== i18n : parité FR/EN des clés du Serment ===");
 {
   const savedLang = getLang();
@@ -635,6 +676,7 @@ console.log("=== i18n : parité FR/EN des clés du Serment ===");
     "creed.rival1.prompt", "creed.torvin.prompt", "creed.fate.prompt",
     "end.redemption", "end.dominion", "end.red.4", "end.dom.7",
     "bossenc.rival.break.1", "bossenc.rival.perp.1",
+    "combat.ally.join", "combat.ally.cover", "combat.ally.fall",
   ];
   setLang("en");
   let enOk = true;

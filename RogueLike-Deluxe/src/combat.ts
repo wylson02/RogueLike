@@ -19,8 +19,19 @@ export interface CombatEvent {
       | "itemUse" | "poisonEnemy" | "poisonPlayer" | "stunEnemy" | "stunPlayer"
       // ---- nouveaux (boons / intents) ----
       | "burn" | "bleed" | "chill" | "freeze" | "thunder" | "echoHit" | "combustion"
-      | "thorns" | "enemyCharge" | "enemyGuard" | "enemyLeech" | "resonance";
+      | "thorns" | "enemyCharge" | "enemyGuard" | "enemyLeech" | "resonance"
+      // ---- allié (fin 2 v 1 : le Rival épargné combat à tes côtés) ----
+      | "allyHit" | "allyCover" | "allyFall";
   value?: number;
+}
+
+// Allié de combat : le Rival, quand il a été épargné, se dresse contre le Dévoreur d'Âmes.
+export interface CombatAlly {
+  nameKey: string;
+  sprite: string;
+  maxHp: number; hp: number;
+  attack: number;
+  alive: boolean;
 }
 
 // ===== Intents : ce que l'ennemi fera à son prochain tour =====
@@ -97,6 +108,7 @@ export class CombatSession {
   events: CombatEvent[] = [];
   over = false;
   victory = false;
+  ally: CombatAlly | null = null; // le Rival épargné, à tes côtés contre le Dévoreur (2 v 1)
 
   // ---- intents ----
   intent: Intent;                    // ce que l'ennemi fera à son prochain tour (affiché)
@@ -137,6 +149,17 @@ export class CombatSession {
       this.addLog(T("combat.empower"));
     }
 
+    // Fin alliée : le Rival épargné se dresse contre le Dévoreur d'Âmes. Le dernier combat est un 2 v 1.
+    if (!ctx.endless && ctx.rivalSpared && enemy.nameKey === "mob.superboss") {
+      this.ally = {
+        nameKey: "mob.rival", sprite: "rival",
+        maxHp: 80, hp: 80,
+        attack: Math.max(7, Math.round(ctx.player.attack * 0.6)),
+        alive: true,
+      };
+      this.addLog(T("combat.ally.join", { name: T("mob.rival") }));
+    }
+
     this.intent = this.rollIntent();
   }
 
@@ -173,10 +196,11 @@ export class CombatSession {
       this.resolveEnemyTurn();
       if (!this.enemy.isDead && !this.player.isDead) this.intent = this.rollIntent();
     }
+    this.allyTurn(); // le Rival riposte à ton côté (2 v 1)
     if (this.dodgeTurnsLeft > 0) this.dodgeTurnsLeft--;
 
     this.tickStatuses();
-    this.checkEnemyDead(); // mort par poison/brûlure/saignement
+    this.checkEnemyDead(); // mort par poison/brûlure/saignement/allié
 
     if (this.player.isDead) {
       this.addLog(T("combat.playerdead"));
@@ -185,6 +209,17 @@ export class CombatSession {
       return;
     }
     if (this.isOver) this.finish();
+  }
+
+  // ===== Tour de l'allié : le Rival frappe le Dévoreur à son tour =====
+  private allyTurn() {
+    const a = this.ally;
+    if (!a || !a.alive || this.enemy.isDead || this.player.isDead) return;
+    const crit = this.roll(22);
+    const raw = crit ? Math.round(a.attack * 1.7) : a.attack;
+    const dealt = this.enemy.takeDamage(raw);
+    this.addLog(T(crit ? "combat.ally.crit" : "combat.ally.hit", { name: T(a.nameKey), n: dealt }));
+    this.emit({ type: "allyHit", value: dealt });
   }
 
   // ===== Fin de tour : les dégâts sur la durée rongent, les statuts expirent =====
@@ -574,13 +609,29 @@ export class CombatSession {
 
   private hurtPlayer(raw: number, pierce = false): number {
     let dmg: number;
-    if (pierce) { dmg = raw; this.player.hp -= raw; }
+    if (pierce) dmg = raw;
     else {
       const bonus = this.playerBonusArmor();
       // Symétrie : une attaque inflige toujours au moins 1 dégât.
       dmg = raw <= 0 ? 0 : Math.max(1, raw - (this.player.armor + bonus));
-      this.player.hp -= dmg;
     }
+    // Le Rival te couvre : tant qu'il tient debout, il encaisse 40% de chaque coup à ta place.
+    const a = this.ally;
+    if (a && a.alive && dmg > 1) {
+      const soak = Math.min(dmg - 1, Math.ceil(dmg * 0.4));
+      if (soak > 0) {
+        dmg -= soak;
+        a.hp -= soak;
+        this.emit({ type: "allyCover", value: soak });
+        this.addLog(T("combat.ally.cover", { name: T(a.nameKey), n: soak }));
+        if (a.hp <= 0) {
+          a.alive = false;
+          this.emit({ type: "allyFall" });
+          this.addLog(T("combat.ally.fall", { name: T(a.nameKey) }));
+        }
+      }
+    }
+    this.player.hp -= dmg;
     // Cendres : encaisser embrase l'agresseur
     const ashes = this.player.boonLevel("ashes");
     if (ashes > 0 && dmg > 0 && !this.enemy.isDead) {

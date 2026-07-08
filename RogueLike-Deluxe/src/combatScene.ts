@@ -42,6 +42,9 @@ export class CombatScene implements Scene {
   private phase2Banner = 0;
   private shownEnemyHp: number;
   private shownPlayerHp: number;
+  private shownAllyHp: number;
+  private allyLunge = 0;   // 1 → 0 : le Rival allié se rue sur l'ennemi
+  private allyFlash = 0;   // le Rival encaisse un coup à ta place
   private logReveal = 0;
   // ---- juice ----
   private hitstop = 0;        // gel du temps (impact frames)
@@ -58,7 +61,12 @@ export class CombatScene implements Scene {
     this.session = new CombatSession(G.ctx, monster);
     this.shownEnemyHp = monster.hp;
     this.shownPlayerHp = G.ctx.player.hp;
+    this.shownAllyHp = this.session.ally?.hp ?? 0;
   }
+
+  // Position du Rival allié (légèrement en retrait du héros ; se rue en frappant)
+  private get allyX() { return 150 + this.allyLunge * 170; }
+  private get allyY() { return 362 - this.allyLunge * 52; }
 
   enter() {
     // Musique boss aussi pour le Gardien des Sceaux (mini-boss) : même thème que son dialogue.
@@ -123,6 +131,8 @@ export class CombatScene implements Scene {
     this.t += dt;
     this.heroLunge = Math.max(0, this.heroLunge - dt * 4.5);
     this.enemyLunge = Math.max(0, this.enemyLunge - dt * 4.5);
+    this.allyLunge = Math.max(0, this.allyLunge - dt * 4.5);
+    this.allyFlash = Math.max(0, this.allyFlash - dt * 4);
     this.flashTint = Math.max(0, this.flashTint - dt * 5);
     for (let i = this.slashes.length - 1; i >= 0; i--) {
       this.slashes[i].life -= dt;
@@ -174,6 +184,7 @@ export class CombatScene implements Scene {
     }
     this.shownEnemyHp = lerp(this.shownEnemyHp, Math.max(0, this.enemy.hp), clamp(dt * 8, 0, 1));
     this.shownPlayerHp = lerp(this.shownPlayerHp, Math.max(0, G.ctx.player.hp), clamp(dt * 8, 0, 1));
+    if (this.session.ally) this.shownAllyHp = lerp(this.shownAllyHp, Math.max(0, this.session.ally.hp), clamp(dt * 8, 0, 1));
 
     switch (this.state) {
       case "intro":
@@ -448,11 +459,33 @@ export class CombatScene implements Scene {
             Audio.sfx("hurt");
             pop(hx, hy - 66, T("status.stun").toUpperCase() + " !", "#ffd84a", 22);
             break;
+          // ---- allié (Rival) ----
+          case "allyHit":
+            Audio.sfx("hit");
+            this.allyLunge = 1; this.hitstop = 0.03;
+            this.enemyShake = Math.max(this.enemyShake, 0.9); this.enemyFlash = 1;
+            slashAt(ex - 8, ey + 10, "#c8a8ff");
+            this.particles.burst(ex, ey, "#a87fe0", 12, 120, 0.6, 3, true);
+            if (e.value) pop(ex - 24, ey - 40, "-" + e.value, "#c8a8ff", 22);
+            break;
+          case "allyCover":
+            Audio.sfx("dodge");
+            this.allyFlash = 1;
+            ringAt(150, 345, 60, "#8a5fd0");
+            this.particles.burst(150, 345, "#8a5fd0", 14, 90, 0.7, 3, true);
+            if (e.value) pop(150, 300, "🛡 -" + e.value, "#c8a8ff", 18);
+            break;
+          case "allyFall":
+            Audio.sfx("hurt");
+            this.screenShake = Math.max(this.screenShake, 0.6);
+            this.particles.burst(150, 345, "#6a5a80", 22, 130, 0.9, 3.5);
+            pop(150, 300, T("combat.ally.down").toUpperCase(), "#b0a8c0", 18, 1.4);
+            break;
         }
       };
       this.steps.push({ at, fn });
       at += e.type === "phase2" ? 1.6
-        : e.type === "enemyDead" || e.type === "enemySpecial" || e.type === "enemyCharge" ? 0.8
+        : e.type === "enemyDead" || e.type === "enemySpecial" || e.type === "enemyCharge" || e.type === "allyFall" ? 0.8
         : e.type === "burn" || e.type === "bleed" || e.type === "chill" ? 0.25
         : 0.55;
     }
@@ -655,6 +688,47 @@ export class CombatScene implements Scene {
         const introOff = (1 - slide) * -360;
         g.drawImage(hspr, hx2 - hsz / 2 + introOff, hy2 - hsz / 2, hsz, hsz);
         g.restore();
+      }
+    }
+
+    // ===== Rival allié (fin 2 v 1) : se tient en retrait, se rue en frappant =====
+    if (this.session.ally) {
+      const a = this.session.ally;
+      const asz = 78;
+      const ax = this.allyX, ay = this.allyY + Math.sin(this.t * 2.4 + 1) * 3;
+      const aspr = getSprite("rival");
+      const down = !a.alive;
+      // ombre
+      g.fillStyle = "rgba(0,0,0,.4)";
+      g.beginPath(); g.ellipse(this.allyX, this.allyY + asz / 2 - 4, asz * 0.3, asz * 0.09, 0, 0, Math.PI * 2); g.fill();
+      if (aspr) {
+        g.save();
+        g.imageSmoothingEnabled = false;
+        const introOff = (1 - slide) * -360;
+        if (down) {
+          // à terre : couché, grisé, translucide
+          g.globalAlpha = 0.4;
+          g.translate(ax + introOff, ay); g.rotate(Math.PI / 2);
+          g.drawImage(aspr, -asz / 2, -asz / 2, asz, asz);
+        } else {
+          g.shadowColor = "#8a5fd0"; g.shadowBlur = 10 + Math.sin(this.t * 2) * 4;
+          g.drawImage(aspr, ax - asz / 2 + introOff, ay - asz / 2, asz, asz);
+          if (this.allyFlash > 0) {
+            g.globalAlpha = this.allyFlash * 0.7; g.globalCompositeOperation = "lighter";
+            g.drawImage(aspr, ax - asz / 2 + introOff, ay - asz / 2, asz, asz);
+          }
+        }
+        g.restore();
+      }
+      // barre de vie de l'allié (compacte, sous ses pieds)
+      if (slide >= 1) {
+        const bw2 = 96, bx2 = this.allyX - bw2 / 2, by2 = this.allyY + asz / 2 + 2;
+        textShadow(g, T(a.nameKey), this.allyX, by2 - 6, 11, down ? "#8a8098" : "#c8a8ff", "center");
+        g.fillStyle = "rgba(8,6,14,.8)";
+        g.beginPath(); g.roundRect(bx2 - 2, by2, bw2 + 4, 8, 3); g.fill();
+        const ahr = clamp(this.shownAllyHp / a.maxHp, 0, 1);
+        g.fillStyle = down ? "#4a4458" : "#7a4fc0";
+        g.beginPath(); g.roundRect(bx2, by2 + 1, bw2 * ahr, 6, 3); g.fill();
       }
     }
 

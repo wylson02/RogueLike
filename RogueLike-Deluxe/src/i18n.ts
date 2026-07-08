@@ -651,13 +651,21 @@ const FR: Dict = {
   "creed.fate.quote": "« Vas-y... achève-le. C'est ce que la Boucle attend de toi. C'est ce qu'ILS ont tous fait. »",
   "creed.fate.prompt": "Le Rival est à terre. Sa vie t'appartient.",
   "creed.fate.spare": "Lui tendre la main",
-  "creed.fate.spare.fx": "+15 PV max, +2 armure. Vous vous relevez à deux.",
+  "creed.fate.spare.fx": "Il combattra le Dévoreur d'Âmes à tes côtés (2 v 1).",
   "creed.fate.spare.flavor": "Rompre la chaîne commence ici, par un seul geste.",
   "creed.fate.slay": "L'achever",
   "creed.fate.slay.fx": "Éclat d'Écho + 3 ATK. Tu consumes son écho.",
   "creed.fate.slay.flavor": "Un maillon de plus. La Boucle se resserre.",
-  "rival.spared.reward": "Tu relèves le Rival. Deux échos d'une même âme, debout, refusant de tomber. (+15 PV max, +2 armure)",
+  "rival.spared.reward": "Tu relèves le Rival. « Alors on finit ça ensemble », souffle-t-il. Il te suivra jusqu'au bout.",
   "rival.slain.reward": "Tu prends son écho comme on prend son dû. Sa puissance bat maintenant sous ta peau. (Éclat d'Écho, +3 ATK)",
+
+  // combat 2 v 1 : le Rival allié
+  "combat.ally.join": "{name} se relève et se poste à tes côtés, lame prête. Vous êtes deux, désormais.",
+  "combat.ally.hit": "{name} frappe le Dévoreur ({n} dégâts).",
+  "combat.ally.crit": "{name} porte un coup terrible au Dévoreur ({n} dégâts) !",
+  "combat.ally.cover": "{name} s'interpose et encaisse {n} dégâts à ta place.",
+  "combat.ally.fall": "{name} s'effondre... « Continue... finis-le. » Tu es seul, maintenant.",
+  "combat.ally.down": "à terre",
 
   // rencontre du Rival au niveau 5, selon ta voie
   "bossenc.rival.break.1": "Tu es venu jusqu'ici sans te renier. Je ne pensais pas ça possible.",
@@ -1341,13 +1349,21 @@ const EN: Dict = {
   "creed.fate.quote": "\"Go on... finish him. It's what the Loop wants. It's what they ALL did.\"",
   "creed.fate.prompt": "The Rival is down. His life is yours.",
   "creed.fate.spare": "Offer your hand",
-  "creed.fate.spare.fx": "+15 max HP, +2 armor. You rise together.",
+  "creed.fate.spare.fx": "He'll fight the Soul Devourer at your side (2 v 1).",
   "creed.fate.spare.flavor": "Breaking the chain starts here, with a single gesture.",
   "creed.fate.slay": "Finish him",
   "creed.fate.slay.fx": "Echo Shard + 3 ATK. You consume his echo.",
   "creed.fate.slay.flavor": "One more link. The Loop tightens.",
-  "rival.spared.reward": "You lift the Rival to his feet. Two echoes of one soul, standing, refusing to fall. (+15 max HP, +2 armor)",
+  "rival.spared.reward": "You lift the Rival to his feet. \"Then we end this together,\" he breathes. He'll follow you to the end.",
   "rival.slain.reward": "You take his echo as if it were owed to you. His power beats beneath your skin now. (Echo Shard, +3 ATK)",
+
+  // 2 v 1 combat: the Rival ally
+  "combat.ally.join": "{name} rises and takes his place at your side, blade ready. There are two of you now.",
+  "combat.ally.hit": "{name} strikes the Devourer ({n} damage).",
+  "combat.ally.crit": "{name} lands a savage blow on the Devourer ({n} damage)!",
+  "combat.ally.cover": "{name} steps in and takes {n} damage meant for you.",
+  "combat.ally.fall": "{name} collapses... \"Keep going... finish it.\" You're alone now.",
+  "combat.ally.down": "down",
 
   "bossenc.rival.break.1": "You came this far without betraying yourself. I didn't think that was possible.",
   "bossenc.rival.break.2": "So fight. If either of us can break this thing, prove it's you.",

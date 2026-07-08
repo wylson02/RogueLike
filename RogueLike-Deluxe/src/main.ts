@@ -9,7 +9,7 @@ import { SceneManager, Scene } from "./scenes";
 import { MainMenuScene } from "./menuScenes";
 import { ExploreScene, MerchantScene, CreedChoiceScene } from "./exploreScene";
 import { CombatScene } from "./combatScene";
-import { CinematicScene, introPages, swordPages, bossIntroPages, depthsIntroPages, bossEncounterPages, loreMarkPages, endingPages, EndScene, EndingId } from "./cinematics";
+import { CinematicScene, introPages, swordPages, bossIntroPages, depthsIntroPages, bossEncounterPages, loreMarkPages, EndingFilmScene, EndScene, EndingId } from "./cinematics";
 import { EndlessHubScene, RelicDraftScene, RunSummaryScene } from "./endlessScenes";
 import { G, Flow } from "./game";
 import { loadSettings, loadGame, clearSave, saveGame } from "./save";
@@ -92,14 +92,10 @@ Flow.creedChoice = (id: string, onDone?: () => void) => {
 };
 
 // Fin de campagne : la Boucle vaincue se referme selon le Serment tenu. Trois dénouements distincts.
-const ENDING_EMBER: Record<EndingId, string> = {
-  redemption: "#ffd76a",  // l'aube
-  balance: "#c8a0ff",     // l'entre-deux
-  dominion: "#c0203a",    // le trône
-};
 Flow.campaignEnding = (ending: EndingId) => {
   clearSave();
-  SceneManager.switchTo(() => new CinematicScene(endingPages(ending), () => Flow.endScreen(true, ending), ENDING_EMBER[ending]));
+  // Un vrai mini-film animé, puis l'écran-titre thématisé.
+  SceneManager.switchTo(() => new EndingFilmScene(ending, () => Flow.endScreen(true, ending)));
   Audio.setMode(ending === "dominion" ? "boss" : "none");
 };
 
