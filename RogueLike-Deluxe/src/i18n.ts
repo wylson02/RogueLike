@@ -483,6 +483,11 @@ const FR: Dict = {
   "endless.exitopen.toast": "LA VOIE VERS LE BAS S'OUVRE…",
   // Strates : chaque tranche de 5 profondeurs a une identité et monte en intensité
   "endless.banner": "PROFONDEUR {n} — {name}",
+  "adventure.name.1": "I — Les Ruines Englouties",
+  "adventure.name.2": "II — Le Labyrinthe",
+  "adventure.name.3": "III — Le Temple des Sceaux",
+  "adventure.name.4": "IV — La Salle du Trône",
+  "adventure.name.5": "V — Les Profondeurs",
   "endless.stratum.enter": "Tu franchis un seuil. Une nouvelle strate t'engloutit : {name}.",
   "endless.stratum.toast": "NOUVELLE STRATE : {name}",
   "stratum.0": "Les Abords",
@@ -1263,6 +1268,11 @@ const EN: Dict = {
   "endless.exitopen.toast": "THE WAY DOWN OPENS…",
   // Strata: every 5 depths is a named zone that ramps up in intensity
   "endless.banner": "DEPTH {n} — {name}",
+  "adventure.name.1": "I — The Sunken Ruins",
+  "adventure.name.2": "II — The Labyrinth",
+  "adventure.name.3": "III — The Temple of Seals",
+  "adventure.name.4": "IV — The Throne Room",
+  "adventure.name.5": "V — The Depths",
   "endless.stratum.enter": "You cross a threshold. A new stratum swallows you: {name}.",
   "endless.stratum.toast": "NEW STRATUM: {name}",
   "stratum.0": "The Fringe",

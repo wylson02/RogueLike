@@ -202,6 +202,7 @@ export class GameContext {
     if (level !== 3) this.ensureAllExitsReachable(this.player.pos);
     if (level >= 4) this.ensureBossReachable();
     this.updateVision();
+    this.pendingFloorBanner = true; // le bandeau ne s'affiche qu'à l'arrivée sur une nouvelle map (pas au retour de combat)
     this.emit({ type: "levelLoaded", level });
   }
 

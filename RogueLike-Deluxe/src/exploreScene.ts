@@ -17,6 +17,9 @@ import { saveGame, saveSettings } from "./save";
 import { TS } from "./render";
 import { OptionsScene } from "./menuScenes";
 
+// Noms des maps de campagne (bannière d'entrée), indexés par niveau - 1.
+const ADV_NAMES = ["adventure.name.1", "adventure.name.2", "adventure.name.3", "adventure.name.4", "adventure.name.5"];
+
 export class ExploreScene implements Scene {
   private t = 0;
   private lastDt = 1 / 60;
@@ -29,13 +32,21 @@ export class ExploreScene implements Scene {
     Audio.setMode(G.ctx.time.isNight ? "night" : "explore");
     G.world.snapCamera(G.ctx);
     clearTweens();
-    // Bandeau seulement à l'arrivée sur un NOUVEL étage (pas au retour de combat/menu,
-    // qui recréent une ExploreScene). Le drapeau est posé par loadProceduralFloor.
-    if (G.ctx.endless && G.ctx.pendingFloorBanner) {
+    // Bandeau seulement à l'arrivée sur une NOUVELLE map (drapeau posé au chargement) — pas
+    // au retour de combat/menu qui recréent une ExploreScene. Vaut pour l'Aventure et la Descente.
+    if (G.ctx.pendingFloorBanner) { this.armBanner(); G.ctx.pendingFloorBanner = false; }
+  }
+
+  // Arme la bannière de niveau : identité de la strate (Descente) ou nom de la map (Aventure).
+  private armBanner() {
+    if (G.ctx.endless) {
       this.bannerText = T("endless.banner", { n: G.ctx.runDepth, name: T(stratumInfo(G.ctx.runDepth).nameKey) }).toUpperCase();
-      this.bannerT = 2.4;
-      G.ctx.pendingFloorBanner = false;
+    } else {
+      const key = ADV_NAMES[G.ctx.currentLevel - 1];
+      if (!key) return; // pas de bannière hors des maps de campagne connues
+      this.bannerText = T(key).toUpperCase();
     }
+    this.bannerT = 2.4;
   }
 
   update(dt: number) {
@@ -124,11 +135,8 @@ export class ExploreScene implements Scene {
           if (!G.ctx.endless) saveGame(G.ctx); // les runs Descente ne sont pas resumables (permadeath)
           G.world.snapCamera(G.ctx);
           clearTweens();
-          if (G.ctx.endless && G.ctx.pendingFloorBanner) {
-            this.bannerText = T("endless.banner", { n: G.ctx.runDepth, name: T(stratumInfo(G.ctx.runDepth).nameKey) }).toUpperCase();
-            this.bannerT = 2.4;
-            G.ctx.pendingFloorBanner = false;
-          }
+          // Niveaux atteints sans recréer la scène (Aventure 2, 3 ; étages de la Descente)
+          if (G.ctx.pendingFloorBanner) { this.armBanner(); G.ctx.pendingFloorBanner = false; }
           break;
       }
     }
