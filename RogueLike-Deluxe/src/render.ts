@@ -360,6 +360,16 @@ export class WorldRenderer {
       textShadow(g, "$", sx + TS - 8, sy + 6 + bob, 13, "#ffd84a", "center");
     }
 
+    // ---- Marchand nocturne (Nyx) : même sprite, aura violette pour le distinguer ----
+    if (ctx.nightMerchant && ctx.visible.has(key(ctx.nightMerchant.pos))) {
+      const sx = ctx.nightMerchant.pos.x * TS - cx, sy = ctx.nightMerchant.pos.y * TS - cy;
+      const bob = Math.sin(t * 2.2) * 1.5;
+      g.shadowColor = "#8a5fd0"; g.shadowBlur = 12;
+      g.drawImage(getSprite("merchant"), sx + 2, sy + bob, TS - 4, TS - 4);
+      g.shadowBlur = 0;
+      textShadow(g, "$", sx + TS - 8, sy + 6 + bob, 13, "#c8a8ff", "center");
+    }
+
     // ---- PNJ ----
     for (const n of ctx.pnjs) {
       if (!ctx.visible.has(key(n.pos))) continue;
