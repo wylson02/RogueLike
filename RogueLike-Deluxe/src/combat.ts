@@ -117,6 +117,7 @@ export class CombatSession {
   over = false;
   victory = false;
   ally: CombatAlly | null = null; // le Rival épargné, à tes côtés contre le Dévoreur (2 v 1)
+  private companionAlly = false;  // l'allié courant est-il le compagnon de quête ? (PV à reporter, chute = échec)
 
   // ---- intents ----
   intent: Intent;                    // ce que l'ennemi fera à son prochain tour (affiché)
@@ -166,6 +167,14 @@ export class CombatSession {
         alive: true,
       };
       this.addLog(T("combat.ally.join", { name: T("mob.rival") }));
+    }
+
+    // Compagnon de quête : s'il est en vie et te suit, il combat à tes côtés (PV persistants).
+    if (!this.ally && ctx.companion && ctx.companion.alive) {
+      const c = ctx.companion;
+      this.ally = { nameKey: c.nameKey, sprite: c.sprite, maxHp: c.maxHp, hp: c.hp, attack: c.attack, alive: true };
+      this.companionAlly = true;
+      this.addLog(T("combat.ally.join", { name: T(c.nameKey) }));
     }
 
     this.intent = this.rollIntent();
@@ -811,6 +820,17 @@ export class CombatSession {
     if (this.empowerApplied) {
       this.player.modifyAttack(-this.empowerAtkBonus);
       this.empowerApplied = false;
+    }
+    // Compagnon : report des PV subis ; s'il est tombé, sa quête échoue DÉFINITIVEMENT.
+    if (this.companionAlly && this.ctx.companion) {
+      const c = this.ctx.companion, a = this.ally;
+      c.hp = Math.max(0, a?.hp ?? 0);
+      c.alive = !!a?.alive;
+      if (!c.alive) {
+        this.addLog(T("companion.fallen", { name: T(c.nameKey) }));
+        this.ctx.failQuest(c.questId);
+        this.ctx.companion = null; // mort pour de bon
+      }
     }
   }
 }

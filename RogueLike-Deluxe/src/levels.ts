@@ -56,6 +56,7 @@ function level1(): LevelData {
       new Pnj(P(6, 12), "Lysa", "pnj.lysa", "Map1ArmoryKey"),
       new Pnj(P(28, 8), "Sentinelle", "pnj.sentinelle"),
       new Pnj(P(22, 8), "Rival", "rival.lvl1"),
+      new Pnj(P(15, 8), "Bram", "companion.bram.idle"), // survivant à escorter jusqu'à la sortie
     ],
     seals: [],
     merchant: null,

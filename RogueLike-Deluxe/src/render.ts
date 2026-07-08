@@ -4,6 +4,7 @@ import { GameContext, LogKind } from "./context";
 import { Monster, MonsterRank, Chest, ChestType } from "./entities";
 import { boonById, ELEMENT_COLOR, hasResonance, elementStacks, Element } from "./boons";
 import { getSprite } from "./sprites";
+import { questDef } from "./quests";
 import { T } from "./i18n";
 
 export const VW = 960, VH = 540;
@@ -370,6 +371,20 @@ export class WorldRenderer {
       textShadow(g, "$", sx + TS - 8, sy + 6 + bob, 13, "#c8a8ff", "center");
     }
 
+    // ---- Compagnon de quête (te suit ; barre de vie visible pour jauger le danger) ----
+    if (ctx.companion && ctx.companion.alive && ctx.visible.has(key(ctx.companion.pos))) {
+      const co = ctx.companion;
+      const sx = co.pos.x * TS - cx, sy = co.pos.y * TS - cy;
+      const bob = Math.sin(t * 2.4) * 1.5;
+      const spr = getSprite(co.sprite) ?? getSprite("pnj_orin");
+      g.shadowColor = "#8fe8a0"; g.shadowBlur = 8;
+      g.drawImage(spr, sx + 2, sy + bob, TS - 4, TS - 4);
+      g.shadowBlur = 0;
+      const hpr = Math.max(0, Math.min(1, co.hp / co.maxHp));
+      g.fillStyle = "rgba(0,0,0,.6)"; g.fillRect(sx + 4, sy - 5, TS - 8, 4);
+      g.fillStyle = hpr > 0.35 ? "#5ad06a" : "#e05050"; g.fillRect(sx + 4, sy - 5, (TS - 8) * hpr, 4);
+    }
+
     // ---- PNJ ----
     for (const n of ctx.pnjs) {
       if (!ctx.visible.has(key(n.pos))) continue;
@@ -695,6 +710,21 @@ export function drawHud(g: CanvasRenderingContext2D, ctx: GameContext, t: number
   text(g, ctx.time.isNight ? "☾" : "☀", dialX, dialY + 1, 16, ctx.time.isNight ? "#aab8ff" : "#ffd84a", "center");
   textShadow(g, ctx.endless ? T("hud.depth", { n: ctx.runDepth }) : T("hud.floor", { n: ctx.currentLevel }), dialX - 28, dialY, 12, "#c8c4d4", "right");
   if (ctx.endless) textShadow(g, `✦ ${ctx.runEssence}`, dialX - 28, dialY + 20, 13, "#c8a0ff", "right");
+
+  // ---- Journal de quêtes (haut-gauche, sous le panneau) ----
+  const aq = ctx.activeQuests();
+  if (aq.length > 0) {
+    let qy = 98;
+    textShadow(g, T("quest.hud.title"), 16, qy, 11, "#c8a8ff", "left");
+    qy += 15;
+    for (const id of aq.slice(0, 3)) {
+      const d = questDef(id); if (!d) continue;
+      let obj = T(d.objectiveKey);
+      if (obj.length > 46) obj = obj.slice(0, 45) + "…";
+      text(g, "◈ " + obj, 16, qy, 11, "#d8d0e8", "left");
+      qy += 15;
+    }
+  }
 
   // ---- journal (bas-gauche) : retour à la ligne des longs messages (dialogues PNJ) ----
   const lx = 10, lh = 16, boxW = 560, maxTextW = boxW - 20;

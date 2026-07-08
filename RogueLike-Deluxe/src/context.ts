@@ -2,7 +2,8 @@
 // Port de App/GameContext.cs, ExplorationState.cs, VisionService, DoorService,
 // SafeZoneService, MonsterSpawnService, Map3Scripting, ConnectivityFixService, BossSpawnFixService
 import { Pos, P, key, eqPos, move, Dir, DIRS4, Tile, GameMap, RNG, TimeSystem, manhattan } from "./core";
-import { Player, Monster, MonsterCatalog, MonsterRank, Pnj, Chest, ChestType, Seal, Merchant, Altar, Shrine, Trap, Prop, LoreMark } from "./entities";
+import { Player, Monster, MonsterCatalog, MonsterRank, Pnj, Chest, ChestType, Seal, Merchant, Altar, Shrine, Trap, Prop, LoreMark, Companion } from "./entities";
+import { QuestStatus, QUESTS, questDef } from "./quests";
 import { Item, ItemCatalog, rollLoot, NIGHT_MERCHANT_NAME } from "./items";
 import { createLevel, hasLevel } from "./levels";
 import { generateFloor, isBossDepth, isStratumEntry, stratumInfo } from "./procgen";
@@ -61,6 +62,10 @@ export class GameContext {
   map3LastSealHintShown = false;
   prisonerFreed = false;
   rivalDefeated = false;
+
+  // ===== Quêtes & compagnon =====
+  questStates: Record<string, QuestStatus> = {}; // questId -> état (persistant ; "failed" définitif)
+  companion: Companion | null = null;            // PNJ recruté qui te suit et combat à tes côtés
 
   // ===== LE SERMENT : axe moral de campagne (Briser vs Perpétuer la Boucle) =====
   // oath < 0 : Emprise (tu embrasses la Boucle, tu descends vers le trône)
@@ -135,6 +140,41 @@ export class GameContext {
   isDoorClosed(p: Pos): boolean { return this.map.inBounds(p) && this.map.get(p) === Tile.DoorClosed; }
   openDoor(p: Pos) { if (this.map.inBounds(p) && this.map.get(p) === Tile.DoorClosed) this.map.set(p.x, p.y, Tile.DoorOpen); }
   closeDoor(p: Pos) { if (this.map.inBounds(p) && this.map.get(p) === Tile.DoorOpen) this.map.set(p.x, p.y, Tile.DoorClosed); }
+
+  // ===== Quêtes =====
+  questStatus(id: string): QuestStatus { return this.questStates[id] ?? "inactive"; }
+  activeQuests(): string[] { return Object.keys(this.questStates).filter(id => this.questStates[id] === "active"); }
+  startQuest(id: string) {
+    if (this.questStatus(id) !== "inactive") return;
+    this.questStates[id] = "active";
+    const d = questDef(id); if (!d) return;
+    this.pushLog(T("quest.started", { name: T(d.nameKey) }), LogKind.System);
+    this.showToast(T("quest.started.toast", { name: T(d.nameKey) }), "#e8d8ff", "#241038", 10);
+  }
+  completeQuest(id: string) {
+    if (this.questStatus(id) !== "active") return;
+    this.questStates[id] = "done";
+    const d = questDef(id); if (!d) return;
+    this.pushLog(T("quest.done", { name: T(d.nameKey) }), LogKind.Loot);
+    this.showToast(T("quest.done.toast", { name: T(d.nameKey) }), "#c8f0c8", "#0e2a12", 10);
+  }
+  // Échec DÉFINITIF : la quête ne pourra plus jamais être reprise (compagnon mort à jamais).
+  failQuest(id: string) {
+    const s = this.questStatus(id);
+    if (s === "done" || s === "failed") return;
+    this.questStates[id] = "failed";
+    const d = questDef(id); if (!d) return;
+    this.pushLog(T("quest.failed", { name: T(d.nameKey) }), LogKind.Warning);
+    this.showToast(T("quest.failed.toast", { name: T(d.nameKey) }), "#ffd0d0", "#3a0a0a", 12);
+  }
+
+  // ===== Compagnon (suit le joueur à la trace) =====
+  recruitCompanion(c: Companion) { this.companion = c; }
+  private stepCompanion(fromTile: Pos) {
+    const c = this.companion;
+    if (!c || !c.alive) return;
+    if (!eqPos(c.pos, fromTile)) c.pos = P(fromTile.x, fromTile.y); // prend la case que le joueur vient de quitter
+  }
 
   isSafeZone(p: Pos): boolean {
     if (this.endless) return false; // les zones sûres sont propres aux cartes scénarisées
@@ -674,6 +714,8 @@ export class GameContext {
         this.pushLog(T("door.armory"), LogKind.System);
         this.emit({ type: "sfx", name: "door" });
         this.player.setPosition(next);
+        this.stepCompanion(prev);
+        this.completeQuest("armory"); // clé de Lysa → armurerie : quête accomplie
         this.updateVision();
         this.advanceTimeAfterPlayerMove();
         this.monstersTurn();
@@ -720,6 +762,7 @@ export class GameContext {
     const chest = this.chestAt(next);
     if (chest) {
       this.player.setPosition(next);
+      this.stepCompanion(prev);
       this.openChest(chest);
       this.updateVision();
       this.advanceTimeAfterPlayerMove();
@@ -736,6 +779,7 @@ export class GameContext {
 
     // Déplacement
     this.player.setPosition(next);
+    this.stepCompanion(prev);
     this.emit({ type: "sfx", name: "step" });
 
     // Marchand
@@ -850,7 +894,23 @@ export class GameContext {
             this.player.addToInventory(gift);
             this.pushLog(T("pnj.gift", { item: gift.name }), LogKind.Loot);
             this.emit({ type: "sfx", name: "pickup" });
+            if (giftName === "Map1ArmoryKey") this.startQuest("armory"); // la clé lance la quête de l'armurerie
           }
+        }
+      } else if (this.currentLevel === 1 && pnj.name === "Bram") {
+        // ESCORTE : le survivant blessé te supplie de le ramener vivant à la sortie.
+        if (this.questStatus("escort_bram") === "inactive") {
+          this.pushLog(T("pnj.talk", { name: pnj.name, msg: T("companion.bram.plea") }), LogKind.System);
+          this.startQuest("escort_bram");
+          this.recruitCompanion({
+            questId: "escort_bram", nameKey: "companion.bram", sprite: "pnj_kael",
+            pos: P(prev.x, prev.y), hp: 42, maxHp: 42, attack: 6, alive: true, // se place juste derrière toi
+          });
+          this.pnjs = this.pnjs.filter(n => n !== pnj); // il quitte sa place : c'est désormais ton compagnon
+          this.showToast(T("companion.bram.toast"), "#c8f0c8", "#0e2a12", 10);
+          this.emit({ type: "sfx", name: "pickup" });
+        } else {
+          this.pushLog(T("pnj.talk", { name: pnj.name, msg: pnj.talk() }), LogKind.System);
         }
       } else if (pnj.name === "Rival") {
         // Première rencontre (niveau 1) : LE SERMENT s'ouvre — comment réponds-tu au Rival ?
@@ -920,6 +980,14 @@ export class GameContext {
       if (this.endless) {
         this.emit({ type: "floorCleared", depth: this.runDepth });
         return;
+      }
+      // ESCORTE : le compagnon atteint la sortie vivant → quête accomplie + récompense, il est sauf.
+      if (this.currentLevel === 1 && this.companion?.alive && this.questStatus("escort_bram") === "active") {
+        this.completeQuest("escort_bram");
+        this.player.addGold(60);
+        this.player.addToInventory(ItemCatalog.lifeGem(P(-1, -1)));
+        this.pushLog(T("companion.bram.saved"), LogKind.Loot);
+        this.companion = null; // il gagne la surface, sain et sauf
       }
       if (this.currentLevel === 1 && !this.player.hasAnyWeapon()) {
         this.pushLog(T("guard.comeback"), LogKind.Warning);

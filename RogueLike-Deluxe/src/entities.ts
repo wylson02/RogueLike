@@ -415,6 +415,18 @@ export class Pnj {
   }
 }
 
+// Compagnon de quête : un PNJ recruté qui te suit sur la map et combat à tes côtés.
+// PV persistants entre les combats ; s'il tombe, la quête liée échoue définitivement.
+export interface Companion {
+  questId: string;
+  nameKey: string;   // clé i18n du nom affiché
+  sprite: string;    // clé de sprite (rendu sur la map + en combat)
+  pos: Pos;
+  hp: number; maxHp: number;
+  attack: number;
+  alive: boolean;
+}
+
 export enum ChestType { Normal, TorchOnly, Legendary, LanternChest, AbyssKeyChest }
 export class Chest {
   pos: Pos; isOpened = false; type: ChestType;

@@ -2,6 +2,7 @@
 import { GameContext } from "./context";
 import { Player, ClassId } from "./entities";
 import { defaultKit } from "./skills";
+import { QuestStatus } from "./quests";
 import { ItemCatalog } from "./items";
 import { P } from "./core";
 import { Lang } from "./i18n";
@@ -15,6 +16,8 @@ interface SaveData {
   oath?: number;                       // LE SERMENT : axe moral de campagne
   choices?: Record<string, string>;    // mémoire des choix moraux
   rivalSpared?: boolean;
+  questStates?: Record<string, string>; // état des quêtes (dont "failed" définitif)
+  companion?: { questId: string; nameKey: string; sprite: string; x: number; y: number; hp: number; maxHp: number; attack: number; alive: boolean } | null;
   p: {
     maxHp: number; hp: number; attack: number; armor: number;
     crit: number; ls: number; critMul: number;
@@ -41,6 +44,10 @@ export function saveGame(ctx: GameContext) {
       oath: ctx.oath,
       choices: ctx.choices,
       rivalSpared: ctx.rivalSpared,
+      questStates: ctx.questStates,
+      companion: ctx.companion
+        ? { questId: ctx.companion.questId, nameKey: ctx.companion.nameKey, sprite: ctx.companion.sprite, x: ctx.companion.pos.x, y: ctx.companion.pos.y, hp: ctx.companion.hp, maxHp: ctx.companion.maxHp, attack: ctx.companion.attack, alive: ctx.companion.alive }
+        : null,
       p: {
         maxHp: p.maxHp, hp: p.hp, attack: p.attack, armor: p.armor,
         crit: p.critChancePercent, ls: p.lifeStealPercent, critMul: p.critMultiplierPercent,
@@ -114,6 +121,10 @@ export function loadGame(ctx: GameContext): number | null {
     ctx.oath = data.oath ?? 0;
     ctx.choices = data.choices ?? {};
     ctx.rivalSpared = data.rivalSpared ?? false;
+    ctx.questStates = (data.questStates ?? {}) as Record<string, QuestStatus>;
+    ctx.companion = data.companion
+      ? { questId: data.companion.questId, nameKey: data.companion.nameKey, sprite: data.companion.sprite, pos: P(data.companion.x, data.companion.y), hp: data.companion.hp, maxHp: data.companion.maxHp, attack: data.companion.attack, alive: data.companion.alive }
+      : null;
     return data.level ?? 1;
   } catch { return null; }
 }
