@@ -56,6 +56,8 @@ export class CombatScene implements Scene {
   private hitstop = 0;        // gel du temps (impact frames)
   private heroLunge = 0;      // 1 → 0 : le héros se rue vers l'ennemi
   private enemyLunge = 0;     // 1 → 0 : l'ennemi se rue vers le héros
+  private heroCast = 0;       // 1 → 0 : emphase (léger zoom) quand le héros lance une compétence
+  private enemyCast = 0;      // 1 → 0 : emphase quand l'ennemi lance sa spéciale
   private slashes: Slash[] = [];
   private rings: Ring[] = [];
   private ghosts: Ghost[] = [];
@@ -160,6 +162,8 @@ export class CombatScene implements Scene {
     this.enemyLunge = Math.max(0, this.enemyLunge - dt * 4.5);
     this.allyLunge = Math.max(0, this.allyLunge - dt * 4.5);
     this.allyFlash = Math.max(0, this.allyFlash - dt * 4);
+    this.heroCast = Math.max(0, this.heroCast - dt * 2.6);
+    this.enemyCast = Math.max(0, this.enemyCast - dt * 2.6);
     this.flashTint = Math.max(0, this.flashTint - dt * 5);
     for (let i = this.slashes.length - 1; i >= 0; i--) {
       this.slashes[i].life -= dt;
@@ -390,6 +394,7 @@ export class CombatScene implements Scene {
             ringAt(ex, ey, 120, "#fff");
             break;
           case "skillHit": {
+            this.heroCast = 0.7; // emphase sur le héros qui lance une technique
             // coup de compétence non-signature : gerbe teintée de la couleur de la compétence
             const col = e.variant ?? "#c8c0d4";
             Audio.sfx("hit");
@@ -497,6 +502,7 @@ export class CombatScene implements Scene {
             break;
           case "reward": Audio.sfx("coin"); break;
           case "classAbility": {
+            this.heroCast = 1; // emphase/zoom sur le héros qui lance sa signature
             // Chorégraphie signature propre à chaque classe.
             const showBanner = (name: string, color: string) => {
               this.abilityBanner = 1.1; this.abilityBannerName = name; this.abilityBannerColor = color;
@@ -546,6 +552,7 @@ export class CombatScene implements Scene {
             break;
           }
           case "enemySpecial":
+            this.enemyCast = 1; // emphase/zoom sur l'ennemi qui déchaîne sa spéciale
             if (e.variant === "mob.superboss") {
               // DÉVOREUR D'ÂME : la charge s'abat — cataclysme d'ombre.
               Audio.sfx("phase2");
@@ -755,7 +762,7 @@ export class CombatScene implements Scene {
     const lungeX = -this.enemyLunge * this.enemyLunge * 150;
     const lungeY = this.enemyLunge * this.enemyLunge * 70;
     const ex = VW / 2 + (1 - slide) * (VW / 2 + 220) + lungeX, ey = 200 + lungeY;
-    const size = boss ? 190 : mini ? 150 : 120;
+    const size = Math.round((boss ? 190 : mini ? 150 : 120) * (1 + this.enemyCast * 0.14));
     const bob = Math.sin(this.t * (boss ? 1.6 : 2.6)) * 6;
     const shakeX = this.enemyShake > 0 ? (Math.random() - 0.5) * this.enemyShake * 14 : 0;
     const spr = getSprite(this.enemy.sprite + (Math.floor(this.t * 3) % 2 && getSprite(this.enemy.sprite + "_2") ? "_2" : ""));
@@ -785,10 +792,16 @@ export class CombatScene implements Scene {
     const exBar = VW / 2 + (1 - slide) * (VW / 2 + 220);
     const bw = boss ? 420 : 320;
     const ehr = clamp(this.shownEnemyHp / this.enemy.maxHp, 0, 1);
-    g.fillStyle = "rgba(8,6,14,.8)";
+    g.fillStyle = "rgba(8,6,14,.82)";
     g.beginPath(); g.roundRect(exBar - bw / 2 - 4, 40, bw + 8, 42, 8); g.fill();
+    // bordure + portrait (bandeau symétrique du panneau joueur)
+    g.strokeStyle = boss ? "rgba(255,80,90,.5)" : mini ? "rgba(150,120,220,.5)" : "rgba(140,130,170,.4)";
+    g.lineWidth = 2;
+    g.beginPath(); g.roundRect(exBar - bw / 2 - 4, 40, bw + 8, 42, 8); g.stroke();
+    const eface = getSprite(this.enemy.sprite);
+    if (eface) { g.imageSmoothingEnabled = false; g.drawImage(eface, exBar - bw / 2 + 4, 44, 34, 34); }
     textShadow(g, this.enemy.name + (this.session.phase2 ? "  —  " + T("combat.phase2.title") : ""),
-      exBar, 54, boss ? 17 : 15, boss ? "#ff9090" : mini ? "#c8a8ff" : "#e8e0f0", "center");
+      exBar + 16, 54, boss ? 17 : 15, boss ? "#ff9090" : mini ? "#c8a8ff" : "#e8e0f0", "center");
     g.fillStyle = "#25141c";
     g.beginPath(); g.roundRect(exBar - bw / 2 + 4, 66, bw - 8, 10, 4); g.fill();
     const ehGrad = g.createLinearGradient(exBar - bw / 2, 0, exBar + bw / 2, 0);
@@ -831,9 +844,9 @@ export class CombatScene implements Scene {
       g.restore();
     }
 
-    // ===== héros sur le champ de bataille (traînées + lunge) =====
+    // ===== héros sur le champ de bataille (traînées + lunge + emphase au lancer) =====
     {
-      const hsz = 108;
+      const hsz = Math.round(108 * (1 + this.heroCast * 0.16));
       for (const gh of this.ghosts) {
         const hspr = getSprite("player");
         if (!hspr) break;
@@ -886,15 +899,50 @@ export class CombatScene implements Scene {
         }
         g.restore();
       }
-      // barre de vie de l'allié (compacte, sous ses pieds)
-      if (slide >= 1) {
-        const bw2 = 96, bx2 = this.allyX - bw2 / 2, by2 = this.allyY + asz / 2 + 2;
-        textShadow(g, T(a.nameKey), this.allyX, by2 - 6, 11, down ? "#8a8098" : "#c8a8ff", "center");
+      // (PV de l'allié désormais dans la rangée de portraits d'équipe, en haut à gauche)
+      if (down && slide >= 1)
+        textShadow(g, T(a.nameKey), this.allyX, this.allyY + asz / 2 + 4, 11, "#8a8098", "center");
+    }
+
+    // ===== rangée de portraits d'équipe (haut-gauche) : l'équipe d'un coup d'œil =====
+    {
+      const members: { name: string; sprite: string; hp: number; max: number; col: string; down?: boolean }[] = [
+        { name: T("combat.you"), sprite: "player", hp: this.shownPlayerHp, max: G.ctx.player.maxHp, col: "#e06848" },
+      ];
+      if (this.session.ally) {
+        const a = this.session.ally;
+        members.push({ name: T(a.nameKey), sprite: a.sprite, hp: this.shownAllyHp, max: a.maxHp, col: "#7a4fc0", down: !a.alive });
+      }
+      const cw = 160, ch = 34, gap = 6, rx = 14 - (1 - slide) * 220;
+      members.forEach((m, i) => {
+        const ry = 14 + i * (ch + gap);
         g.fillStyle = "rgba(8,6,14,.8)";
-        g.beginPath(); g.roundRect(bx2 - 2, by2, bw2 + 4, 8, 3); g.fill();
-        const ahr = clamp(this.shownAllyHp / a.maxHp, 0, 1);
-        g.fillStyle = down ? "#4a4458" : "#7a4fc0";
-        g.beginPath(); g.roundRect(bx2, by2 + 1, bw2 * ahr, 6, 3); g.fill();
+        g.beginPath(); g.roundRect(rx, ry, cw, ch, 7); g.fill();
+        g.strokeStyle = m.down ? "rgba(90,84,110,.5)" : "rgba(140,130,170,.4)"; g.lineWidth = 1.5;
+        g.beginPath(); g.roundRect(rx, ry, cw, ch, 7); g.stroke();
+        const spr = getSprite(m.sprite) ?? getSprite("pnj_orin");
+        if (spr) { g.save(); g.imageSmoothingEnabled = false; if (m.down) g.globalAlpha = 0.4; g.drawImage(spr, rx + 4, ry + 3, 28, 28); g.restore(); }
+        text(g, m.name, rx + 38, ry + 11, 12, m.down ? "#8a8098" : "#e8e0f0");
+        const hbw = cw - 46, hbx = rx + 38, hby = ry + 19;
+        g.fillStyle = "#25141c"; g.beginPath(); g.roundRect(hbx, hby, hbw, 9, 3); g.fill();
+        const hr = clamp(m.hp / m.max, 0, 1);
+        g.fillStyle = m.down ? "#4a4458" : m.col; g.beginPath(); g.roundRect(hbx, hby, hbw * hr, 9, 3); g.fill();
+        textShadow(g, `${Math.max(0, Math.round(m.hp))}/${m.max}`, hbx + hbw / 2, hby + 5, 9, "#fff", "center");
+      });
+    }
+
+    // ===== indicateur de tour =====
+    if (slide >= 1) {
+      const turnInput = this.state === "input" && !this.itemMenu && !this.skillMenu;
+      const label = turnInput ? "▶  " + T("combat.turn.you") : this.state === "anim" ? "⚔  " + T("combat.turn.resolving") : "";
+      if (label) {
+        g.font = `bold 13px ${FONT}`;
+        const tw = g.measureText(label).width + 28;
+        g.fillStyle = turnInput ? "rgba(20,44,60,.9)" : "rgba(30,24,44,.85)";
+        g.beginPath(); g.roundRect(VW / 2 - tw / 2, 116, tw, 24, 12); g.fill();
+        g.strokeStyle = turnInput ? "rgba(120,210,255,.6)" : "rgba(150,140,190,.4)"; g.lineWidth = 1.4;
+        g.beginPath(); g.roundRect(VW / 2 - tw / 2, 116, tw, 24, 12); g.stroke();
+        textShadow(g, label, VW / 2, 129, 13, turnInput ? "#8fe0ff" : "#c8c0d4", "center");
       }
     }
 
@@ -1069,8 +1117,6 @@ export class CombatScene implements Scene {
     if (this.session.mistTurns > 0)
       text(g, T("status.mist"), px + 200, py + 124, 12, "#8fd4ff");
 
-    if (this.state === "input" && !this.itemMenu && !this.skillMenu)
-      text(g, T("combat.yourturn"), VW / 2, by - 16, 12, "#8fd4ff", "center");
     if (this.state === "done" && Math.sin(this.t * 4) > -0.2)
       textShadow(g, T("combat.continue"), VW / 2, by - 16, 13, "#ffd84a", "center");
 

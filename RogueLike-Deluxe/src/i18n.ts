@@ -300,6 +300,9 @@ const FR: Dict = {
   "class.passive.gained": "Capacité permanente débloquée : {name} !",
   "combat.continue": "ENTRÉE : continuer",
   "combat.yourturn": "À toi de jouer",
+  "combat.you": "Toi",
+  "combat.turn.you": "À TON TOUR",
+  "combat.turn.resolving": "RÉSOLUTION…",
 
   "bossintro.t": "DERNIÈRE PORTE",
   "bossintro.1": "Le temple se tait.",
@@ -1109,6 +1112,9 @@ const EN: Dict = {
   "class.passive.gained": "Permanent ability unlocked: {name}!",
   "combat.continue": "ENTER: continue",
   "combat.yourturn": "Your turn",
+  "combat.you": "You",
+  "combat.turn.you": "YOUR TURN",
+  "combat.turn.resolving": "RESOLVING…",
 
   "bossintro.t": "THE LAST DOOR",
   "bossintro.1": "The temple falls silent.",
