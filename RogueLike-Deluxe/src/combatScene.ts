@@ -71,8 +71,9 @@ export class CombatScene implements Scene {
   }
 
   // Position du Rival allié (légèrement en retrait du héros ; se rue en frappant)
-  private get allyX() { return 150 + this.allyLunge * 170; }
-  private get allyY() { return 362 - this.allyLunge * 52; }
+  // Équipe placée dans la bande centrale (claire des panneaux qui flanquent en bas) ; l'élan monte vers l'ennemi.
+  private get allyX() { return 372 + this.allyLunge * 14; }
+  private get allyY() { return 352 - this.allyLunge * 80; }
 
   enter() {
     // Musique boss aussi pour le Gardien des Sceaux (mini-boss) : même thème que son dialogue.
@@ -148,8 +149,8 @@ export class CombatScene implements Scene {
   }
 
   // Position du héros sur le champ de bataille (il fait face à l'ennemi)
-  private get heroX() { return 250 + this.heroLunge * 190; }
-  private get heroY() { return 330 - this.heroLunge * 60; }
+  private get heroX() { return 496 - this.heroLunge * 12; }
+  private get heroY() { return 342 - this.heroLunge * 96; }
 
   update(dt: number) {
     // Hitstop : le monde entier se fige un battement à l'impact
@@ -307,7 +308,7 @@ export class CombatScene implements Scene {
     this.animT = 0;
     let at = 0.12;
     const ex = VW / 2, ey = 200; // centre ennemi
-    const hx = 250, hy = 330;    // héros au sol
+    const hx = 496, hy = 342;    // héros au sol (bande centrale)
     const pop = (x: number, y: number, txt: string, color: string, size: number, life = 1.1) =>
       this.floaters.push({ x, y, text: txt, color, life, maxLife: life, size });
     const slashAt = (x: number, y: number, color = "#fff") =>
@@ -820,9 +821,19 @@ export class CombatScene implements Scene {
       g.globalAlpha = 1;
     }
 
+    // ===== estrade d'équipe : un halo de sol sous les personnages (grounding) =====
+    if (slide >= 0.6) {
+      g.save();
+      const stg = g.createRadialGradient(430, 372, 20, 430, 372, 210);
+      stg.addColorStop(0, "rgba(120,110,150,.16)"); stg.addColorStop(1, "rgba(120,110,150,0)");
+      g.fillStyle = stg;
+      g.beginPath(); g.ellipse(430, 372, 210, 46, 0, 0, Math.PI * 2); g.fill();
+      g.restore();
+    }
+
     // ===== héros sur le champ de bataille (traînées + lunge) =====
     {
-      const hsz = 96;
+      const hsz = 108;
       for (const gh of this.ghosts) {
         const hspr = getSprite("player");
         if (!hspr) break;
@@ -846,12 +857,12 @@ export class CombatScene implements Scene {
       }
     }
 
-    // ===== Rival allié (fin 2 v 1) : se tient en retrait, se rue en frappant =====
+    // ===== Allié (Rival 2v1 OU compagnon de quête) : se tient en retrait, se rue en frappant =====
     if (this.session.ally) {
       const a = this.session.ally;
-      const asz = 78;
+      const asz = 92;
       const ax = this.allyX, ay = this.allyY + Math.sin(this.t * 2.4 + 1) * 3;
-      const aspr = getSprite("rival");
+      const aspr = getSprite(a.sprite) ?? getSprite("rival"); // vrai sprite de l'allié (Bram = Bram, etc.)
       const down = !a.alive;
       // ombre
       g.fillStyle = "rgba(0,0,0,.4)";
