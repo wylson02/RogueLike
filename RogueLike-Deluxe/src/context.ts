@@ -195,7 +195,9 @@ export class GameContext {
     this.arenaQueue = [];
 
     this.pushLog(T("level.loaded", { level }), LogKind.System);
-    this.ensureAllExitsReachable(this.player.pos);
+    // Niveau 3 : la sortie est VOLONTAIREMENT scellée derrière les portes (puzzle des sceaux).
+    // Le creusage auto perçait des trous à côté des portes → on l'exclut ici pour préserver le puzzle.
+    if (level !== 3) this.ensureAllExitsReachable(this.player.pos);
     if (level >= 4) this.ensureBossReachable();
     this.updateVision();
     this.emit({ type: "levelLoaded", level });
