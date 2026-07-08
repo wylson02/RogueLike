@@ -658,6 +658,22 @@ export function drawHud(g: CanvasRenderingContext2D, ctx: GameContext, t: number
   textShadow(g, `⬤ ${p.gold}`, 22, 66, 13, "#ffd84a");
   text(g, `ATK ${p.attack}  ARM ${p.armor}  CRIT ${p.critChancePercent}%`, 100, 66, 11, "#a8a4b8");
 
+  // ---- LE SERMENT : sceau moral (campagne uniquement) — se teinte selon ta voie ----
+  // Cyan = tu brises la Boucle • Rouge = tu la perpétues. Le halo croît avec ta conviction.
+  if (!ctx.endless && ctx.oath !== 0) {
+    const breaking = ctx.oath > 0;
+    const conv = clamp(Math.abs(ctx.oath) / 8, 0.25, 1);
+    const col = breaking ? "#5ac8ff" : "#ff5a6a";
+    const sx = 244, sy = 20;
+    g.save();
+    g.translate(sx, sy); g.rotate(Math.PI / 4);
+    g.shadowColor = col; g.shadowBlur = 6 + conv * 10 * (0.7 + 0.3 * Math.sin(t * 3));
+    g.fillStyle = col; g.globalAlpha = 0.55 + conv * 0.45;
+    const r = 5;
+    g.fillRect(-r, -r, r * 2, r * 2);
+    g.restore();
+  }
+
   // ---- jour/nuit + étage (haut-droite, sous minimap) ----
   const mmW = drawMinimap(g, ctx);
   const dialX = VW - 30, dialY = mmW + 38;

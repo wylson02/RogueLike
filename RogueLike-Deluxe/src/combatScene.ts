@@ -482,9 +482,14 @@ export class CombatScene implements Scene {
       Flow.toExplore();
       return;
     }
-    // Le Rival vaincu n'est pas une fin de partie : la route vers le Dévoreur d'Âmes s'ouvre.
+    // Le Rival vaincu dans les Profondeurs : LE VERDICT. Tu décides de son sort — épargner
+    // (briser la Boucle) ou l'achever (la perpétuer). Ce choix pèse sur la fin.
     if (s.victory && this.enemy.nameKey === "mob.rival") {
-      saveGame(G.ctx);
+      if (G.ctx.currentLevel === 5) {
+        Flow.creedChoice("rival_fate", () => { saveGame(G.ctx); Flow.toExplore(); });
+        return;
+      }
+      saveGame(G.ctx); // ombre du Rival (arène) : pas de verdict
       Flow.toExplore();
       return;
     }
@@ -496,8 +501,8 @@ export class CombatScene implements Scene {
         Flow.toExplore();
         return;
       }
-      // Fin Véritable : le Dévoreur d'Âmes vaincu dans les Profondeurs → révélation qui referme la boucle.
-      if (G.ctx.currentLevel === 5) { Flow.trueEnding(); return; }
+      // Le Dévoreur d'Âmes vaincu : la Boucle est entre tes mains. Ta fin dépend du Serment tenu.
+      if (G.ctx.currentLevel === 5) { Flow.campaignEnding(G.ctx.decideEnding()); return; }
       Flow.endScreen(true);
       return;
     }

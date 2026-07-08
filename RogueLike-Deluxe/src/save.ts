@@ -11,6 +11,9 @@ const SETTINGS_KEY = "abyss-seals-settings-v1";
 interface SaveData {
   level: number;
   arenaWave?: number;
+  oath?: number;                       // LE SERMENT : axe moral de campagne
+  choices?: Record<string, string>;    // mémoire des choix moraux
+  rivalSpared?: boolean;
   p: {
     maxHp: number; hp: number; attack: number; armor: number;
     crit: number; ls: number; critMul: number;
@@ -33,6 +36,9 @@ export function saveGame(ctx: GameContext) {
     const data: SaveData = {
       level: ctx.currentLevel,
       arenaWave: ctx.arenaWave,
+      oath: ctx.oath,
+      choices: ctx.choices,
+      rivalSpared: ctx.rivalSpared,
       p: {
         maxHp: p.maxHp, hp: p.hp, attack: p.attack, armor: p.armor,
         crit: p.critChancePercent, ls: p.lifeStealPercent, critMul: p.critMultiplierPercent,
@@ -101,6 +107,9 @@ export function loadGame(ctx: GameContext): number | null {
     if (s.eqRelic) p.equippedRelic = ItemCatalog.create(s.eqRelic, P(-1, -1));
     ctx.player = p;
     ctx.arenaWave = data.arenaWave ?? 1;
+    ctx.oath = data.oath ?? 0;
+    ctx.choices = data.choices ?? {};
+    ctx.rivalSpared = data.rivalSpared ?? false;
     return data.level ?? 1;
   } catch { return null; }
 }

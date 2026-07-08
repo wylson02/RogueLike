@@ -2,6 +2,9 @@
 import { GameContext, GameEvent } from "../src/context";
 import { CombatSession, CombatEvent } from "../src/combat";
 import { Monster, MonsterCatalog, Altar } from "../src/entities";
+import { CREED_CHOICES } from "../src/creed";
+import { saveGame, loadGame, clearSave } from "../src/save";
+import { T, getLang, setLang } from "../src/i18n";
 import { generateFloor } from "../src/procgen";
 import { elementStacks, hasResonance } from "../src/boons";
 import { Pos, P, eqPos, key, Dir, move, DIRS4, Tile, RNG } from "../src/core";
@@ -258,7 +261,10 @@ ctx.player.modifyAttack(+30); ctx.player.heal(300);
 killMonster(rival);
 check(rival.isDead, "le Rival vaincu");
 check(ctx.rivalDefeated, "flag rivalDefeated activé");
-check(ctx.player.inventory.some(i => i.id === "EchoShard"), "Éclat d'Écho obtenu");
+// LE VERDICT : sort du Rival décidé APRÈS le combat. Ici on l'achève (perpétuer la Boucle).
+ctx.recordChoice("rival_fate", "slain", -3);
+ctx.resolveRivalFate(false);
+check(ctx.player.inventory.some(i => i.id === "EchoShard"), "Verdict (achever) : Éclat d'Écho obtenu");
 
 const devourer = ctx.monsters.find(m => m.nameKey === "mob.superboss")!;
 check(!!devourer, "le Dévoreur d'Âmes est présent");
@@ -557,6 +563,84 @@ console.log("=== LORE : evenement de la trace du Rival (niveau 4) ===");
   c.player.setPosition(P(lm.pos.x - 1, lm.pos.y));
   c.tryMove(Dir.Right);
   check(!c.drainEvents().some(e => e.type === "lore"), "l'événement de lore ne se rejoue pas");
+}
+
+console.log("=== LE SERMENT : choix moraux, verdicts, fins ===");
+{
+  // Axe & seuils : un seul choix ne suffit pas à te définir (seuil = 4).
+  const c = new GameContext();
+  check(c.oath === 0 && c.decideEnding() === "balance", "départ neutre : fin Équilibre");
+  c.recordChoice("rival_l1", "hand", +2);
+  check(c.decideEnding() === "balance", "un seul choix (+2) ne bascule pas");
+  c.recordChoice("torvin", "free", +3);
+  check(c.oath === 5 && c.creedTier() === 1 && c.decideEnding() === "redemption", "cumul clément (+5) → fin Rédemption");
+
+  const c2 = new GameContext();
+  c2.recordChoice("rival_l1", "blade", -2);
+  c2.recordChoice("torvin", "seize", -3);
+  check(c2.oath === -5 && c2.decideEnding() === "dominion", "cumul d'emprise (−5) → fin Domination");
+  check(c2.choices["torvin"] === "seize", "la mémoire des choix est conservée");
+
+  // Verdict : épargner vs achever donnent des récompenses distinctes.
+  const cs = new GameContext(); cs.player.maxHp = 100; cs.player.hp = 40;
+  const armBefore = cs.player.armor;
+  cs.resolveRivalFate(true);
+  check(cs.rivalSpared && cs.player.maxHp === 115 && cs.player.armor === armBefore + 2, "Verdict épargner : +15 PV max, +2 armure, plein PV");
+  check(!cs.player.inventory.some(i => i.id === "EchoShard"), "épargner ne donne pas l'Éclat d'Écho");
+
+  const ck = new GameContext();
+  const atkBefore = ck.player.attack;
+  ck.resolveRivalFate(false);
+  check(!ck.rivalSpared && ck.player.attack === atkBefore + 3 && ck.player.inventory.some(i => i.id === "EchoShard"), "Verdict achever : Éclat d'Écho + 3 ATK");
+
+  // Les effets mécaniques du catalogue s'appliquent bien via apply().
+  const ct = new GameContext();
+  const critBefore = ct.player.critChancePercent;
+  CREED_CHOICES.torvin.options[0].apply(ct); // libérer
+  check(ct.prisonerFreed && ct.player.critChancePercent === critBefore + 3, "apply(libérer Torvin) : prisonnier libre + crit");
+  const cseize = new GameContext();
+  const atk0 = cseize.player.attack;
+  CREED_CHOICES.torvin.options[1].apply(cseize); // saisir
+  check(cseize.player.attack === atk0 + 3, "apply(saisir le pacte) : +3 ATK");
+
+  // Toutes les options ont leurs clés i18n (label / effet / flavor).
+  let keysOk = true;
+  for (const ch of Object.values(CREED_CHOICES))
+    for (const o of ch.options)
+      if (!T(o.labelKey) || T(o.labelKey) === o.labelKey || T(o.effectKey) === o.effectKey || T(o.flavorKey) === o.flavorKey) keysOk = false;
+  check(keysOk, "chaque option du Serment a ses libellés FR");
+
+  // Sauvegarde : le Serment traverse un cycle save→load (shim localStorage pour Node).
+  (globalThis as any).localStorage = (() => {
+    const store: Record<string, string> = {};
+    return { getItem: (k: string) => store[k] ?? null, setItem: (k: string, v: string) => { store[k] = v; }, removeItem: (k: string) => { delete store[k]; } };
+  })();
+  const cw = new GameContext();
+  cw.loadLevel(2); cw.drainEvents();
+  cw.recordChoice("rival_l1", "blade", -2);
+  cw.recordChoice("torvin", "seize", -3);
+  cw.rivalSpared = false;
+  saveGame(cw);
+  const cr = new GameContext();
+  loadGame(cr);
+  check(cr.oath === -5 && cr.choices["torvin"] === "seize", "save/load : oath et choix restaurés");
+  clearSave();
+}
+
+console.log("=== i18n : parité FR/EN des clés du Serment ===");
+{
+  const savedLang = getLang();
+  const creedKeys = [
+    "creed.tag.break", "creed.tag.perp", "creed.hint", "creed.sealed",
+    "creed.rival1.prompt", "creed.torvin.prompt", "creed.fate.prompt",
+    "end.redemption", "end.dominion", "end.red.4", "end.dom.7",
+    "bossenc.rival.break.1", "bossenc.rival.perp.1",
+  ];
+  setLang("en");
+  let enOk = true;
+  for (const k of creedKeys) if (T(k) === k) { enOk = false; console.log("  (clé EN manquante : " + k + ")"); }
+  setLang(savedLang);
+  check(enOk, "toutes les clés du Serment ont leur traduction EN");
 }
 
 console.log(failures === 0 ? "\nSIMULATION COMPLETE REUSSIE" : `\n${failures} echec(s)`);

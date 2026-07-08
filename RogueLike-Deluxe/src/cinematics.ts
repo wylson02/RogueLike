@@ -241,13 +241,20 @@ export function bossEncounterPages(nameKey: string): CinePage[] | null {
         ],
         sfx: "warden",
       }];
-    case "mob.rival": // Le Rival — sa transformation
+    case "mob.rival": { // Le Rival — sa transformation. Il te reconnaît selon LE SERMENT que tu portes.
+      const tier = G.ctx.creedTier();
+      // Selon ta voie, il te retrouve en frère d'armes, en étranger, ou en tyran jumeau.
+      const meet = tier > 0
+        ? { a: "bossenc.rival.break.1", b: "bossenc.rival.break.2" }
+        : tier < 0
+        ? { a: "bossenc.rival.perp.1", b: "bossenc.rival.perp.2" }
+        : { a: "bossenc.rival.1", b: "bossenc.rival.2" };
       return [
         {
-          title: T("bossenc.rival.t"), sprite: "rival", spriteGlow: "#8a3fd0", bg: "#0a0510",
+          title: T("bossenc.rival.t"), sprite: "rival", spriteGlow: tier < 0 ? "#c02840" : "#8a3fd0", bg: "#0a0510",
           lines: [
-            { text: T("bossenc.rival.1") },
-            { text: T("bossenc.rival.2"), color: "#c0a0ff" },
+            { text: T(meet.a) },
+            { text: T(meet.b), color: tier < 0 ? "#ff9090" : "#c0a0ff" },
           ],
           sfx: "warden",
         },
@@ -261,6 +268,7 @@ export function bossEncounterPages(nameKey: string): CinePage[] | null {
           sfx: "roar",
         },
       ];
+    }
     default:
       return null;
   }
@@ -307,8 +315,52 @@ export function loreMarkPages(cineKey: string): CinePage[] {
   }
 }
 
-// ===== Révélation finale : après le Dévoreur, la boucle se referme =====
-export function finalRevelationPages(): CinePage[] {
+// ===== Fins de campagne : après le Dévoreur, la Boucle se joue selon LE SERMENT tenu =====
+export type EndingId = "redemption" | "balance" | "dominion";
+
+export function endingPages(ending: EndingId): CinePage[] {
+  switch (ending) {
+    case "redemption": return redemptionEndingPages();
+    case "dominion":   return dominionEndingPages();
+    default:           return balanceEndingPages();
+  }
+}
+
+// ── BRISER LA BOUCLE — l'aube. Tu refuses le trône ; la chaîne des champions se rompt. ──
+function redemptionEndingPages(): CinePage[] {
+  const spared = G.ctx.rivalSpared;
+  const pages: CinePage[] = [
+    {
+      title: T("end.red.t"), bg: "#0a0812",
+      lines: [
+        { text: T("end.red.1") },
+        { text: T("end.red.2"), color: "#ffe6a8" },
+      ],
+      sfx: "phase2",
+    },
+    {
+      // Si le Rival a été épargné, il se tient à tes côtés ; sinon son écho s'apaise enfin.
+      title: T("end.red.t2"), sprite: spared ? "rival" : "rival_blade", spriteGlow: "#ffd76a", bg: "#0c0a14",
+      lines: spared
+        ? [{ text: T("end.red.spared.1") }, { text: T("end.red.spared.2"), color: "#ffe6a8" }, { text: T("end.red.spared.3"), color: "#c8f0ff" }]
+        : [{ text: T("end.red.alone.1") }, { text: T("end.red.alone.2"), color: "#c8a8ff" }],
+      sfx: "seal",
+    },
+    {
+      title: T("end.red.t3"), bg: "#0e0c10",
+      lines: [
+        { text: T("end.red.3"), color: "#ffe6c0" },
+        { text: "" },
+        { text: T("end.red.4"), color: "#8fd4ff", size: 15 },
+      ],
+      sfx: "victory",
+    },
+  ];
+  return pages;
+}
+
+// ── L'ÉQUILIBRE — l'entre-deux. La Boucle plie sans rompre : la révélation ambiguë. ──
+function balanceEndingPages(): CinePage[] {
   return [
     {
       title: T("finalrev.t"), bg: "#08060f",
@@ -339,41 +391,100 @@ export function finalRevelationPages(): CinePage[] {
   ];
 }
 
+// ── PERPÉTUER LA BOUCLE — le trône. Tu prends la place du Dévoreur. Tu ES l'Abîme, désormais. ──
+function dominionEndingPages(): CinePage[] {
+  return [
+    {
+      title: T("end.dom.t"), bg: "#0c0308",
+      lines: [
+        { text: T("end.dom.1") },
+        { text: T("end.dom.2"), color: "#ff7080" },
+      ],
+      sfx: "roar",
+    },
+    {
+      title: T("end.dom.t2"), sprite: "avatar", spriteGlow: "#c0203a", bg: "#0e0206",
+      lines: [
+        { text: T("end.dom.3") },
+        { text: T("end.dom.4"), color: "#ffb0b8" },
+        { text: T("end.dom.5"), color: "#e0c0ff" },
+      ],
+      sfx: "phase2",
+    },
+    {
+      // La chute : un prochain descendeur viendra. Il te trouvera sur le trône — TU seras son Rival.
+      title: T("end.dom.t3"), bg: "#080204",
+      lines: [
+        { text: T("end.dom.6"), color: "#ffd0d0" },
+        { text: "" },
+        { text: T("end.dom.7"), color: "#ff9090", size: 16 },
+      ],
+      sfx: "warden",
+    },
+  ];
+}
+
 // ===== Écran de fin =====
+// Thème visuel par fin : dégradé de fond, halo/lueur du titre, teinte du titre, confettis.
+interface EndTheme { titleKey: string; l1: string; l2: string; g0: string; g1: string; glow: string; ink: string; conf: string[]; }
+const END_THEMES: Record<EndingId, EndTheme> = {
+  redemption: {
+    titleKey: "end.redemption", l1: "end.red.e1", l2: "end.red.e2",
+    g0: "#141024", g1: "#3a2a14", glow: "#ffd76a", ink: "#ffe6b0",
+    conf: ["#ffd84a", "#ffe6a8", "#8fd4ff", "#fff0c0"],
+  },
+  balance: {
+    titleKey: "end.trueending", l1: "end.tv1", l2: "end.tv2",
+    g0: "#160a24", g1: "#241030", glow: "#c060ff", ink: "#e8c8ff",
+    conf: ["#c8a0ff", "#8fd4ff", "#e88ae8", "#c8f0ff"],
+  },
+  dominion: {
+    titleKey: "end.dominion", l1: "end.dom.e1", l2: "end.dom.e2",
+    g0: "#1a0308", g1: "#2a060c", glow: "#ff2a44", ink: "#ff9aa4",
+    conf: ["#c0203a", "#ff5060", "#7a1020", "#e0c0ff"],
+  },
+};
+
 export class EndScene implements Scene {
   private victory: boolean;
-  private trueEnding: boolean;
+  private ending?: EndingId;
+  private theme?: EndTheme;
   private t = 0;
   private particles = new Particles();
   private done: () => void;
 
-  constructor(victory: boolean, done: () => void, trueEnding = false) {
+  constructor(victory: boolean, done: () => void, ending?: EndingId) {
     this.victory = victory;
-    this.trueEnding = trueEnding;
+    this.ending = ending;
+    this.theme = ending ? END_THEMES[ending] : undefined;
     this.done = done;
   }
 
   enter() {
     Audio.setMode("none");
-    Audio.sfx(this.victory ? "victory" : "defeat");
+    // La domination ne « sonne » pas comme un triomphe : c'est une prise de pouvoir sourde.
+    Audio.sfx(this.ending === "dominion" ? "roar" : this.victory ? "victory" : "defeat");
   }
 
   update(dt: number) {
     this.t += dt;
-    if (this.victory && Math.random() < dt * 30)
+    if (this.victory && Math.random() < dt * 30) {
+      const pal = this.theme?.conf ?? ["#ffd84a", "#7ae87a", "#8fd4ff", "#e88ae8"];
       this.particles.spawn({
         x: Math.random() * VW, y: -5,
         vx: (Math.random() - 0.5) * 30, vy: 30 + Math.random() * 50,
         life: 4, maxLife: 4, size: 2.5,
-        color: ["#ffd84a", "#7ae87a", "#8fd4ff", "#e88ae8"][Math.floor(Math.random() * 4)], glow: true,
+        color: pal[Math.floor(Math.random() * pal.length)], glow: true,
       });
+    }
     this.particles.update(dt);
     if (this.t > 1.2 && Input.consume("confirm")) { Audio.sfx("confirm"); this.done(); }
   }
 
   draw(g: CanvasRenderingContext2D) {
+    const th = this.theme;
     const grad = g.createLinearGradient(0, 0, 0, VH);
-    if (this.trueEnding) { grad.addColorStop(0, "#160a24"); grad.addColorStop(1, "#241030"); }
+    if (th) { grad.addColorStop(0, th.g0); grad.addColorStop(1, th.g1); }
     else if (this.victory) { grad.addColorStop(0, "#0a1420"); grad.addColorStop(1, "#1c2410"); }
     else { grad.addColorStop(0, "#180810"); grad.addColorStop(1, "#050308"); }
     g.fillStyle = grad;
@@ -383,16 +494,16 @@ export class EndScene implements Scene {
     const a = clamp(this.t / 1.2, 0, 1);
     g.globalAlpha = a;
     g.save();
-    g.shadowColor = this.trueEnding ? "#c060ff" : this.victory ? "#ffd84a" : "#c02828";
+    g.shadowColor = th ? th.glow : this.victory ? "#ffd84a" : "#c02828";
     g.shadowBlur = 30;
     g.font = `bold 58px ${FONT}`;
     g.textAlign = "center"; g.textBaseline = "middle";
-    g.fillStyle = this.trueEnding ? "#e8c8ff" : this.victory ? "#f8e8b8" : "#d84848";
-    g.fillText(T(this.trueEnding ? "end.trueending" : this.victory ? "end.victory" : "end.defeat"), VW / 2, 150);
+    g.fillStyle = th ? th.ink : this.victory ? "#f8e8b8" : "#d84848";
+    g.fillText(T(th ? th.titleKey : this.victory ? "end.victory" : "end.defeat"), VW / 2, 150);
     g.restore();
 
-    text(g, T(this.trueEnding ? "end.tv1" : this.victory ? "end.v1" : "end.d1"), VW / 2, 240, 17, "#c8c0d4", "center");
-    text(g, T(this.trueEnding ? "end.tv2" : this.victory ? "end.v2" : "end.d2"), VW / 2, 274, 17, "#c8c0d4", "center");
+    text(g, T(th ? th.l1 : this.victory ? "end.v1" : "end.d1"), VW / 2, 240, 17, "#c8c0d4", "center");
+    text(g, T(th ? th.l2 : this.victory ? "end.v2" : "end.d2"), VW / 2, 274, 17, "#c8c0d4", "center");
 
     const p = G.ctx.player;
     textShadow(g, T("end.stats", { lvl: p.level, gold: p.gold, floor: G.ctx.currentLevel }), VW / 2, 350, 15, "#8fd4ff", "center");

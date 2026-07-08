@@ -11,6 +11,7 @@ import { RelicDraftScene } from "./endlessScenes";
 import { bossEncounterPages } from "./cinematics";
 import { Item, ItemCatalog, sellPrice, MERCHANT_STOCK, NIGHT_MERCHANT_STOCK, NIGHT_MERCHANT_NAME } from "./items";
 import { getSprite } from "./sprites";
+import { CreedChoice, getCreedChoice } from "./creed";
 import { saveGame, saveSettings } from "./save";
 import { TS } from "./render";
 import { OptionsScene } from "./menuScenes";
@@ -91,6 +92,7 @@ export class ExploreScene implements Scene {
         }
         case "shake": G.world.addShake(e.power); break;
         case "altar": SceneManager.push(new AltarScene(e.altar)); return;
+        case "creedChoice": SceneManager.push(new CreedChoiceScene(e.id)); return;
         case "shrine": break; // le fx/log est déjà géré ; rien d'autre à faire
         case "combat": {
           const m = e.monster;
@@ -112,7 +114,7 @@ export class ExploreScene implements Scene {
         case "swordCinematic": Flow.swordCinematic(); return;
         case "bossIntro": Flow.bossIntroThenLevel4(); return;
         case "depthsIntro": Flow.depthsIntroThenLevel5(); return;
-        case "end": Flow.endScreen(e.victory, e.trueEnding); return;
+        case "end": Flow.endScreen(e.victory); return;
         case "floorCleared": Flow.relicDraft(); return;
         case "levelLoaded":
           if (!G.ctx.endless) saveGame(G.ctx); // les runs Descente ne sont pas resumables (permadeath)
@@ -222,6 +224,129 @@ export class AltarScene implements Scene {
     });
     text(g, T("altar.hint"), VW / 2, y + h - 18, 11, "#6e6584", "center");
   }
+}
+
+// ===== LE SERMENT : choix moral de campagne (Briser vs Perpétuer la Boucle) =====
+// Un vrai embranchement — pas d'échappatoire : ce que tu scelles ici te suit jusqu'à la fin.
+// L'appelant (exploration) me pousse sans onDone → je me referme et sauvegarde.
+// L'appelant (Verdict après combat) me passe un onDone → je le laisse enchaîner.
+export class CreedChoiceScene implements Scene {
+  private sel = 0;             // 0 = voie de la Rupture (gauche), 1 = voie de l'Emprise (droite)
+  private t = 0;
+  private choice: CreedChoice | null;
+  private committed = false;
+  private commitT = 0;
+  constructor(private id: string, private onDone?: () => void) {
+    this.choice = getCreedChoice(id);
+  }
+
+  private finish() {
+    if (this.onDone) this.onDone();
+    else { saveGame(G.ctx); SceneManager.pop(); }
+  }
+
+  update(dt: number) {
+    this.t += dt;
+    const c = this.choice;
+    if (!c) { this.finish(); return; } // garde-fou : id inconnu → on ne bloque pas le jeu
+
+    if (this.committed) {
+      // court temps de résolution : la teinte du choix imprègne l'écran avant de rendre la main
+      this.commitT += dt;
+      if (this.commitT >= 0.9) this.finish();
+      return;
+    }
+
+    if (Input.consume("left") || Input.consume("right") || Input.consume("up") || Input.consume("down")) {
+      this.sel = 1 - this.sel; Audio.sfx("ui");
+    }
+    if (Input.consume("confirm")) {
+      const opt = c.options[this.sel];
+      G.ctx.recordChoice(c.id, opt.id, opt.oath);
+      opt.apply(G.ctx);
+      G.ctx.pushLog(T("creed.sealed", { path: T(opt.labelKey) }), LogKind.System);
+      Audio.sfx(opt.side === "break" ? "levelup" : "curse");
+      G.world?.addShake?.(opt.side === "break" ? 0.4 : 1.0);
+      this.committed = true;
+      this.commitT = 0;
+    }
+  }
+
+  draw(g: CanvasRenderingContext2D) {
+    const c = this.choice;
+    if (!c) return;
+    dimBackground(g, 0.82);
+
+    // aura de fond : bascule vers la teinte de l'option survolée (bleu = briser, rouge = perpétuer)
+    const opt = c.options[this.sel];
+    const aura = this.committed ? 0.28 + Math.sin(this.commitT * 12) * 0.06 : 0.10 + Math.sin(this.t * 2) * 0.03;
+    g.save();
+    g.globalAlpha = aura;
+    const gr = g.createRadialGradient(VW / 2, VH / 2, 40, VW / 2, VH / 2, VH * 0.9);
+    gr.addColorStop(0, opt.side === "break" ? "#1a4a6a" : "#5a1020");
+    gr.addColorStop(1, "rgba(0,0,0,0)");
+    g.fillStyle = gr; g.fillRect(0, 0, VW, VH);
+    g.restore();
+
+    const w = 720, h = 400, x = VW / 2 - w / 2, y = VH / 2 - h / 2;
+    panel(g, x, y, w, h, T(c.titleKey));
+
+    // portrait du personnage qui te met au pied du mur
+    if (c.sprite) {
+      const spr = getSprite(c.sprite);
+      if (spr) {
+        const s = 76, bob = Math.sin(this.t * 2) * 3;
+        g.save(); g.imageSmoothingEnabled = false;
+        if (c.spriteGlow) { g.shadowColor = c.spriteGlow; g.shadowBlur = 22; }
+        g.drawImage(spr, VW / 2 - s / 2, y + 44 + bob, s, s);
+        g.restore();
+      }
+    }
+
+    // réplique d'ambiance (le personnage parle) + la question posée
+    text(g, T(c.quoteKey), VW / 2, y + 142, 14, "#d8c8e8", "center");
+    textShadow(g, T(c.promptKey), VW / 2, y + 172, 15, "#f0e2c8", "center");
+
+    // deux voies opposées
+    const cardW = 300, cardH = 150, gap = 28;
+    const startX = x + (w - (cardW * 2 + gap)) / 2;
+    c.options.forEach((o, i) => {
+      const cx = startX + i * (cardW + gap), cy = y + 198;
+      const selected = i === this.sel;
+      const isBreak = o.side === "break";
+      const edge = isBreak ? "#5ac8ff" : "#ff5a6a";
+      g.fillStyle = selected ? (isBreak ? "rgba(20,70,105,.6)" : "rgba(110,20,35,.6)") : "rgba(28,24,42,.6)";
+      g.beginPath(); g.roundRect(cx, cy, cardW, cardH, 9); g.fill();
+      g.strokeStyle = selected ? edge : "rgba(140,130,170,.3)";
+      g.lineWidth = selected ? 2.5 : 1;
+      g.beginPath(); g.roundRect(cx, cy, cardW, cardH, 9); g.stroke();
+
+      // liseré latéral coloré : signe visuel de la voie (rupture / emprise)
+      g.fillStyle = edge; g.globalAlpha = selected ? 1 : 0.5;
+      g.fillRect(cx, cy, 4, cardH); g.globalAlpha = 1;
+
+      const tag = T(isBreak ? "creed.tag.break" : "creed.tag.perp");
+      text(g, tag, cx + cardW / 2, cy + 22, 11, edge, "center");
+      textShadow(g, T(o.labelKey), cx + cardW / 2, cy + 48, 16, selected ? "#fff" : "#c8c0d4", "center");
+      // effet mécanique (build) — ce que ça change dans tes mains
+      wrapCentered(g, T(o.effectKey), cx + cardW / 2, cy + 78, cardW - 28, 12, selected ? "#ffe6b0" : "#a89a7a");
+      // ce que ce choix dit de toi
+      wrapCentered(g, T(o.flavorKey), cx + cardW / 2, cy + 112, cardW - 28, 12, selected ? "#c8bce0" : "#8a80a0");
+    });
+
+    text(g, T("creed.hint"), VW / 2, y + h - 16, 11, "#7a7090", "center");
+  }
+}
+
+// petit utilitaire : texte centré replié sur 2 lignes (mots entiers)
+function wrapCentered(g: CanvasRenderingContext2D, s: string, cx: number, y: number, maxW: number, size: number, color: string) {
+  g.font = `${size}px ${FONT}`;
+  if (g.measureText(s).width <= maxW) { text(g, s, cx, y, size, color, "center"); return; }
+  let cut = s.length;
+  while (cut > 0 && g.measureText(s.slice(0, cut)).width > maxW) cut = s.lastIndexOf(" ", cut - 1);
+  if (cut <= 0) { text(g, s, cx, y, size, color, "center"); return; }
+  text(g, s.slice(0, cut), cx, y, size, color, "center");
+  text(g, s.slice(cut + 1), cx, y + size + 3, size, color, "center");
 }
 
 // ===== Choix de talent (niveaux 3 et 6) =====

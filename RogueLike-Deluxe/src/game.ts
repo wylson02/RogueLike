@@ -23,11 +23,12 @@ export const Flow: {
   startCombat: (monster: any) => void;
   bossEncounter: (monster: any) => void;
   loreCinematic: (cineKey: string) => void;
-  trueEnding: () => void;
+  creedChoice: (id: string, onDone?: () => void) => void;
+  campaignEnding: (ending: "redemption" | "balance" | "dominion") => void;
   bossIntroThenLevel4: () => void;
   depthsIntroThenLevel5: () => void;
   swordCinematic: () => void;
-  endScreen: (victory: boolean, trueEnding?: boolean) => void;
+  endScreen: (victory: boolean, ending?: "redemption" | "balance" | "dominion") => void;
   merchant: (merchant: any) => void;
   // ===== Descente Infinie =====
   endlessHub: () => void;

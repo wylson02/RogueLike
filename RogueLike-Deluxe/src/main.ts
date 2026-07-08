@@ -7,9 +7,9 @@ import { setLang, T } from "./i18n";
 import { GameContext, LogKind } from "./context";
 import { SceneManager, Scene } from "./scenes";
 import { MainMenuScene } from "./menuScenes";
-import { ExploreScene, MerchantScene } from "./exploreScene";
+import { ExploreScene, MerchantScene, CreedChoiceScene } from "./exploreScene";
 import { CombatScene } from "./combatScene";
-import { CinematicScene, introPages, swordPages, bossIntroPages, depthsIntroPages, bossEncounterPages, loreMarkPages, finalRevelationPages, EndScene } from "./cinematics";
+import { CinematicScene, introPages, swordPages, bossIntroPages, depthsIntroPages, bossEncounterPages, loreMarkPages, endingPages, EndScene, EndingId } from "./cinematics";
 import { EndlessHubScene, RelicDraftScene, RunSummaryScene } from "./endlessScenes";
 import { G, Flow } from "./game";
 import { loadSettings, loadGame, clearSave, saveGame } from "./save";
@@ -84,11 +84,23 @@ Flow.loreCinematic = (cineKey: string) => {
   Audio.setMode("none");
 };
 
-// Fin Véritable : le Dévoreur vaincu → révélation qui referme la boucle, puis écran de victoire.
-Flow.trueEnding = () => {
-  clearSave();
-  SceneManager.switchTo(() => new CinematicScene(finalRevelationPages(), () => Flow.endScreen(true, true), "#c8a0ff"));
+// LE SERMENT : ouvre une scène de choix moral (embuscade narrative). onDone permet à l'appelant
+// (le Verdict après le combat du Rival) d'enchaîner ; sans onDone, la scène gère elle-même son retour.
+Flow.creedChoice = (id: string, onDone?: () => void) => {
+  SceneManager.switchTo(() => new CreedChoiceScene(id, onDone));
   Audio.setMode("none");
+};
+
+// Fin de campagne : la Boucle vaincue se referme selon le Serment tenu. Trois dénouements distincts.
+const ENDING_EMBER: Record<EndingId, string> = {
+  redemption: "#ffd76a",  // l'aube
+  balance: "#c8a0ff",     // l'entre-deux
+  dominion: "#c0203a",    // le trône
+};
+Flow.campaignEnding = (ending: EndingId) => {
+  clearSave();
+  SceneManager.switchTo(() => new CinematicScene(endingPages(ending), () => Flow.endScreen(true, ending), ENDING_EMBER[ending]));
+  Audio.setMode(ending === "dominion" ? "boss" : "none");
 };
 
 Flow.merchant = (merchant: Merchant) => SceneManager.switchTo(() => new MerchantScene(merchant));
@@ -118,9 +130,9 @@ Flow.depthsIntroThenLevel5 = () => {
   Audio.setMode("none");
 };
 
-Flow.endScreen = (victory: boolean, trueEnding = false) => {
+Flow.endScreen = (victory: boolean, ending?: EndingId) => {
   if (victory) clearSave();
-  SceneManager.switchTo(() => new EndScene(victory, () => Flow.toMenu(), trueEnding));
+  SceneManager.switchTo(() => new EndScene(victory, () => Flow.toMenu(), ending));
 };
 
 // ===== Descente Infinie =====

@@ -17,7 +17,7 @@ export type GameEvent =
   | { type: "swordCinematic" }
   | { type: "bossIntro" }
   | { type: "depthsIntro" }
-  | { type: "end"; victory: boolean; trueEnding?: boolean }
+  | { type: "end"; victory: boolean }
   | { type: "merchant"; merchant: Merchant }
   | { type: "levelLoaded"; level: number }
   | { type: "floorCleared"; depth: number }
@@ -25,6 +25,7 @@ export type GameEvent =
   | { type: "shrine"; amount: number }
   | { type: "secret"; pos: Pos }
   | { type: "lore"; mark: LoreMark }
+  | { type: "creedChoice"; id: string }
   | { type: "shake"; power: number }
   | { type: "sfx"; name: string }
   | { type: "fx"; name: string; pos: Pos };
@@ -59,6 +60,13 @@ export class GameContext {
   map3LastSealHintShown = false;
   prisonerFreed = false;
   rivalDefeated = false;
+
+  // ===== LE SERMENT : axe moral de campagne (Briser vs Perpétuer la Boucle) =====
+  // oath < 0 : Emprise (tu embrasses la Boucle, tu descends vers le trône)
+  // oath > 0 : Clémence (tu cherches à briser la Boucle, à racheter le Rival)
+  oath = 0;
+  choices: Record<string, string> = {}; // choiceId -> option retenue (mémoire des actes)
+  rivalSpared = false;
 
   // ===== Descente Infinie (roguelite procédural) =====
   endless = false;            // le run en cours est-il une Descente Infinie ?
@@ -560,13 +568,63 @@ export class GameContext {
     this.pushLog(T("warden.quiet"), LogKind.System);
   }
 
-  // Le Rival vaincu : la boucle vacille. Récompense narrative — pas de fin de partie ici,
-  // le vrai dénouement attend derrière le Dévoreur d'Âmes.
+  // Le Rival vaincu : la boucle vacille. Ce n'est pas une fin de partie — et surtout,
+  // son sort (et donc le Serment) se décide APRÈS le combat, dans le Verdict (resolveRivalFate).
   onRivalDefeated() {
     this.rivalDefeated = true;
     this.player.heal(15);
-    this.player.addToInventory(ItemCatalog.create("EchoShard", P(-1, -1)));
-    this.pushLog(T("rival.dead.reward"), LogKind.Loot);
+  }
+
+  // ===== LE SERMENT : mémoire et bascule morale =====
+  // Seuil de basculement : il faut être CONSTANT (un seul choix ne suffit pas à te définir).
+  static readonly CREED_THRESHOLD = 4;
+
+  // Palier moral courant : -1 Emprise, 0 Équilibre, +1 Clémence.
+  creedTier(): -1 | 0 | 1 {
+    if (this.oath >= GameContext.CREED_THRESHOLD) return 1;
+    if (this.oath <= -GameContext.CREED_THRESHOLD) return -1;
+    return 0;
+  }
+
+  // Fin de campagne déterminée par le cumul des choix.
+  decideEnding(): "redemption" | "balance" | "dominion" {
+    const t = this.creedTier();
+    return t > 0 ? "redemption" : t < 0 ? "dominion" : "balance";
+  }
+
+  // Enregistre un choix moral et déplace l'axe. Signale un franchissement de palier.
+  recordChoice(id: string, option: string, oathDelta: number) {
+    this.choices[id] = option;
+    const before = this.creedTier();
+    this.oath += oathDelta;
+    const after = this.creedTier();
+    if (after === before) return;
+    if (after > 0) {
+      this.pushLog(T("creed.cross.break"), LogKind.System);
+      this.showToast(T("creed.toast.break"), "#cfe8ff", "#12324a", 12);
+    } else if (after < 0) {
+      this.pushLog(T("creed.cross.perp"), LogKind.System);
+      this.showToast(T("creed.toast.perp"), "#ffd0d0", "#3a0a14", 12);
+    } else {
+      this.pushLog(T("creed.cross.balance"), LogKind.System);
+    }
+  }
+
+  // Le Verdict : récompense mécanique du sort réservé au Rival (l'oath est géré par recordChoice).
+  resolveRivalFate(spare: boolean) {
+    this.rivalSpared = spare;
+    if (spare) {
+      // Tu relèves le Rival : deux échos se tiennent debout. Sa force te blinde.
+      this.player.modifyArmor(+2);
+      this.player.maxHp += 15;
+      this.player.heal(this.player.maxHp);
+      this.pushLog(T("rival.spared.reward"), LogKind.Loot);
+    } else {
+      // Tu consumes son écho : sa puissance devient la tienne.
+      this.player.addToInventory(ItemCatalog.create("EchoShard", P(-1, -1)));
+      this.player.modifyAttack(+3);
+      this.pushLog(T("rival.slain.reward"), LogKind.Loot);
+    }
   }
 
   private findSpawnBehind(preferred: Pos): Pos {
@@ -778,8 +836,14 @@ export class GameContext {
           }
         }
       } else if (pnj.name === "Rival") {
+        // Première rencontre (niveau 1) : LE SERMENT s'ouvre — comment réponds-tu au Rival ?
+        if (this.currentLevel === 1 && !this.choices["rival_l1"]) {
+          this.emit({ type: "creedChoice", id: "rival_l1" });
+          return;
+        }
         let key = "rival.lvl1";
-        if (this.currentLevel === 2) key = "rival.lvl2";
+        if (this.currentLevel === 1) key = this.choices["rival_l1"] === "hand" ? "rival.lvl1.hand" : "rival.lvl1.blade";
+        else if (this.currentLevel === 2) key = this.choices["rival_l1"] === "hand" ? "rival.lvl2.hand" : "rival.lvl2";
         else if (this.currentLevel === 3) key = this.hasLegendarySword ? "rival.lvl3.sword" : "rival.lvl3.nosword";
         pnj.setMessageKey(key);
         this.pushLog(T("pnj.talk", { name: pnj.name, msg: pnj.talk() }), LogKind.System);
@@ -787,14 +851,10 @@ export class GameContext {
         const chestOpened = this.chests.find(c => eqPos(c.pos, MAP2_PRISON_CHEST))?.isOpened ?? false;
         if (!chestOpened) {
           this.pushLog(T("prisoner.locked"), LogKind.Warning);
-        } else if (!this.prisonerFreed) {
-          this.prisonerFreed = true;
-          this.player.modifyArmor(+1);
-          this.player.modifyCritChance(+3);
-          pnj.setMessageKey("prisoner.thanks");
-          this.pushLog(T("prisoner.freed"), LogKind.System);
-          this.pushLog(T("prisoner.buff"), LogKind.Loot);
-          this.emit({ type: "sfx", name: "levelup" });
+        } else if (!this.choices["torvin"]) {
+          // LE SERMENT DE TORVIN : le libérer, ou saisir le pacte brisé qui le consume.
+          this.emit({ type: "creedChoice", id: "torvin" });
+          return;
         } else {
           this.pushLog(T("pnj.talk", { name: pnj.name, msg: pnj.talk() }), LogKind.System);
         }
