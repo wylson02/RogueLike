@@ -9,12 +9,33 @@ import type { LevelData } from "./levels";
 interface Room { x: number; y: number; w: number; h: number; }
 const roomCenter = (r: Room): Pos => P(Math.floor(r.x + r.w / 2), Math.floor(r.y + r.h / 2));
 
-// Monstres disponibles selon la profondeur (difficulté croissante).
+// ===== STRATES : chaque tranche de 5 profondeurs est une strate nommée, à l'intensité croissante.
+// Elles donnent une identité à la descente et pilotent la montée en difficulté (voir stratumIntensity).
+export interface StratumInfo { index: number; cycle: number; nameKey: string; color: string; }
+const STRATA: { key: string; color: string }[] = [
+  { key: "stratum.0", color: "#6a8fd0" }, // Les Abords
+  { key: "stratum.1", color: "#4fb0a0" }, // Les Cavernes
+  { key: "stratum.2", color: "#8a5fd0" }, // Le Gouffre
+  { key: "stratum.3", color: "#b04f8a" }, // Les Tréfonds
+  { key: "stratum.4", color: "#c0403a" }, // Le Cœur Noir
+  { key: "stratum.5", color: "#d8b038" }, // L'Innommable
+];
+export function stratumInfo(depth: number): StratumInfo {
+  const index = Math.floor((Math.max(1, depth) - 1) / 5);
+  const s = STRATA[index % STRATA.length];
+  return { index, cycle: Math.floor(index / STRATA.length) + 1, nameKey: s.key, color: s.color };
+}
+// Le premier étage d'une strate (pour annoncer une nouvelle zone).
+export function isStratumEntry(depth: number): boolean { return depth > 1 && (depth - 1) % 5 === 0; }
+
+// Monstres disponibles selon la profondeur (difficulté et variété croissantes).
 function monsterPool(depth: number): ((p: Pos) => Monster)[] {
   const c = MonsterCatalog;
   if (depth <= 2) return [c.slime, c.slime, c.nightSlime, c.spider];
   if (depth <= 5) return [c.slime, c.spider, c.nightSlime, c.golem, c.gargoyle];
-  return [c.spider, c.golem, c.gargoyle, c.gargoyle, c.golem];
+  if (depth <= 10) return [c.spider, c.golem, c.gargoyle, c.golem, c.gargoyle];
+  if (depth <= 15) return [c.golem, c.gargoyle, c.gargoyle, c.spider, c.golem];
+  return [c.gargoyle, c.golem, c.gargoyle, c.gargoyle, c.golem]; // profondeurs : que du lourd
 }
 
 // Boss de fin d'étage, cyclés et mis à l'échelle. Toutes les 5 profondeurs.
@@ -27,13 +48,16 @@ function bossForDepth(depth: number): (p: Pos) => Monster {
 export function isBossDepth(depth: number): boolean { return depth % 5 === 0; }
 
 // Applique le scaling de profondeur à un monstre fraîchement créé.
+// La difficulté grimpe avec la profondeur ET avec la strate (paliers de +5).
 function scaleMonster(m: Monster, depth: number, boss: boolean): Monster {
-  const hpMul = 1 + depth * (boss ? 0.10 : 0.14);
+  const stratum = Math.floor((depth - 1) / 5);
+  const hpMul = 1 + depth * (boss ? 0.12 : 0.17) + stratum * 0.10;
   m.maxHp = Math.round(m.maxHp * hpMul);
   m.hp = m.maxHp;
-  m.modifyAttack(Math.floor(depth / 2) + (boss ? 2 : 0));
-  m.minGold = Math.round(m.minGold * (1 + depth * 0.12));
-  m.maxGold = Math.round(m.maxGold * (1 + depth * 0.12));
+  m.modifyAttack(Math.floor(depth * 0.6) + (boss ? 3 : 0));
+  m.modifyCritChance(Math.min(20, stratum * 3));
+  m.minGold = Math.round(m.minGold * (1 + depth * 0.14));
+  m.maxGold = Math.round(m.maxGold * (1 + depth * 0.14));
   m.minXp = Math.round(m.minXp * (1 + depth * 0.1));
   m.maxXp = Math.round(m.maxXp * (1 + depth * 0.1));
   return m;
@@ -142,10 +166,12 @@ export function generateFloor(depth: number, rng: RNG): LevelData {
     const bpos = exitPos;
     const bossM = scaleMonster(bossForDepth(depth)(P(bpos.x, bpos.y)), depth, true);
     monsters.push(bossM);
-    // Deux gardes d'élite pour épicer l'arène.
-    for (const r of rooms.slice(1, 3)) {
+    // Gardes d'élite pour épicer l'arène — de plus en plus nombreux en profondeur.
+    const guards = Math.min(rooms.length - 1, 2 + Math.floor(depth / 10));
+    const gpool = monsterPool(depth);
+    for (const r of rooms.slice(1, 1 + guards)) {
       const p = freeCellIn(r);
-      if (p) monsters.push(makeElite(scaleMonster(monsterPool(depth)[rng.next(0, monsterPool(depth).length)](p), depth, false), depth, rng));
+      if (p) monsters.push(makeElite(scaleMonster(gpool[rng.next(0, gpool.length)](p), depth, false), depth, rng));
     }
     // Un coffre légendaire en récompense anticipée.
     const cRoom = rooms[rng.next(1, rooms.length)];
@@ -156,14 +182,15 @@ export function generateFloor(depth: number, rng: RNG): LevelData {
     // Monstres : densité croissante, sauf dans la salle de départ.
     const pool = monsterPool(depth);
     const monsterRooms = rooms.slice(1);
-    const perRoom = Math.min(3, 1 + Math.floor(depth / 3));
+    const perRoom = Math.min(4, 1 + Math.floor(depth / 3));
+    const eliteChance = Math.min(60, 10 + depth * 2.5); // profond = arène d'élites
     for (const r of monsterRooms) {
       const n = rng.next(1, perRoom + 1);
       for (let i = 0; i < n; i++) {
         const p = freeCellIn(r);
         if (!p) continue;
         let m = scaleMonster(pool[rng.next(0, pool.length)](p), depth, false);
-        if (rng.next(0, 100) < 12 + depth) m = makeElite(m, depth, rng);
+        if (rng.next(0, 100) < eliteChance) m = makeElite(m, depth, rng);
         monsters.push(m);
       }
     }

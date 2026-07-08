@@ -1,12 +1,12 @@
 // Simulation headless : traverse le jeu complet et vérifie la logique.
 import { GameContext, GameEvent } from "../src/context";
 import { CombatSession, CombatEvent } from "../src/combat";
-import { Monster, MonsterCatalog, Altar, Player } from "../src/entities";
+import { Monster, MonsterCatalog, Altar, Player, MonsterRank } from "../src/entities";
 import { defaultKit } from "../src/skills";
 import { CREED_CHOICES } from "../src/creed";
 import { saveGame, loadGame, clearSave } from "../src/save";
 import { T, getLang, setLang } from "../src/i18n";
-import { generateFloor } from "../src/procgen";
+import { generateFloor, isBossDepth, stratumInfo } from "../src/procgen";
 import { elementStacks, hasResonance } from "../src/boons";
 import { Pos, P, eqPos, key, Dir, move, DIRS4, Tile, RNG } from "../src/core";
 
@@ -316,7 +316,7 @@ console.log("=== DESCENTE INFINIE (procédural) ===");
   check(ctx.endless, "mode Descente actif");
   check(ctx.runDepth === 1, "démarre à la profondeur 1");
 
-  const FLOORS = 12;
+  const FLOORS = 22;
   let bossFloorTested = false, exitAlwaysReachable = true, essenceGrew = false;
   const essence0 = ctx.runEssence;
 
@@ -364,6 +364,41 @@ console.log("=== DESCENTE INFINIE (procédural) ===");
   // mort en Descente : le run se termine proprement (pas de crash, flag endless conservé)
   ctx.player.hp = 0;
   check(ctx.player.isDead && ctx.endless, "mort en Descente gérable (→ résumé de run)");
+}
+
+console.log("=== DESCENTE : sortie de boss robuste (fix du bug prof. 5) + strates ===");
+{
+  // Strates : identité par tranche de 5 profondeurs, cycles au-delà.
+  check(stratumInfo(1).nameKey === "stratum.0" && stratumInfo(1).index === 0, "profondeur 1 → strate 0 (Les Abords)");
+  check(stratumInfo(5).index === 0 && stratumInfo(6).index === 1, "la strate change à la profondeur 6");
+  check(stratumInfo(31).cycle === 2, "au-delà de 6 strates, on entre dans un 2e cycle");
+
+  // RÉGRESSION : la sortie d'un étage de boss doit s'ouvrir dès le boss vaincu,
+  // MÊME si un monstre de rang normal (spawn nocturne, garde) est encore vivant.
+  const c = new GameContext();
+  c.startEndlessRun(1); c.drainEvents();
+  c.loadProceduralFloor(5); c.drainEvents(); // profondeur 5 = 1er étage de boss
+  check(isBossDepth(5), "profondeur 5 est bien un étage de boss");
+  const gate = c.monsters.filter(m => m.rank !== MonsterRank.Normal);
+  check(gate.length >= 1, "un boss/mini-boss garde l'étage");
+
+  const findExit = () => {
+    for (let y = 0; y < c.map.height; y++)
+      for (let x = 0; x < c.map.width; x++)
+        if (c.map.get(P(x, y)) === Tile.Exit) return true;
+    return false;
+  };
+  check(!findExit(), "aucune sortie tant que le boss est vivant");
+
+  // Simule un spawn nocturne tenace : un slime normal bien vivant.
+  const intruder = MonsterCatalog.nightSlime(P(1, 1));
+  c.monsters.push(intruder);
+  // On ne tue QUE le(s) boss/mini-boss ; on laisse vivre l'intrus normal ET les gardes d'élite.
+  for (const m of gate) m.takeDamage(999999);
+  c.checkEndlessBossExit(); c.drainEvents();
+
+  check(intruder.hp > 0, "l'intrus normal (spawn nocturne) est toujours vivant");
+  check(findExit(), "la sortie s'ouvre dès le boss vaincu, malgré un monstre normal vivant (bug corrigé)");
 }
 
 console.log("=== REBIRTH : INTENTS / TELEGRAPHES ===");
