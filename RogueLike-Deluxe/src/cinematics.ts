@@ -655,6 +655,195 @@ function balanceFilm(): Shot[] {
   ];
 }
 
+// ===== Films de moments-clés (prologue, Épée de Légende) — même langage que les fins =====
+// Interface parallèle pour ne pas toucher au Shot des fins (typé sur EndingFilmScene).
+interface FilmShot {
+  dur: number; captionKey?: string; captionColor?: string; sfx?: string;
+  draw: (g: CanvasRenderingContext2D, u: number, t: number, f: FilmScene) => void;
+}
+
+// Glyphe de sceau : anneau runique qui pulse.
+function drawSeal(g: CanvasRenderingContext2D, cx: number, cy: number, r: number, glow: string, pulse: number) {
+  g.save();
+  g.strokeStyle = glow; g.shadowColor = glow; g.shadowBlur = 10 + pulse * 18;
+  g.globalAlpha = 0.5 + pulse * 0.5; g.lineWidth = 2.5;
+  g.beginPath(); g.arc(cx, cy, r, 0, Math.PI * 2); g.stroke();
+  g.beginPath(); g.arc(cx, cy, r * 0.6, 0, Math.PI * 2); g.stroke();
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2 + pulse * 0.3;
+    g.beginPath();
+    g.moveTo(cx + Math.cos(a) * r * 0.6, cy + Math.sin(a) * r * 0.6);
+    g.lineTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r);
+    g.stroke();
+  }
+  g.restore();
+}
+
+// Socle de pierre.
+function drawPedestal(g: CanvasRenderingContext2D, cx: number, cy: number, s: number) {
+  g.save();
+  g.fillStyle = "#2a2436";
+  g.fillRect(cx - 34 * s, cy, 68 * s, 20 * s);
+  g.fillStyle = "#221c30";
+  g.fillRect(cx - 26 * s, cy + 20 * s, 52 * s, 40 * s);
+  g.fillStyle = "#332a44";
+  g.fillRect(cx - 40 * s, cy - 6 * s, 80 * s, 8 * s);
+  g.restore();
+}
+
+// Grande arche / porte scellée, lueur rouge respirante.
+function drawGreatDoor(g: CanvasRenderingContext2D, cx: number, cy: number, s: number, pulse: number) {
+  g.save();
+  g.fillStyle = "#0d0912";
+  g.beginPath();
+  g.moveTo(cx - 70 * s, cy + 130 * s);
+  g.lineTo(cx - 70 * s, cy - 40 * s);
+  g.arc(cx, cy - 40 * s, 70 * s, Math.PI, 0);
+  g.lineTo(cx + 70 * s, cy + 130 * s);
+  g.closePath(); g.fill();
+  g.strokeStyle = "#3a2545"; g.lineWidth = 4; g.stroke();
+  // fente centrale + lueur rouge
+  const gl = g.createRadialGradient(cx, cy + 30 * s, 4, cx, cy + 30 * s, 90 * s);
+  gl.addColorStop(0, `rgba(200,40,40,${0.3 + pulse * 0.35})`);
+  gl.addColorStop(1, "rgba(200,40,40,0)");
+  g.fillStyle = gl; g.fillRect(cx - 90 * s, cy - 60 * s, 180 * s, 210 * s);
+  g.restore();
+}
+
+// ---- Prologue : la descente, les sceaux, la porte ----
+function introFilm(): FilmShot[] {
+  return [
+    { // 1. la gueule du temple s'ouvre ; tu descends
+      dur: 4.5, captionKey: "film.intro.1", captionColor: "#c8bcd8", sfx: "night",
+      draw: (g, u, t, f) => {
+        drawGreatDoor(g, VW / 2, 250, 1.5, 0.2 + Math.sin(t * 1.2) * 0.15);
+        drawSpriteFigure(g, "player", VW / 2, 380 + u * 40, 54 - u * 10, 0.9 - u * 0.3);
+        if (Math.random() < 0.4) f.particles.spawn({ x: Math.random() * VW, y: VH, vx: (Math.random() - 0.5) * 8, vy: -14 - Math.random() * 22, life: 4, maxLife: 4, size: 2, color: "#6a3020", glow: true });
+      },
+    },
+    { // 2. trois sceaux dorment sous la pierre
+      dur: 4.5, captionKey: "film.intro.2", captionColor: "#8fd4ff", sfx: "seal",
+      draw: (g, u, t) => {
+        const p = (i: number) => 0.3 + Math.sin(t * 1.6 + i * 2) * 0.3 + u * 0.2;
+        drawSeal(g, VW / 2 - 200, VH / 2, 42, "#5adfe8", p(0));
+        drawSeal(g, VW / 2, VH / 2 - 20, 50, "#7a9fe8", p(1));
+        drawSeal(g, VW / 2 + 200, VH / 2, 42, "#8a5fd0", p(2));
+      },
+    },
+    { // 3. la dernière porte — et ce qui attend derrière
+      dur: 5, captionKey: "film.intro.3", captionColor: "#d86060", sfx: "door",
+      draw: (g, u, t) => {
+        const pulse = 0.4 + Math.sin(t * 2) * 0.3 + u * 0.3;
+        drawGreatDoor(g, VW / 2, 240, 1.8, pulse);
+        drawSpriteFigure(g, "player", VW / 2, 420, 46, 0.85);
+        if (u > 0.5) drawShadowFigure(g, VW / 2, 220, 0.4 + u * 0.2, "#ff3040", (u - 0.5) * pulse);
+      },
+    },
+  ];
+}
+
+// ---- L'Épée de Légende : le socle, l'éveil, le temple qui se referme ----
+function swordFilm(): FilmShot[] {
+  return [
+    { // 1. la lame attend sur son socle
+      dur: 4, captionKey: "film.sword.1", captionColor: "#c8bca8", sfx: "sword",
+      draw: (g, u, t) => {
+        drawPedestal(g, VW / 2, 300, 1.2);
+        const spr = getSprite("it_legend");
+        if (spr) {
+          g.save(); g.imageSmoothingEnabled = false;
+          g.shadowColor = "#ffd84a"; g.shadowBlur = 10 + Math.sin(t * 2) * 6;
+          const bob = Math.sin(t * 2) * 5;
+          g.drawImage(spr, VW / 2 - 44, 190 + bob, 88, 88);
+          g.restore();
+        }
+      },
+    },
+    { // 2. tu la saisis — la lame s'embrase
+      dur: 4, captionKey: "film.sword.2", captionColor: "#fff", sfx: "sword",
+      draw: (g, u, t, f) => {
+        // rayons de lumière dorée
+        g.save();
+        const rays = g.createRadialGradient(VW / 2, 240, 8, VW / 2, 240, 60 + u * 320);
+        rays.addColorStop(0, `rgba(255,232,150,${0.5 + u * 0.4})`);
+        rays.addColorStop(1, "rgba(255,216,74,0)");
+        g.fillStyle = rays; g.fillRect(0, 0, VW, VH);
+        g.restore();
+        drawPedestal(g, VW / 2, 300, 1.2);
+        const spr = getSprite("it_legend");
+        if (spr) {
+          g.save(); g.imageSmoothingEnabled = false;
+          g.shadowColor = "#fff6c8"; g.shadowBlur = 20 + u * 40;
+          const sz = 88 + u * 26;
+          g.drawImage(spr, VW / 2 - sz / 2, 234 - sz / 2 - u * 20, sz, sz);
+          g.restore();
+        }
+        if (Math.random() < 0.8) f.particles.spawn({ x: VW / 2 + (Math.random() - 0.5) * 120, y: 240, vx: (Math.random() - 0.5) * 30, vy: -20 - Math.random() * 40, life: 1.2, maxLife: 1.2, size: 2 + Math.random() * 2, color: Math.random() < 0.6 ? "#ffd84a" : "#fff6c8", glow: true });
+      },
+    },
+    { // 3. le temple gronde, les portes claquent, le Gardien se dresse
+      dur: 5, captionKey: "film.sword.3", captionColor: "#c8a8ff", sfx: "warden",
+      draw: (g, u, t, f) => {
+        const shake = clamp(1 - u * 1.5, 0, 1);
+        g.save();
+        g.translate((Math.random() - 0.5) * shake * 16, (Math.random() - 0.5) * shake * 16);
+        // vignette de danger
+        const v = g.createRadialGradient(VW / 2, VH / 2, VH * 0.2, VW / 2, VH / 2, VH * 0.9);
+        v.addColorStop(0, "rgba(0,0,0,0)"); v.addColorStop(1, `rgba(90,10,40,${0.4 + u * 0.4})`);
+        g.fillStyle = v; g.fillRect(-20, -20, VW + 40, VH + 40);
+        // le Gardien se dresse depuis le bas
+        const wy = VH + 120 - u * 340;
+        drawSpriteFigure(g, "warden", VW / 2, wy, 150, 1, "#8a5fd0");
+        drawShadowFigure(g, VW / 2, wy - 4, 1.2, "#c8a8ff", 0.4 + u * 0.5);
+        g.restore();
+        if (Math.random() < 0.6) f.particles.spawn({ x: VW / 2 + (Math.random() - 0.5) * 200, y: VH * 0.6, vx: (Math.random() - 0.5) * 24, vy: -18 - Math.random() * 30, life: 1.6, maxLife: 1.6, size: 2, color: Math.random() < 0.5 ? "#8a5fd0" : "#2c1d52", glow: true });
+      },
+    },
+  ];
+}
+
+// ===== La scène de film générique (identique au moteur des fins, pour tout moment) =====
+export class FilmScene implements Scene {
+  private idx = 0; private st = 0; private t = 0;
+  particles = new Particles();
+  constructor(private shots: FilmShot[], private done: () => void) {}
+  enter() { const s = this.shots[0]; if (s?.sfx) Audio.sfx(s.sfx); }
+  private advance() {
+    this.idx++; this.st = 0;
+    if (this.idx >= this.shots.length) { this.done(); return; }
+    const s = this.shots[this.idx]; if (s.sfx) Audio.sfx(s.sfx);
+  }
+  update(dt: number) {
+    this.t += dt; this.st += dt; this.particles.update(dt);
+    if (Input.consume("cancel")) { Audio.sfx("back"); this.done(); return; }
+    if (Input.consume("confirm")) { Audio.sfx("confirm"); this.advance(); return; }
+    if (this.idx < this.shots.length && this.st >= this.shots[this.idx].dur) this.advance();
+  }
+  draw(g: CanvasRenderingContext2D) {
+    g.fillStyle = "#05040a"; g.fillRect(0, 0, VW, VH);
+    const shot = this.shots[Math.min(this.idx, this.shots.length - 1)];
+    const u = clamp(this.st / shot.dur, 0, 1);
+    shot.draw(g, u, this.t, this);
+    this.particles.draw(g);
+    const fade = Math.max(clamp(1 - this.st / 0.6, 0, 1), clamp((this.st - (shot.dur - 0.6)) / 0.6, 0, 1));
+    if (fade > 0) { g.globalAlpha = fade; g.fillStyle = "#05040a"; g.fillRect(0, 0, VW, VH); g.globalAlpha = 1; }
+    g.fillStyle = "#000"; g.fillRect(0, 0, VW, 58); g.fillRect(0, VH - 58, VW, 58);
+    if (shot.captionKey) {
+      const ca = clamp((this.st - 0.4) / 0.6, 0, 1) * (1 - clamp((this.st - (shot.dur - 0.5)) / 0.5, 0, 1));
+      g.globalAlpha = ca;
+      textShadow(g, T(shot.captionKey), VW / 2, VH - 34, 17, shot.captionColor ?? "#e8e0f0", "center");
+      g.globalAlpha = 1;
+    }
+    if (Math.sin(this.t * 4) > 0.2) {
+      const last = this.idx >= this.shots.length - 1;
+      text(g, T(last ? "cine.start" : "cine.skip"), VW - 16, VH - 20, 11, "rgba(150,145,170,.7)", "right");
+    }
+  }
+}
+
+export function introFilmShots(): FilmShot[] { return introFilm(); }
+export function swordFilmShots(): FilmShot[] { return swordFilm(); }
+
 // ===== Écran de fin =====
 // Thème visuel par fin : dégradé de fond, halo/lueur du titre, teinte du titre, confettis.
 interface EndTheme { titleKey: string; l1: string; l2: string; g0: string; g1: string; glow: string; ink: string; conf: string[]; }

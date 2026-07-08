@@ -9,7 +9,7 @@ import { SceneManager, Scene } from "./scenes";
 import { MainMenuScene } from "./menuScenes";
 import { ExploreScene, MerchantScene, CreedChoiceScene } from "./exploreScene";
 import { CombatScene } from "./combatScene";
-import { CinematicScene, introPages, swordPages, bossIntroPages, depthsIntroPages, bossEncounterPages, loreMarkPages, EndingFilmScene, EndScene, EndingId } from "./cinematics";
+import { CinematicScene, bossIntroPages, depthsIntroPages, bossEncounterPages, loreMarkPages, EndingFilmScene, FilmScene, introFilmShots, swordFilmShots, EndScene, EndingId } from "./cinematics";
 import { EndlessHubScene, RelicDraftScene, RunSummaryScene } from "./endlessScenes";
 import { G, Flow } from "./game";
 import { loadSettings, loadGame, clearSave, saveGame } from "./save";
@@ -46,7 +46,7 @@ Flow.startNew = (classId: ClassId) => {
   clearSave();
   G.ctx = new GameContext();
   applyClass(G.ctx.player, classId);
-  SceneManager.switchTo(() => new CinematicScene(introPages(), () => {
+  SceneManager.switchTo(() => new FilmScene(introFilmShots(), () => {
     G.ctx.pushLog(T("level.enter1"), LogKind.System);
     G.ctx.loadLevel(1);
     G.ctx.drainEvents();
@@ -102,7 +102,7 @@ Flow.campaignEnding = (ending: EndingId) => {
 Flow.merchant = (merchant: Merchant) => SceneManager.switchTo(() => new MerchantScene(merchant));
 
 Flow.swordCinematic = () => {
-  SceneManager.switchTo(() => new CinematicScene(swordPages(), () => Flow.toExplore(), "#e0a030"));
+  SceneManager.switchTo(() => new FilmScene(swordFilmShots(), () => Flow.toExplore()));
   Audio.setMode("none");
 };
 
