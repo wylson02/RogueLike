@@ -9,6 +9,7 @@ import { LogKind, GameEvent } from "./context";
 import { StatType, Merchant, EquipSlot, MAX_WEAPON_UPGRADE, Monster, MonsterRank, TalentCatalog, chooseTalent, Altar } from "./entities";
 import { RelicDraftScene } from "./endlessScenes";
 import { bossEncounterPages } from "./cinematics";
+import { stratumInfo } from "./procgen";
 import { Item, ItemCatalog, sellPrice, MERCHANT_STOCK, NIGHT_MERCHANT_STOCK, NIGHT_MERCHANT_NAME } from "./items";
 import { getSprite } from "./sprites";
 import { CreedChoice, getCreedChoice } from "./creed";
@@ -29,7 +30,7 @@ export class ExploreScene implements Scene {
     G.world.snapCamera(G.ctx);
     clearTweens();
     if (G.ctx.endless && this.bannerT <= 0 && this.t === 0) {
-      this.bannerText = T("hud.depth", { n: G.ctx.runDepth }).toUpperCase();
+      this.bannerText = T("endless.banner", { n: G.ctx.runDepth, name: T(stratumInfo(G.ctx.runDepth).nameKey) }).toUpperCase();
       this.bannerT = 2.4;
     }
   }
@@ -121,7 +122,7 @@ export class ExploreScene implements Scene {
           G.world.snapCamera(G.ctx);
           clearTweens();
           if (G.ctx.endless) {
-            this.bannerText = T("hud.depth", { n: G.ctx.runDepth }).toUpperCase();
+            this.bannerText = T("endless.banner", { n: G.ctx.runDepth, name: T(stratumInfo(G.ctx.runDepth).nameKey) }).toUpperCase();
             this.bannerT = 2.4;
           }
           break;
@@ -151,7 +152,8 @@ export class ExploreScene implements Scene {
       g.fillStyle = grad;
       g.fillRect(0, by, VW, bh);
       g.globalAlpha = a;
-      g.shadowColor = "#8a5fd0"; g.shadowBlur = 18;
+      const stCol = G.ctx.endless ? stratumInfo(G.ctx.runDepth).color : "#8a5fd0";
+      g.shadowColor = stCol; g.shadowBlur = 18;
       g.font = `bold 34px ${FONT}`;
       g.textAlign = "center"; g.textBaseline = "middle";
       g.fillStyle = "#e8d8ff";

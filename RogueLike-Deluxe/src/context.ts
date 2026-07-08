@@ -5,7 +5,7 @@ import { Pos, P, key, eqPos, move, Dir, DIRS4, Tile, GameMap, RNG, TimeSystem, m
 import { Player, Monster, MonsterCatalog, MonsterRank, Pnj, Chest, ChestType, Seal, Merchant, Altar, Shrine, Trap, Prop, LoreMark } from "./entities";
 import { Item, ItemCatalog, rollLoot, NIGHT_MERCHANT_NAME } from "./items";
 import { createLevel, hasLevel } from "./levels";
-import { generateFloor, isBossDepth } from "./procgen";
+import { generateFloor, isBossDepth, isStratumEntry, stratumInfo } from "./procgen";
 import { rollCurse } from "./boons";
 import { PNJ_SKILL_GIFTS, SKILLS } from "./skills";
 import { T } from "./i18n";
@@ -254,13 +254,23 @@ export class GameContext {
     this.arenaActive = false;
     this.arenaQueue = [];
 
+    // Nouvelle strate franchie : on l'annonce (identité + montée en intensité).
+    if (isStratumEntry(depth)) {
+      const st = stratumInfo(depth);
+      this.pushLog(T("endless.stratum.enter", { name: T(st.nameKey) }), LogKind.Warning);
+      this.showToast(T("endless.stratum.toast", { name: T(st.nameKey) }), "#f0e6ff", "#241038", 12);
+    }
+
     const boss = isBossDepth(depth);
-    // Étage de boss : la sortie apparaît une fois l'arène nettoyée (le boss est le dernier monstre).
+    // Étage de boss : la sortie n'apparaît qu'une fois le BOSS (rang mini-boss/boss) vaincu.
+    // Les monstres de rang normal (gardes, spawns nocturnes) ne bloquent PAS l'ouverture.
     this.exitPlaced = !boss;
     this.pendingExit = boss ? P(data.playerStart.x, data.playerStart.y) : null;
     if (boss) {
-      const b = this.monsters.find(m => m.rank === MonsterRank.Boss) ?? this.monsters[this.monsters.length - 1];
+      const b = this.monsters.find(m => m.rank !== MonsterRank.Normal) ?? this.monsters[this.monsters.length - 1];
       if (b) this.pendingExit = P(b.pos.x, b.pos.y);
+      // Pas de spawns nocturnes dans l'arène de boss : elle reste un duel propre.
+      this.blockNightSpawnsForTicks(1e9);
       this.pushLog(T("endless.bossfloor", { depth }), LogKind.Warning);
     } else {
       this.pushLog(T("endless.floor", { depth }), LogKind.System);
@@ -274,7 +284,9 @@ export class GameContext {
   // Étage de boss nettoyé → révèle la sortie. Appelé chaque frame côté ExploreScene (bon marché).
   checkEndlessBossExit() {
     if (!this.endless || this.exitPlaced) return;
-    if (this.monsters.some(m => !m.isDead)) return;
+    // La sortie s'ouvre dès que plus aucun boss/mini-boss n'est vivant. Les monstres normaux
+    // (gardes d'élite, spawns nocturnes) ne retiennent plus la porte — c'était LE bug du « plus de sortie ».
+    if (this.monsters.some(m => !m.isDead && m.rank !== MonsterRank.Normal)) return;
     let at = this.pendingExit ?? this.player.pos;
     // La sortie ne doit jamais apparaître sous le joueur (sinon il ne peut pas « entrer » dedans).
     if (eqPos(at, this.player.pos)) at = this.freeFloorNear(at) ?? at;

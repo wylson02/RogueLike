@@ -933,6 +933,120 @@ export class FilmScene implements Scene {
 export function introFilmShots(): FilmShot[] { return introFilm(); }
 export function swordFilmShots(): FilmShot[] { return swordFilm(); }
 export function depthsFilmShots(): FilmShot[] { return depthsFilm(); }
+export function endlessFilmShots(): FilmShot[] { return endlessIntroFilm(); }
+
+// ---- Descente Infinie : le plongeon sans fond ----
+// Traînées verticales qui filent vers le HAUT = sensation de chute.
+function fallStreaks(g: CanvasRenderingContext2D, t: number, speed: number, color: string) {
+  g.save();
+  g.strokeStyle = color; g.lineWidth = 2; g.globalAlpha = 0.5;
+  for (let i = 0; i < 26; i++) {
+    const x = (i * 137.5) % VW;
+    const len = 40 + (i % 5) * 30;
+    const y = (VH * 2 - (t * speed + i * 90)) % (VH + 200) - 100;
+    g.beginPath(); g.moveTo(x, y); g.lineTo(x, y - len); g.stroke();
+  }
+  g.restore();
+}
+
+// Puits abyssal : ellipses concentriques qui s'enfoncent vers un point noir.
+function drawPit(g: CanvasRenderingContext2D, cx: number, cy: number, rings: number, t: number, tint: string) {
+  for (let i = rings; i >= 1; i--) {
+    const rr = i / rings;
+    const rx = 240 * rr, ry = 70 * rr;
+    g.beginPath(); g.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+    const shade = Math.round(14 * rr);
+    g.fillStyle = i === 1 ? "#000" : `rgb(${shade},${Math.round(shade*0.8)},${shade+6})`;
+    g.fill();
+  }
+  g.save(); g.globalAlpha = 0.25; g.strokeStyle = tint;
+  g.beginPath(); g.ellipse(cx, cy, 240, 70, 0, 0, Math.PI * 2); g.stroke(); g.restore();
+}
+
+// Tunnel de strates : anneaux qui défilent vers le fond (perspective de chute).
+function drawStrataTunnel(g: CanvasRenderingContext2D, cx: number, cy: number, t: number) {
+  const cols = ["#6a8fd0", "#4fb0a0", "#8a5fd0", "#b04f8a", "#c0403a", "#d8b038"];
+  g.save();
+  for (let i = 0; i < 9; i++) {
+    const p = ((t * 0.35 + i / 9) % 1); // 0 (loin) → 1 (près)
+    const r = 20 + p * p * 360;
+    const col = cols[(i + Math.floor(t * 0.35)) % cols.length];
+    g.globalAlpha = 0.15 + p * 0.5;
+    g.strokeStyle = col; g.lineWidth = 1 + p * 3; g.shadowColor = col; g.shadowBlur = 8 * p;
+    g.beginPath(); g.ellipse(cx, cy, r * 1.4, r, 0, 0, Math.PI * 2); g.stroke();
+  }
+  g.restore();
+}
+
+// Grand œil de l'Abîme qui s'entrouvre (open ∈ [0,1]).
+function drawAbyssEye(g: CanvasRenderingContext2D, cx: number, cy: number, s: number, open: number, t: number) {
+  g.save();
+  const h = 8 + open * 70 * s;
+  g.fillStyle = "#050208";
+  g.beginPath(); g.ellipse(cx, cy, 150 * s, h, 0, 0, Math.PI * 2); g.fill();
+  // iris
+  g.globalAlpha = open;
+  g.shadowColor = "#ff2a44"; g.shadowBlur = 30 * open;
+  g.fillStyle = "#c0203a";
+  g.beginPath(); g.arc(cx, cy, Math.min(h * 0.8, 34 * s), 0, Math.PI * 2); g.fill();
+  g.fillStyle = "#ffcf4a";
+  g.beginPath(); g.arc(cx, cy, Math.min(h * 0.4, 12 * s) * (0.9 + Math.sin(t * 4) * 0.1), 0, Math.PI * 2); g.fill();
+  g.restore();
+}
+
+function endlessIntroFilm(): FilmShot[] {
+  return [
+    { // 1. au bord du puits sans fond
+      dur: 4.5, captionKey: "film.endless.1", captionColor: "#c8bcd8", sfx: "door",
+      draw: (g, u, t, f) => {
+        drawPit(g, VW / 2, 300, 8, t, "#8a5fd0");
+        drawSpriteFigure(g, "player", VW / 2, 210 + Math.sin(t * 2) * 3, 52, 0.95);
+        if (Math.random() < 0.5) f.particles.spawn({ x: VW / 2 + (Math.random() - 0.5) * 400, y: 320, vx: (Math.random() - 0.5) * 8, vy: -14 - Math.random() * 20, life: 4, maxLife: 4, size: 1.6, color: "#5a3a7a", glow: true });
+      },
+    },
+    { // 2. le saut
+      dur: 3.5, captionKey: "film.endless.2", captionColor: "#e8e0f0", sfx: "warden",
+      draw: (g, u, t) => {
+        fallStreaks(g, t, 520, "#3a2a55");
+        // le héros bascule dans le vide, rapetissant
+        drawSpriteFigure(g, "player", VW / 2, 180 + u * 160, 60 - u * 18, 1);
+        for (let i = 0; i < 3; i++) drawSeal(g, VW / 2 + (i - 1) * 220, (t * 180 + i * 200) % (VH + 100) - 50, 30, "#5adfe8", 0.4);
+      },
+    },
+    { // 3. la lumière se réduit à un point, tout là-haut
+      dur: 4.5, captionKey: "film.endless.3", captionColor: "#8fd4ff", sfx: "night",
+      draw: (g, u, t, f) => {
+        fallStreaks(g, t, 700, "#2a2040");
+        // halo de lumière au sommet qui rétrécit
+        const lr = 220 * (1 - u) + 12;
+        const lg = g.createRadialGradient(VW / 2, -40, 4, VW / 2, -40, lr);
+        lg.addColorStop(0, "rgba(255,246,216,.5)"); lg.addColorStop(1, "rgba(255,246,216,0)");
+        g.fillStyle = lg; g.fillRect(0, 0, VW, 260);
+        drawShadowFigure(g, VW / 2, 300, 0.6, "#8fd4ff", 0.3);
+        // yeux tapis sur les côtés
+        for (let i = 0; i < 5; i++) {
+          const ex = 60 + i * 210 + Math.sin(t + i) * 8, ey = 130 + (i % 2) * 260;
+          if ((i + Math.floor(t)) % 2) { g.fillStyle = "#ff5060"; g.save(); g.shadowColor = "#ff2a44"; g.shadowBlur = 10; g.beginPath(); g.arc(ex, ey, 3, 0, Math.PI * 2); g.arc(ex + 10, ey, 3, 0, Math.PI * 2); g.fill(); g.restore(); }
+        }
+      },
+    },
+    { // 4. les profondeurs sans fin — le tunnel de strates
+      dur: 5, captionKey: "film.endless.4", captionColor: "#c8a0ff", sfx: "seal",
+      draw: (g, u, t) => {
+        drawStrataTunnel(g, VW / 2, VH / 2, t);
+        drawShadowFigure(g, VW / 2, VH / 2 + 4, 0.42 + Math.sin(t * 3) * 0.02, "#c8a0ff", 0.4);
+      },
+    },
+    { // 5. l'Abîme se souvient — descends
+      dur: 5, captionKey: "film.endless.5", captionColor: "#ff9aa4", sfx: "roar",
+      draw: (g, u, t, f) => {
+        drawAbyssEye(g, VW / 2, VH / 2 - 10, 1.1, clamp(u * 1.3, 0, 1), t);
+        if (u > 0.55) textShadow(g, T("hud.depth", { n: 1 }).toUpperCase(), VW / 2, VH / 2 + 120, 20 + (u - 0.55) * 20, "#ffcf4a", "center");
+        if (Math.random() < 0.4) f.particles.spawn({ x: VW / 2 + (Math.random() - 0.5) * 300, y: VH / 2 + 80, vx: (Math.random() - 0.5) * 30, vy: -20 - Math.random() * 30, life: 2, maxLife: 2, size: 2, color: Math.random() < 0.5 ? "#c0203a" : "#3a0810", glow: true });
+      },
+    },
+  ];
+}
 
 // ===== Écran de fin =====
 // Thème visuel par fin : dégradé de fond, halo/lueur du titre, teinte du titre, confettis.
