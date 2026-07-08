@@ -117,6 +117,24 @@ export class CombatScene implements Scene {
     return G.ctx.player.skills.map(id => SKILLS[id]).filter(Boolean) as Skill[];
   }
 
+  // Tags d'effet d'une compétence, déduits automatiquement de ses SkillOp (pour lire le kit d'un coup d'œil)
+  private skillTags(sk: Skill): { icon: string; color: string }[] {
+    const STC: Record<string, { i: string; c: string }> = {
+      burn: { i: "🔥", c: "#ff7a3a" }, bleed: { i: "🩸", c: "#ff4a6a" }, chill: { i: "❄", c: "#7ad4ff" },
+      poison: { i: "☠", c: "#7ae87a" }, stun: { i: "✦", c: "#ffd84a" },
+    };
+    const out: { icon: string; color: string }[] = [];
+    for (const op of sk.ops) {
+      if (op.t === "dmg") out.push({ icon: op.sig ? "★" : "⚔", color: op.sig ? "#ffd84a" : "#ffb0a0" });
+      else if (op.t === "status") { const m = STC[op.kind]; if (m) out.push({ icon: m.i, color: m.c }); }
+      else if (op.t === "armorBreak") out.push({ icon: "🛡", color: "#d0d0d8" });
+      else if (op.t === "selfArmor") out.push({ icon: "🛡", color: "#8fd4ff" });
+      else if (op.t === "dodge") out.push({ icon: "◇", color: "#8fd4ff" });
+      else if (op.t === "heal") out.push({ icon: "✚", color: "#7ae87a" });
+    }
+    return out.slice(0, 3);
+  }
+
   // Consommables de l'inventaire, groupés par type
   private consumables(): { id: string; name: string; count: number }[] {
     const map = new Map<string, { id: string; name: string; count: number }>();
@@ -962,29 +980,62 @@ export class CombatScene implements Scene {
       });
       text(g, T("combat.itemmenu.hint"), VW / 2, y2 + h2 - 12, 10, "#8a8098", "center");
     }
-    // Sous-menu Techniques
+    // Sous-menu Techniques (lisibilité : desc en bas, tags d'effet, coût en pastille, énergie en pips)
     if (this.skillMenu && this.state === "input") {
       const kit = this.kit();
-      const rowH = 34, w2 = 340, h2 = kit.length * rowH + 48;
+      const rowH = 30, w2 = 388, headH = 32, footH = 44;
+      const h2 = headH + kit.length * rowH + footH;
       const x2 = VW / 2 - w2 / 2, y2 = by - 14 - h2;
-      g.fillStyle = "rgba(8,6,14,.95)";
-      g.beginPath(); g.roundRect(x2, y2, w2, h2, 8); g.fill();
+      g.fillStyle = "rgba(10,7,18,.97)";
+      g.beginPath(); g.roundRect(x2, y2, w2, h2, 10); g.fill();
       g.strokeStyle = "rgba(150,130,220,.55)"; g.lineWidth = 1.5;
-      g.beginPath(); g.roundRect(x2, y2, w2, h2, 8); g.stroke();
-      textShadow(g, `${T("act.skills")}   ⚡ ${this.session.energy}/${this.session.maxEnergy}`, VW / 2, y2 + 16, 13, "#c8b0ff", "center");
+      g.beginPath(); g.roundRect(x2, y2, w2, h2, 10); g.stroke();
+
+      // en-tête : titre + jauge d'Énergie en pips
+      textShadow(g, T("act.skills").toUpperCase(), x2 + 16, y2 + 20, 14, "#c8b0ff", "left");
+      const maxE = this.session.maxEnergy, pipGap = 12, pipsW = (maxE - 1) * pipGap;
+      const px0 = x2 + w2 - 16 - pipsW;
+      text(g, "⚡", px0 - 18, y2 + 20, 13, "#ffd84a", "center");
+      for (let e = 0; e < maxE; e++) {
+        g.beginPath(); g.arc(px0 + e * pipGap, y2 + 16, 4, 0, Math.PI * 2);
+        g.fillStyle = e < this.session.energy ? "#ffd84a" : "rgba(120,110,150,.35)";
+        g.fill();
+      }
+      g.strokeStyle = "rgba(150,130,220,.22)"; g.lineWidth = 1;
+      g.beginPath(); g.moveTo(x2 + 12, y2 + headH); g.lineTo(x2 + w2 - 12, y2 + headH); g.stroke();
+
+      // lignes
+      const listY = y2 + headH;
       kit.forEach((sk, i) => {
-        const ry = y2 + 34 + i * rowH;
+        const ry = listY + i * rowH, cy = ry + rowH / 2 + 1;
         const selected = i === this.skillSel;
         const affordable = this.session.energy >= sk.cost;
         if (selected) {
-          g.fillStyle = "rgba(90,60,140,.55)";
-          g.beginPath(); g.roundRect(x2 + 8, ry - 3, w2 - 16, 28, 5); g.fill();
+          g.fillStyle = "rgba(96,64,150,.5)";
+          g.beginPath(); g.roundRect(x2 + 8, ry + 2, w2 - 16, rowH - 4, 6); g.fill();
+          g.save(); g.globalAlpha = 0.55; g.strokeStyle = sk.color; g.lineWidth = 1;
+          g.beginPath(); g.roundRect(x2 + 8, ry + 2, w2 - 16, rowH - 4, 6); g.stroke(); g.restore();
         }
-        const col = !affordable ? "#6a6480" : selected ? "#fff" : "#c8c0d4";
-        text(g, T(sk.nameKey), x2 + 16, ry + 11, 13, col);
-        text(g, `⚡${sk.cost}`, x2 + w2 - 20, ry + 11, 12, affordable ? sk.color : "#6a6480", "right");
-        if (selected) text(g, T(sk.descKey), x2 + 16, ry + 24, 10, "#9a92ac");
+        // tags d'effet
+        let tx = x2 + 16;
+        for (const tg of this.skillTags(sk)) { text(g, tg.icon, tx, cy, 13, affordable ? tg.color : "#5a5470", "left"); tx += 17; }
+        // nom (teinté de la couleur de la compétence)
+        const nameCol = !affordable ? "#6a6480" : selected ? "#fff" : sk.color;
+        text(g, T(sk.nameKey), Math.max(tx + 4, x2 + 74), cy, 13, nameCol, "left");
+        // pastille de coût (rouge si trop cher)
+        const pillW = 32, pillX = x2 + w2 - 16 - pillW;
+        g.fillStyle = affordable ? "rgba(90,60,140,.65)" : "rgba(120,30,30,.55)";
+        g.beginPath(); g.roundRect(pillX, ry + rowH / 2 - 9, pillW, 18, 5); g.fill();
+        text(g, `⚡${sk.cost}`, pillX + pillW / 2, cy, 11, affordable ? "#ffd84a" : "#ff8a8a", "center");
       });
+
+      // pied : description de la sélection (lisible) + aide
+      const fy = listY + kit.length * rowH;
+      g.strokeStyle = "rgba(150,130,220,.22)"; g.lineWidth = 1;
+      g.beginPath(); g.moveTo(x2 + 12, fy); g.lineTo(x2 + w2 - 12, fy); g.stroke();
+      const sel = kit[Math.min(this.skillSel, kit.length - 1)];
+      if (sel) text(g, T(sel.descKey), x2 + 16, fy + 17, 12, "#d8d0e8", "left");
+      text(g, T("combat.skillmenu.hint"), x2 + 16, fy + 34, 10, "#8a8098", "left");
     }
 
     // Statuts actifs (pastilles) — burn/bleed/chill inclus, avec puissance
