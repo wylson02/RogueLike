@@ -9,7 +9,7 @@ import { SceneManager, Scene } from "./scenes";
 import { MainMenuScene } from "./menuScenes";
 import { ExploreScene, MerchantScene } from "./exploreScene";
 import { CombatScene } from "./combatScene";
-import { CinematicScene, introPages, swordPages, bossIntroPages, depthsIntroPages, bossEncounterPages, loreMarkPages, EndScene } from "./cinematics";
+import { CinematicScene, introPages, swordPages, bossIntroPages, depthsIntroPages, bossEncounterPages, loreMarkPages, finalRevelationPages, EndScene } from "./cinematics";
 import { EndlessHubScene, RelicDraftScene, RunSummaryScene } from "./endlessScenes";
 import { G, Flow } from "./game";
 import { loadSettings, loadGame, clearSave, saveGame } from "./save";
@@ -81,6 +81,13 @@ Flow.bossEncounter = (monster: Monster) => {
 // Découverte d'un point de lore : courte cinématique atmosphérique, puis retour au jeu.
 Flow.loreCinematic = (cineKey: string) => {
   SceneManager.switchTo(() => new CinematicScene(loreMarkPages(cineKey), () => Flow.toExplore(), "#8a5fd0"));
+  Audio.setMode("none");
+};
+
+// Fin Véritable : le Dévoreur vaincu → révélation qui referme la boucle, puis écran de victoire.
+Flow.trueEnding = () => {
+  clearSave();
+  SceneManager.switchTo(() => new CinematicScene(finalRevelationPages(), () => Flow.endScreen(true, true), "#c8a0ff"));
   Audio.setMode("none");
 };
 

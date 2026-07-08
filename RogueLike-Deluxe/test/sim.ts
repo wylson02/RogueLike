@@ -526,6 +526,22 @@ console.log("=== MAP 2 : LABYRINTHE + PIEGES ===");
   check(okGas && gas.sprung && c.player.hasStatus("poison"), "le piège à gaz empoisonne le joueur");
 }
 
+console.log("=== LORE : inscriptions atteignables (niveaux 1-5) ===");
+{
+  for (const lvl of [1, 2, 3, 4, 5]) {
+    const c = new GameContext();
+    c.loadLevel(lvl); c.drainEvents();
+    // BFS depuis le départ
+    const m = c.map, start = c.player.pos;
+    const seen = new Set([start.x + "," + start.y]); const q = [start];
+    while (q.length) { const p = q.shift()!; for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1]]) { const nx = p.x+dx, ny = p.y+dy, k = nx+","+ny; if (seen.has(k) || !m.isWalkable(P(nx, ny))) continue; seen.add(k); q.push(P(nx, ny)); } }
+    for (const lm of c.loreMarks) {
+      const ok = m.isWalkable(lm.pos) && seen.has(lm.pos.x + "," + lm.pos.y);
+      check(ok, `lore niveau ${lvl} : ${lm.cineKey} atteignable en (${lm.pos.x},${lm.pos.y})`);
+    }
+  }
+}
+
 console.log("=== LORE : evenement de la trace du Rival (niveau 4) ===");
 {
   const c = new GameContext();

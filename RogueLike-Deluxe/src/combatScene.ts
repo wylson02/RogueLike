@@ -61,7 +61,9 @@ export class CombatScene implements Scene {
   }
 
   enter() {
-    Audio.setMode(this.enemy.rank === MonsterRank.Boss ? "boss" : "combat");
+    // Musique boss aussi pour le Gardien des Sceaux (mini-boss) : même thème que son dialogue.
+    const bossMusic = this.enemy.rank === MonsterRank.Boss || this.enemy.nameKey.startsWith("mob.warden");
+    Audio.setMode(bossMusic ? "boss" : "combat");
     if (this.enemy.rank === MonsterRank.Boss) Audio.sfx("roar");
     else Audio.sfx("hit");
   }
@@ -494,8 +496,9 @@ export class CombatScene implements Scene {
         Flow.toExplore();
         return;
       }
-      // Fin Véritable : le Dévoreur d'Âmes vaincu dans les Profondeurs, après avoir affronté le Rival.
-      Flow.endScreen(true, G.ctx.currentLevel === 5);
+      // Fin Véritable : le Dévoreur d'Âmes vaincu dans les Profondeurs → révélation qui referme la boucle.
+      if (G.ctx.currentLevel === 5) { Flow.trueEnding(); return; }
+      Flow.endScreen(true);
       return;
     }
     saveGame(G.ctx);

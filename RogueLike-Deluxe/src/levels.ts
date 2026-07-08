@@ -59,6 +59,7 @@ function level1(): LevelData {
     ],
     seals: [],
     merchant: null,
+    loreMarks: [new LoreMark(P(8, 6), "lore.inscription1", "lore_rune")],
   };
 }
 
@@ -98,6 +99,7 @@ function level2(): LevelData {
       new Trap(P(10, 2), "gas"),     // impasse nord (garde une vue sur le coffre voisin)
       new Trap(P(4, 8), "spikes"),   // carrefour du chemin d'entrée (piège de passage)
     ],
+    loreMarks: [new LoreMark(P(15, 10), "lore.inscription2", "lore_rune")],
     // Décor immersif : torches (braseros) qui éclairent + ossements/colonnes/toiles/flaques
     props: [
       new Prop(P(14, 10), "torch"), new Prop(P(18, 13), "torch"),   // rotonde
@@ -139,6 +141,7 @@ function level3(): LevelData {
       new Pnj(P(10, 8), "Elya", "pnj.elya"),
       new Pnj(P(28, 8), "Rival", "rival.lvl3.nosword"),
     ],
+    loreMarks: [new LoreMark(P(16, 8), "lore.inscription3", "lore_rune")],
   };
 }
 
@@ -177,5 +180,6 @@ function level5(): LevelData {
     seals: [],
     merchant: null,
     pnjs: [],
+    loreMarks: [new LoreMark(P(8, 9), "lore.inscription5", "lore_rune")],
   };
 }

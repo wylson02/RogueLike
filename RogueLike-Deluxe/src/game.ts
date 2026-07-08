@@ -23,6 +23,7 @@ export const Flow: {
   startCombat: (monster: any) => void;
   bossEncounter: (monster: any) => void;
   loreCinematic: (cineKey: string) => void;
+  trueEnding: () => void;
   bossIntroThenLevel4: () => void;
   depthsIntroThenLevel5: () => void;
   swordCinematic: () => void;

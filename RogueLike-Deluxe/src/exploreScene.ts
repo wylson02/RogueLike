@@ -103,7 +103,7 @@ export class ExploreScene implements Scene {
           }
           this.pendingCombat = m;
           this.flashT = 0;
-          Audio.setMode(m.rank === MonsterRank.Boss ? "boss" : "combat");
+          Audio.setMode(m.rank === MonsterRank.Boss || m.nameKey.startsWith("mob.warden") ? "boss" : "combat");
           Audio.sfx("hit");
           return;
         }

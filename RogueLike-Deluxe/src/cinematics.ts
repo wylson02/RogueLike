@@ -289,9 +289,54 @@ export function loreMarkPages(cineKey: string): CinePage[] {
           sfx: "warden",
         },
       ];
+    // Inscriptions gravées disséminées : le fil de la boucle se resserre, niveau après niveau.
+    case "lore.inscription1":
+    case "lore.inscription2":
+    case "lore.inscription3":
+    case "lore.inscription5":
+      return [{
+        title: T("lore.inscription.t"), sprite: "lore_rune", spriteGlow: "#8a5fd0", bg: "#0a0710",
+        lines: [
+          { text: T(cineKey + ".1") },
+          { text: T(cineKey + ".2"), color: "#c8a8ff" },
+        ],
+        sfx: "seal",
+      }];
     default:
       return [{ lines: [{ text: cineKey }] }];
   }
+}
+
+// ===== Révélation finale : après le Dévoreur, la boucle se referme =====
+export function finalRevelationPages(): CinePage[] {
+  return [
+    {
+      title: T("finalrev.t"), bg: "#08060f",
+      lines: [
+        { text: T("finalrev.1") },
+        { text: T("finalrev.2"), color: "#c8a8ff" },
+      ],
+      sfx: "phase2",
+    },
+    {
+      title: T("finalrev.t2"), sprite: "rival_blade", spriteGlow: "#c8a0ff", bg: "#0a0812",
+      lines: [
+        { text: T("finalrev.3") },
+        { text: T("finalrev.4"), color: "#ff9090" },
+        { text: T("finalrev.5"), color: "#c8f0ff" },
+      ],
+      sfx: "seal",
+    },
+    {
+      title: T("finalrev.t3"), bg: "#060810",
+      lines: [
+        { text: T("finalrev.6"), color: "#e0d0ff" },
+        { text: "" },
+        { text: T("finalrev.7"), color: "#8fd4ff", size: 15 },
+      ],
+      sfx: "victory",
+    },
+  ];
 }
 
 // ===== Écran de fin =====

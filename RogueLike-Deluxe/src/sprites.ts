@@ -268,6 +268,26 @@ export function initSprites() {
     r: "#1d1730", R: "#322447", g: "#b06aff", s: "#b8c4e0", O,
   });
 
+  // ================= LORE : pierre gravée (inscriptions) =================
+  sprites["lore_rune"] = mk([
+    "................",
+    "................",
+    "...OOOOOOOO.....",
+    "..OssssssssO....",
+    "..OsRsssRssO....",
+    "..OssRsRsssO....",
+    "..OsRsssRssO....",
+    "..OssssssssO....",
+    "..OsRsRsRssO....",
+    "..OssssssssO....",
+    "..OsssRssssO....",
+    "..OOOOOOOOOO....",
+    "...hhhhhhhh.....",
+    "................",
+    "................",
+    "................",
+  ], { s: "#3a3448", R: "#9a6fe0", h: "#241f30", O: "#1a1622" });
+
   // ================= LORE : lame brisée du Rival =================
   sprites["rival_blade"] = mk([
     "................",
