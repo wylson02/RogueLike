@@ -9,7 +9,7 @@ import { SceneManager, Scene } from "./scenes";
 import { MainMenuScene } from "./menuScenes";
 import { ExploreScene, MerchantScene, CreedChoiceScene } from "./exploreScene";
 import { CombatScene } from "./combatScene";
-import { CinematicScene, bossIntroPages, bossEncounterPages, loreMarkPages, EndingFilmScene, FilmScene, introFilmShots, swordFilmShots, depthsFilmShots, EndScene, EndingId } from "./cinematics";
+import { CinematicScene, bossIntroPages, bossEncounterPages, loreMarkPages, EndingFilmScene, FilmScene, introFilmShots, swordFilmShots, depthsFilmShots, endlessFilmShots, EndScene, EndingId } from "./cinematics";
 import { EndlessHubScene, RelicDraftScene, RunSummaryScene } from "./endlessScenes";
 import { G, Flow } from "./game";
 import { loadSettings, loadGame, clearSave, saveGame } from "./save";
@@ -139,10 +139,14 @@ Flow.startEndless = (classId: ClassId) => {
   applyClass(G.ctx.player, classId);
   const meta = loadMeta();
   applyMetaToPlayer(G.ctx.player, meta);
-  G.ctx.startEndlessRun(essenceMultiplier(meta));
-  G.ctx.drainEvents();
-  Flow.toExplore();
-  Audio.setMode("explore");
+  // Cinématique de plongeon dans l'Abîme, puis le run démarre (étage 1 chargé à la fin du film).
+  SceneManager.switchTo(() => new FilmScene(endlessFilmShots(), () => {
+    G.ctx.startEndlessRun(essenceMultiplier(meta));
+    G.ctx.drainEvents();
+    Flow.toExplore();
+    Audio.setMode("explore");
+  }));
+  Audio.setMode("none");
 };
 
 Flow.relicDraft = () => SceneManager.switchTo(() => new RelicDraftScene());
