@@ -1,6 +1,7 @@
 // ===== Sauvegarde (localStorage) =====
 import { GameContext } from "./context";
 import { Player, ClassId } from "./entities";
+import { defaultKit } from "./skills";
 import { ItemCatalog } from "./items";
 import { P } from "./core";
 import { Lang } from "./i18n";
@@ -25,6 +26,7 @@ interface SaveData {
     dodgeBonus?: number;
     classPassiveUnlocked?: boolean;
     talents?: string[];
+    skills?: string[];
     inv: string[];
     eqW: string | null; eqA: string | null; eqAcc: string | null; eqRelic: string | null;
   };
@@ -50,6 +52,7 @@ export function saveGame(ctx: GameContext) {
         dodgeBonus: p.dodgeBonus,
         classPassiveUnlocked: p.classPassiveUnlocked,
         talents: p.talents,
+        skills: p.skills,
         inv: p.inventory.map(i => i.id),
         eqW: p.equippedWeapon?.id ?? null,
         eqA: p.equippedArmor?.id ?? null,
@@ -99,6 +102,7 @@ export function loadGame(ctx: GameContext): number | null {
     p.dodgeBonus = s.dodgeBonus ?? 0;
     p.classPassiveUnlocked = s.classPassiveUnlocked ?? false;
     p.talents = s.talents ?? []; // les bonus immédiats sont déjà cuits dans les stats sauvegardées
+    p.skills = s.skills ?? defaultKit(p.classId); // sauvegardes pré-compétences : kit par défaut de la classe
     for (const id of s.inv) { try { p.inventory.push(ItemCatalog.create(id, P(-1, -1))); } catch { } }
     // équipement restauré SANS ré-appliquer les bonus (déjà inclus dans les stats)
     if (s.eqW) p.equippedWeapon = ItemCatalog.create(s.eqW, P(-1, -1));

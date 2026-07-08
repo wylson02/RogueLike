@@ -2,6 +2,7 @@
 import { Pos, P, RNG, clamp, Dir } from "./core";
 import type { Item } from "./items";
 import { T } from "./i18n";
+import { defaultKit } from "./skills";
 
 // ===== Effets de statut (portée : un combat) =====
 // poison/burn/bleed : dégâts par tour • stun : perd son tour • chill : réduit l'ATK effective
@@ -82,6 +83,7 @@ export class Player extends Character {
   dodgeBonus = 0;
   classPassiveUnlocked = false;
   talents: string[] = []; // ids de talents choisis (ex. "w1a")
+  skills: string[] = [];  // kit de compétences équipées (ids ; voir skills.ts). Rempli par la classe.
   // ===== Boons de run (Descente Infinie) : id → cumuls. Lus par le combat via les hooks. =====
   runBoons: Record<string, number> = {};
 
@@ -155,6 +157,15 @@ export class Player extends Character {
   }
 
   hasTalent(id: string): boolean { return this.talents.includes(id); }
+
+  // Apprend une compétence. Avec replaceId, elle prend la place de celle-ci dans le kit
+  // (c'est l'API que les PNJ de Phase 2 appelleront pour offrir une technique unique).
+  learnSkill(id: string, replaceId?: string) {
+    if (this.skills.includes(id)) return;
+    const idx = replaceId ? this.skills.indexOf(replaceId) : -1;
+    if (idx >= 0) this.skills[idx] = id;
+    else this.skills.push(id);
+  }
 
   // Palier de talent en attente de choix : niv 3 → palier 1, niv 6 → palier 2
   pendingTalentTier(): 1 | 2 | null {
@@ -246,6 +257,7 @@ export function chooseTalent(p: Player, def: TalentDef) {
 // Applique les deltas de stats de départ d'une classe à un joueur fraîchement créé.
 export function applyClass(p: Player, id: ClassId) {
   p.classId = id;
+  p.skills = defaultKit(id); // kit de compétences de départ de la classe
   switch (id) {
     case "warrior":
       p.maxHp += 20; p.hp = p.maxHp;

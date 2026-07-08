@@ -6,7 +6,8 @@ import { Audio } from "./audio";
 import { T } from "./i18n";
 import { G, Flow } from "./game";
 import { CombatSession, CombatActionId, INTENT_ICON } from "./combat";
-import { Monster, MonsterRank, ClassCatalog } from "./entities";
+import { Monster, MonsterRank } from "./entities";
+import { SKILLS, Skill } from "./skills";
 import { getSprite } from "./sprites";
 import { clamp, lerp } from "./core";
 import { saveGame } from "./save";
@@ -31,6 +32,8 @@ export class CombatScene implements Scene {
   private state: "intro" | "input" | "anim" | "done" = "intro";
   private itemMenu = false; // sous-menu Objet ouvert
   private itemSel = 0;
+  private skillMenu = false; // sous-menu Techniques ouvert
+  private skillSel = 0;
   private steps: AnimStep[] = [];
   private animT = 0;
   private particles = new Particles();
@@ -95,12 +98,9 @@ export class CombatScene implements Scene {
       },
       { id: "flee", label: T("act.flee"), enabled: true, key: "4" },
       {
-        id: "class",
-        label: s.classAbilityUsesLeft <= 0 ? T("act.class.used")
-          : s.classAbilityUsesLeft > 1
-            ? T(ClassCatalog[s.player.classId].abilityNameKey) + " ×" + s.classAbilityUsesLeft
-            : T(ClassCatalog[s.player.classId].abilityNameKey),
-        enabled: s.classAbilityUsesLeft > 0, key: "5",
+        id: "skill",
+        label: T("act.skills") + `  ⚡${s.energy}`,
+        enabled: this.kit().length > 0, key: "5",
       },
       {
         id: "item",
@@ -110,6 +110,11 @@ export class CombatScene implements Scene {
         enabled: this.consumables().length > 0, key: "6",
       },
     ];
+  }
+
+  // Kit de compétences équipées du joueur (résolu depuis les ids)
+  private kit(): Skill[] {
+    return G.ctx.player.skills.map(id => SKILLS[id]).filter(Boolean) as Skill[];
   }
 
   // Consommables de l'inventaire, groupés par type
@@ -197,6 +202,22 @@ export class CombatScene implements Scene {
         break;
 
       case "input": {
+        // Sous-menu Techniques : navigation prioritaire
+        if (this.skillMenu) {
+          const kit = this.kit();
+          if (Input.consume("cancel") || kit.length === 0) { this.skillMenu = false; Audio.sfx("back"); Input.clear(); break; }
+          if (Input.consume("up")) { this.skillSel = (this.skillSel + kit.length - 1) % kit.length; Audio.sfx("ui"); }
+          if (Input.consume("down")) { this.skillSel = (this.skillSel + 1) % kit.length; Audio.sfx("ui"); }
+          if (Input.consume("confirm")) {
+            const sk = kit[Math.min(this.skillSel, kit.length - 1)];
+            if (this.session.energy < sk.cost) { Audio.sfx("locked"); break; }
+            this.skillMenu = false;
+            Audio.sfx("confirm");
+            this.abilityBanner = 1.1; this.abilityBannerName = T(sk.nameKey); this.abilityBannerColor = sk.color;
+            this.playRound("skill", sk.id);
+          }
+          break;
+        }
         // Sous-menu Objet : navigation prioritaire
         if (this.itemMenu) {
           const list = this.consumables();
@@ -227,6 +248,7 @@ export class CombatScene implements Scene {
           if (!a.enabled) { Audio.sfx("locked"); break; }
           this.sel = chosen;
           if (a.id === "item") { this.itemMenu = true; this.itemSel = 0; Audio.sfx("ui"); break; }
+          if (a.id === "skill") { this.skillMenu = true; this.skillSel = 0; Audio.sfx("ui"); break; }
           this.playRound(a.id);
         }
         break;
@@ -347,6 +369,25 @@ export class CombatScene implements Scene {
             break;
           case "resonance":
             ringAt(ex, ey, 120, "#fff");
+            break;
+          case "skillHit": {
+            // coup de compétence non-signature : gerbe teintée de la couleur de la compétence
+            const col = e.variant ?? "#c8c0d4";
+            Audio.sfx("hit");
+            this.heroLunge = 1; this.hitstop = 0.06;
+            this.enemyShake = 1.3; this.enemyFlash = 1; this.screenShake = 0.5;
+            slashAt(ex, ey, col);
+            ringAt(ex, ey, 84, col);
+            this.particles.burst(ex, ey, col, 22, 170, 0.8, 3.8, true);
+            if (e.value) pop(ex, ey - 56, "-" + e.value, col, 28, 1.2);
+            break;
+          }
+          case "armorBreak":
+            Audio.sfx("crit");
+            this.enemyShake = 1.4; this.enemyFlash = 1; this.hitstop = 0.05;
+            ringAt(ex, ey, 88, "#d0d0d8");
+            this.particles.burst(ex, ey, "#d0d0d8", 18, 150, 0.7, 3.4);
+            pop(ex, ey - 40, T("combat.pop.armorbreak", { n: e.value }), "#d0d0d8", 20, 1.2);
             break;
           case "heal":
             Audio.sfx("heal");
@@ -921,6 +962,30 @@ export class CombatScene implements Scene {
       });
       text(g, T("combat.itemmenu.hint"), VW / 2, y2 + h2 - 12, 10, "#8a8098", "center");
     }
+    // Sous-menu Techniques
+    if (this.skillMenu && this.state === "input") {
+      const kit = this.kit();
+      const rowH = 34, w2 = 340, h2 = kit.length * rowH + 48;
+      const x2 = VW / 2 - w2 / 2, y2 = by - 14 - h2;
+      g.fillStyle = "rgba(8,6,14,.95)";
+      g.beginPath(); g.roundRect(x2, y2, w2, h2, 8); g.fill();
+      g.strokeStyle = "rgba(150,130,220,.55)"; g.lineWidth = 1.5;
+      g.beginPath(); g.roundRect(x2, y2, w2, h2, 8); g.stroke();
+      textShadow(g, `${T("act.skills")}   ⚡ ${this.session.energy}/${this.session.maxEnergy}`, VW / 2, y2 + 16, 13, "#c8b0ff", "center");
+      kit.forEach((sk, i) => {
+        const ry = y2 + 34 + i * rowH;
+        const selected = i === this.skillSel;
+        const affordable = this.session.energy >= sk.cost;
+        if (selected) {
+          g.fillStyle = "rgba(90,60,140,.55)";
+          g.beginPath(); g.roundRect(x2 + 8, ry - 3, w2 - 16, 28, 5); g.fill();
+        }
+        const col = !affordable ? "#6a6480" : selected ? "#fff" : "#c8c0d4";
+        text(g, T(sk.nameKey), x2 + 16, ry + 11, 13, col);
+        text(g, `⚡${sk.cost}`, x2 + w2 - 20, ry + 11, 12, affordable ? sk.color : "#6a6480", "right");
+        if (selected) text(g, T(sk.descKey), x2 + 16, ry + 24, 10, "#9a92ac");
+      });
+    }
 
     // Statuts actifs (pastilles) — burn/bleed/chill inclus, avec puissance
     const STATUS_COL: Record<string, string> = {
@@ -942,7 +1007,7 @@ export class CombatScene implements Scene {
     if (this.session.mistTurns > 0)
       text(g, T("status.mist"), px + 200, py + 124, 12, "#8fd4ff");
 
-    if (this.state === "input" && !this.itemMenu)
+    if (this.state === "input" && !this.itemMenu && !this.skillMenu)
       text(g, T("combat.yourturn"), VW / 2, by - 16, 12, "#8fd4ff", "center");
     if (this.state === "done" && Math.sin(this.t * 4) > -0.2)
       textShadow(g, T("combat.continue"), VW / 2, by - 16, 13, "#ffd84a", "center");

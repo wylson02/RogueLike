@@ -8,9 +8,10 @@
 import { GameContext, LogKind } from "./context";
 import { Monster, MonsterRank } from "./entities";
 import { hasResonance, elementStacks } from "./boons";
+import { SKILLS } from "./skills";
 import { T } from "./i18n";
 
-export type CombatActionId = "attack" | "heal" | "dodge" | "flee" | "class" | "item";
+export type CombatActionId = "attack" | "heal" | "dodge" | "flee" | "class" | "skill" | "item";
 
 export interface CombatEvent {
   type: "playerHit" | "playerCrit" | "enemyHit" | "playerDodge" | "heal" | "dodgeUp"
@@ -21,9 +22,11 @@ export interface CombatEvent {
       | "burn" | "bleed" | "chill" | "freeze" | "thunder" | "echoHit" | "combustion"
       | "thorns" | "enemyCharge" | "enemyGuard" | "enemyLeech" | "resonance"
       // ---- allié (fin 2 v 1 : le Rival épargné combat à tes côtés) ----
-      | "allyHit" | "allyCover" | "allyFall";
+      | "allyHit" | "allyCover" | "allyFall"
+      // ---- compétences (menu Techniques) ----
+      | "skillHit" | "armorBreak";
   value?: number;
-  variant?: string; // ex. classe pour classAbility (warrior/mage/rogue)
+  variant?: string; // ex. classe pour classAbility (warrior/mage/rogue), ou teinte pour skillHit
 }
 
 // Allié de combat : le Rival, quand il a été épargné, se dresse contre le Dévoreur d'Âmes.
@@ -96,6 +99,10 @@ export class CombatSession {
   healsLeft = 2;
   readonly healAmount = 8;
   classAbilityUsesLeft = 1;
+  // ---- Énergie : ressource du menu Techniques. Regénère chaque tour ; l'attaque de base en donne. ----
+  energy = 3;
+  readonly maxEnergy = 6;
+  readonly energyRegen = 2;
   mistTurns = 0; // Potion de brume : esquive garantie (même contre les charges)
   enemySpecialUsed = false;
   dodgeTurnsLeft = 0;
@@ -199,6 +206,7 @@ export class CombatSession {
     }
     this.allyTurn(); // le Rival riposte à ton côté (2 v 1)
     if (this.dodgeTurnsLeft > 0) this.dodgeTurnsLeft--;
+    this.energy = Math.min(this.maxEnergy, this.energy + this.energyRegen); // regen d'Énergie
 
     this.tickStatuses();
     this.checkEnemyDead(); // mort par poison/brûlure/saignement/allié
@@ -265,7 +273,7 @@ export class CombatSession {
 
   // ===== Frappe du joueur : cœur des hooks de boons =====
   // Retourne les dégâts totaux infligés. isEcho évite les récursions d'écho infinies.
-  private strike(baseMult: number, opts: { autoCrit?: boolean; pierce?: boolean; isEcho?: boolean; label?: "attack" | "class" } = {}): number {
+  private strike(baseMult: number, opts: { autoCrit?: boolean; pierce?: boolean; isEcho?: boolean; label?: "attack" | "class" | "skill" } = {}): number {
     const p = this.player, e = this.enemy;
     const base = Math.max(1, Math.round(p.attack * baseMult));
     let crit = opts.autoCrit ?? false;
@@ -303,6 +311,8 @@ export class CombatSession {
       // le log de la capacité est écrit par l'appelant ; on émet juste l'event
       // (variant = classe → chorégraphie signature côté scène de combat)
       this.emit({ type: "classAbility", value: dealt, variant: p.classId });
+    } else if (opts.label === "skill") {
+      // dégâts silencieux : executeSkill gère le log et l'animation de la compétence
     } else if (opts.isEcho) {
       this.addLog(T("combat.echo", { n: dealt }));
       this.emit({ type: "echoHit", value: dealt });
@@ -385,6 +395,10 @@ export class CombatSession {
     switch (action) {
       case "attack":
         this.strike(1, { label: "attack" });
+        this.energy = Math.min(this.maxEnergy, this.energy + 1); // l'attaque de base génère de l'Énergie
+        break;
+      case "skill":
+        this.executeSkill(itemId); // itemId réutilisé pour transporter l'id de compétence
         break;
       case "heal": {
         if (this.healsLeft <= 0) return;
@@ -467,6 +481,60 @@ export class CombatSession {
         }
         break;
       }
+    }
+  }
+
+  // ===== Exécuteur de compétence : interprète les briques SkillOp (voir skills.ts) =====
+  // C'est le "moteur" de la couture : le contenu ne fait qu'assembler des ops, tout passe ici.
+  private executeSkill(id?: string) {
+    const sk = id ? SKILLS[id] : undefined;
+    if (!sk || !this.player.skills.includes(sk.id)) return;
+    if (this.energy < sk.cost) { this.emit({ type: "fleeFail" }); return; } // sécurité (l'UI grise déjà)
+    this.energy -= sk.cost;
+    const p = this.player, e = this.enemy;
+    this.addLog(T("combat.skill.use", { name: T(sk.nameKey) }));
+    for (const op of sk.ops) {
+      switch (op.t) {
+        case "dmg": {
+          const dealt = this.strike(op.mult, { pierce: op.pierce, autoCrit: op.autoCrit, label: "skill" });
+          if (op.sig) this.emit({ type: "classAbility", value: dealt, variant: p.classId });
+          else this.emit({ type: "skillHit", value: dealt, variant: sk.color });
+          break;
+        }
+        case "status": {
+          const tgt = op.who === "enemy" ? e : p;
+          tgt.addStatus(op.kind, op.turns, op.power ?? 0);
+          this.emitStatusFx(op.kind, op.who, op.power ?? 0);
+          break;
+        }
+        case "armorBreak":
+          e.modifyArmor(-op.amount);
+          this.emit({ type: "armorBreak", value: op.amount });
+          break;
+        case "selfArmor":
+          p.addArmor(op.amount);
+          this.emit({ type: "dodgeUp" });
+          break;
+        case "dodge":
+          this.dodgeTurnsLeft = Math.max(this.dodgeTurnsLeft, op.turns);
+          this.emit({ type: "dodgeUp" });
+          break;
+        case "heal":
+          p.heal(op.amount);
+          this.emit({ type: "heal", value: op.amount });
+          break;
+      }
+    }
+  }
+
+  // fx d'un statut appliqué par une compétence → réutilise les events existants
+  private emitStatusFx(kind: string, who: "enemy" | "self", power: number) {
+    switch (kind) {
+      case "burn": this.emit({ type: "burn", value: power }); break;
+      case "bleed": this.emit({ type: "bleed", value: power }); break;
+      case "chill": this.emit({ type: "chill", value: power }); break;
+      case "poison": this.emit({ type: who === "enemy" ? "poisonEnemy" : "poisonPlayer", value: power }); break;
+      case "stun": this.emit({ type: who === "enemy" ? "stunEnemy" : "stunPlayer" }); break;
     }
   }
 
