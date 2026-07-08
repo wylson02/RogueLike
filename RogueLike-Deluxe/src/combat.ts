@@ -513,7 +513,7 @@ export class CombatSession {
           this.enemySpecialUsed = true;
           this.enemy.addArmor(4);
           this.addLog(T("combat.special.warden", { name: this.enemy.name }));
-          this.emit({ type: "enemyBuff" });
+          this.emit({ type: "enemyBuff", variant: this.enemy.nameKey });
         }
         break;
       case "mob.boss": if (hpPct <= 0.75) forceCharge(3, 5); break;
@@ -530,7 +530,7 @@ export class CombatSession {
           const heal = Math.round(this.enemy.maxHp * 0.25);
           this.enemy.heal(heal);
           this.addLog(T("combat.special.gargoyle", { name: this.enemy.name, n: heal }));
-          this.emit({ type: "enemyBuff" });
+          this.emit({ type: "enemyBuff", variant: this.enemy.nameKey });
         }
         break;
     }
@@ -651,14 +651,14 @@ export class CombatSession {
     if (it.kind === "charge") {
       this.chargedIntent = { ...I.heavy(it.mult, it.flat), unavoidable: false };
       this.addLog(T("combat.enemy.charge", { name: this.enemy.name }));
-      this.emit({ type: "enemyCharge" });
+      this.emit({ type: "enemyCharge", variant: this.enemy.nameKey });
       return;
     }
     // ---- GUARD : buff défensif ----
     if (it.kind === "guard") {
       this.enemy.addArmor(it.arm ?? 2);
       this.addLog(T("combat.enemy.guard", { name: this.enemy.name, n: it.arm ?? 2 }));
-      this.emit({ type: "enemyGuard" });
+      this.emit({ type: "enemyGuard", variant: this.enemy.nameKey });
       return;
     }
 
@@ -708,23 +708,23 @@ export class CombatSession {
           break;
         case "heavy":
           this.addLog(T("combat.enemy.heavy", { name: this.enemy.name, n: dmg }));
-          this.emit({ type: "enemySpecial", value: dmg });
+          this.emit({ type: "enemySpecial", value: dmg, variant: this.enemy.nameKey });
           break;
         case "pierce":
           this.addLog(T("combat.enemy.pierce", { name: this.enemy.name, n: dmg }));
-          this.emit({ type: "enemySpecial", value: dmg });
+          this.emit({ type: "enemySpecial", value: dmg, variant: this.enemy.nameKey });
           break;
         case "leech": {
           const heal = Math.max(1, Math.round(dmg * ((it.healPct ?? 50) / 100)));
           this.enemy.heal(heal);
           this.addLog(T("combat.enemy.leech", { name: this.enemy.name, n: dmg, heal }));
-          this.emit({ type: "enemyLeech", value: dmg });
+          this.emit({ type: "enemyLeech", value: dmg, variant: this.enemy.nameKey });
           break;
         }
         case "venom":
           if (it.poison) this.player.addStatus("poison", it.poison.turns, it.poison.power);
           this.addLog(T("combat.enemy.venom", { name: this.enemy.name, n: dmg }));
-          this.emit({ type: "enemySpecial", value: dmg });
+          this.emit({ type: "enemySpecial", value: dmg, variant: this.enemy.nameKey });
           break;
       }
       // Affixe Vampirique : se nourrit de chaque coup

@@ -534,6 +534,9 @@ const FR: Dict = {
   "combat.heavy.braced": "Tu te ramasses derrière ta garde : le coup de {name} est amorti de moitié !",
   "combat.special.telegraph": "{name} tremble de rage… PRÉPARE QUELQUE CHOSE D'ÉNORME.",
   "combat.pop.charging": "CHARGE !",
+  "boss.move.warden": "Sceau de Pierre",
+  "boss.move.devourer": "Dévoration",
+  "boss.move.rival": "Estoc Corrompu",
   "combat.pop.frozen": "GELÉ !",
 
   // ===== REBIRTH : statuts élémentaires =====
@@ -1240,6 +1243,9 @@ const EN: Dict = {
   "combat.heavy.braced": "You brace behind your guard: {name}'s blow is halved!",
   "combat.special.telegraph": "{name} trembles with rage… IT'S PREPARING SOMETHING HUGE.",
   "combat.pop.charging": "CHARGING!",
+  "boss.move.warden": "Stone Seal",
+  "boss.move.devourer": "Devouring",
+  "boss.move.rival": "Corrupted Thrust",
   "combat.pop.frozen": "FROZEN!",
 
   // ===== REBIRTH: elemental statuses =====

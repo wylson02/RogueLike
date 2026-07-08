@@ -372,16 +372,35 @@ export class CombatScene implements Scene {
           case "fleeOk": Audio.sfx("flee"); break;
           case "fleeFail": Audio.sfx("locked"); this.screenShake = 0.4; break;
           case "enemyCharge":
-            Audio.sfx("charge");
-            this.enemyFlash = 0.6;
-            ringAt(ex, ey, 100, "#ff5060");
-            this.particles.burst(ex, ey, "#ff5060", 18, -120, 0.8, 3, true); // implosion visuelle
-            pop(ex, ey - 70, T("combat.pop.charging"), "#ff9090", 24, 1.4);
+            if (e.variant === "mob.superboss") {
+              // DÉVOREUR D'ÂME : l'Abîme aspire tout vers lui avant de frapper.
+              Audio.sfx("roar");
+              this.enemyFlash = 0.8; this.screenShake = 0.7;
+              this.flashTint = 0.22; this.flashColor = "#3a0810";
+              ringAt(ex, ey, 150, "#c0203a"); ringAt(ex, ey, 200, "#7a1020");
+              this.particles.burst(ex, ey, "#c0203a", 30, -170, 1.1, 3.6, true); // aspiration
+              this.particles.burst(ex, ey, "#3a0810", 18, -120, 1, 3, true);
+              pop(ex, ey - 74, T("combat.pop.charging"), "#ff6a7a", 24, 1.5);
+            } else {
+              Audio.sfx("charge");
+              this.enemyFlash = 0.6;
+              ringAt(ex, ey, 100, "#ff5060");
+              this.particles.burst(ex, ey, "#ff5060", 18, -120, 0.8, 3, true); // implosion visuelle
+              pop(ex, ey - 70, T("combat.pop.charging"), "#ff9090", 24, 1.4);
+            }
             break;
           case "enemyGuard":
-            Audio.sfx("dodge");
-            ringAt(ex, ey, 60, "#8fd4ff");
-            this.particles.burst(ex, ey, "#8fd4ff", 16, 100, 0.7, 3, true);
+            if ((e.variant ?? "").startsWith("mob.warden")) {
+              // GARDIEN : garde de pierre runique.
+              Audio.sfx("warden");
+              this.enemyFlash = 0.7;
+              ringAt(ex, ey, 70, "#8a5fd0"); ringAt(ex, ey, 46, "#c8b0e0");
+              this.particles.burst(ex, ey, "#8a5fd0", 16, 90, 0.7, 3, true);
+            } else {
+              Audio.sfx("dodge");
+              ringAt(ex, ey, 60, "#8fd4ff");
+              this.particles.burst(ex, ey, "#8fd4ff", 16, 100, 0.7, 3, true);
+            }
             break;
           case "enemyLeech":
             Audio.sfx("hurt");
@@ -467,17 +486,51 @@ export class CombatScene implements Scene {
             break;
           }
           case "enemySpecial":
-            Audio.sfx("heavy");
-            this.enemyLunge = 1; this.hitstop = 0.1;
-            this.screenShake = 1.8; this.playerFlash = 1;
-            this.flashTint = 0.32; this.flashColor = "#c02840";
-            ringAt(hx, hy, 110, "#ff5060");
-            this.particles.burst(hx, hy, "#c02840", 28, 190, 1, 4.2, true);
-            pop(hx, hy - 70, "-" + e.value, "#ff5060", 30, 1.3);
+            if (e.variant === "mob.superboss") {
+              // DÉVOREUR D'ÂME : la charge s'abat — cataclysme d'ombre.
+              Audio.sfx("phase2");
+              this.enemyLunge = 1; this.hitstop = 0.16;
+              this.screenShake = 2.4; this.playerFlash = 1;
+              this.flashTint = 0.5; this.flashColor = "#c0203a";
+              ringAt(hx, hy, 150, "#c0203a"); ringAt(hx, hy, 100, "#3a0810");
+              this.particles.burst(hx, hy, "#c0203a", 40, 230, 1.2, 4.8, true);
+              this.particles.burst(hx, hy, "#3a0810", 20, 150, 1, 3.6);
+              pop(hx, hy - 74, "-" + e.value, "#ff5060", 34, 1.4);
+              this.abilityBanner = 1.1; this.abilityBannerName = T("boss.move.devourer"); this.abilityBannerColor = "#ff5060";
+            } else if (e.variant === "mob.rival") {
+              // RIVAL : estoc perforant, lame corrompue.
+              Audio.sfx("heavy");
+              this.enemyLunge = 1; this.hitstop = 0.11;
+              this.screenShake = 1.4; this.playerFlash = 1;
+              this.flashTint = 0.34; this.flashColor = "#8a5fd0";
+              slashAt(hx, hy, "#c8a8ff"); slashAt(hx + 10, hy - 6, "#e0d0ff");
+              ringAt(hx, hy, 96, "#c8a8ff");
+              this.particles.burst(hx, hy, "#a87fe0", 26, 200, 0.9, 4, true);
+              pop(hx, hy - 70, "-" + e.value, "#c8a8ff", 30, 1.3);
+              this.abilityBanner = 1.1; this.abilityBannerName = T("boss.move.rival"); this.abilityBannerColor = "#c8a8ff";
+            } else {
+              Audio.sfx("heavy");
+              this.enemyLunge = 1; this.hitstop = 0.1;
+              this.screenShake = 1.8; this.playerFlash = 1;
+              this.flashTint = 0.32; this.flashColor = "#c02840";
+              ringAt(hx, hy, 110, "#ff5060");
+              this.particles.burst(hx, hy, "#c02840", 28, 190, 1, 4.2, true);
+              pop(hx, hy - 70, "-" + e.value, "#ff5060", 30, 1.3);
+            }
             break;
           case "enemyBuff":
-            Audio.sfx("dodge");
-            this.particles.burst(ex, ey, "#8fd4ff", 20, 130, 0.8, 3.5, true);
+            if ((e.variant ?? "").startsWith("mob.warden")) {
+              // GARDIEN DES SCEAUX : il se scelle dans la pierre runique.
+              Audio.sfx("warden");
+              this.enemyFlash = 1; this.screenShake = 0.6; this.hitstop = 0.05;
+              ringAt(ex, ey, 120, "#8a5fd0"); ringAt(ex, ey, 78, "#c8b0e0");
+              this.particles.burst(ex, ey + 10, "#8a5fd0", 26, -110, 0.9, 3.6, true); // pierre qui converge
+              this.particles.burst(ex, ey, "#c8b0e0", 16, 90, 0.7, 3, true);
+              this.abilityBanner = 1.1; this.abilityBannerName = T("boss.move.warden"); this.abilityBannerColor = "#c8a8ff";
+            } else {
+              Audio.sfx("dodge");
+              this.particles.burst(ex, ey, "#8fd4ff", 20, 130, 0.8, 3.5, true);
+            }
             break;
           case "itemUse":
             Audio.sfx("crit");
