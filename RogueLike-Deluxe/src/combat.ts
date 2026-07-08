@@ -23,6 +23,7 @@ export interface CombatEvent {
       // ---- allié (fin 2 v 1 : le Rival épargné combat à tes côtés) ----
       | "allyHit" | "allyCover" | "allyFall";
   value?: number;
+  variant?: string; // ex. classe pour classAbility (warrior/mage/rogue)
 }
 
 // Allié de combat : le Rival, quand il a été épargné, se dresse contre le Dévoreur d'Âmes.
@@ -300,7 +301,8 @@ export class CombatSession {
     // ---- log + event du coup principal ----
     if (opts.label === "class") {
       // le log de la capacité est écrit par l'appelant ; on émet juste l'event
-      this.emit({ type: "classAbility", value: dealt });
+      // (variant = classe → chorégraphie signature côté scène de combat)
+      this.emit({ type: "classAbility", value: dealt, variant: p.classId });
     } else if (opts.isEcho) {
       this.addLog(T("combat.echo", { n: dealt }));
       this.emit({ type: "echoHit", value: dealt });

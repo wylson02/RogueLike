@@ -40,6 +40,9 @@ export class CombatScene implements Scene {
   private enemyFlash = 0;
   private playerFlash = 0;
   private phase2Banner = 0;
+  private abilityBanner = 0;          // flash du nom d'une attaque spéciale de classe
+  private abilityBannerName = "";
+  private abilityBannerColor = "#ffd84a";
   private shownEnemyHp: number;
   private shownPlayerHp: number;
   private shownAllyHp: number;
@@ -176,6 +179,7 @@ export class CombatScene implements Scene {
     this.enemyFlash = Math.max(0, this.enemyFlash - dt * 4);
     this.playerFlash = Math.max(0, this.playerFlash - dt * 4);
     this.phase2Banner = Math.max(0, this.phase2Banner - dt);
+    this.abilityBanner = Math.max(0, this.abilityBanner - dt);
     this.logReveal += dt * 30;
     for (let i = this.floaters.length - 1; i >= 0; i--) {
       const f = this.floaters[i];
@@ -413,16 +417,55 @@ export class CombatScene implements Scene {
             pop(hx, hy - 90, "LEVEL UP!", "#7ae87a", 26, 1.6);
             break;
           case "reward": Audio.sfx("coin"); break;
-          case "classAbility":
-            Audio.sfx("crit");
-            this.heroLunge = 1; this.hitstop = 0.1;
-            this.enemyShake = 1.8; this.enemyFlash = 1; this.screenShake = 1;
-            this.flashTint = 0.3; this.flashColor = "#ffd84a";
-            slashAt(ex, ey, "#ffd84a"); slashAt(ex - 14, ey + 10, "#ffd84a");
-            ringAt(ex, ey, 110, "#ffd84a");
-            this.particles.burst(ex, ey, "#ffd84a", 30, 200, 0.9, 4.2, true);
-            pop(ex, ey - 60, "-" + e.value, "#ffd84a", 32, 1.3);
+          case "classAbility": {
+            // Chorégraphie signature propre à chaque classe.
+            const showBanner = (name: string, color: string) => {
+              this.abilityBanner = 1.1; this.abilityBannerName = name; this.abilityBannerColor = color;
+            };
+            if (e.variant === "warrior") {
+              // BRISE-GARDE : coup lourd et tellurique — hitstop massif, double onde, éclats.
+              Audio.sfx("heavy");
+              this.heroLunge = 1; this.hitstop = 0.17;
+              this.enemyShake = 2.2; this.enemyFlash = 1; this.screenShake = 1.7;
+              this.flashTint = 0.4; this.flashColor = "#ffae57";
+              slashAt(ex, ey, "#ffd8b0"); slashAt(ex - 12, ey + 12, "#fff");
+              ringAt(ex, ey, 135, "#ffae57"); ringAt(ex, ey, 82, "#fff");
+              this.particles.burst(ex, ey, "#ffae57", 34, 220, 0.9, 4.6, true);
+              this.particles.burst(ex, ey + 22, "#8a6a4a", 18, 130, 0.7, 3.2); // débris
+              pop(ex, ey - 62, "-" + e.value, "#ffd8b0", 36, 1.4);
+              showBanner(T("act.class.warrior"), "#ffae57");
+            } else if (e.variant === "mage") {
+              // TRAIT ARCANIQUE : charge implosive puis détonation — flash intense, peu de shake.
+              Audio.sfx("chain");
+              this.heroLunge = 0.5; this.hitstop = 0.09;
+              this.enemyShake = 1.2; this.enemyFlash = 1; this.screenShake = 0.7;
+              this.flashTint = 0.46; this.flashColor = "#b6a6ff";
+              ringAt(ex, ey, 150, "#c88aff"); ringAt(ex, ey, 110, "#8fb0ff");
+              this.particles.burst(ex, ey, "#c88aff", 24, -150, 0.5, 3, true); // implosion (canalisation)
+              this.particles.burst(ex, ey, "#8fb0ff", 32, 215, 0.95, 4.2, true); // détonation
+              slashAt(ex, ey, "#c8b0ff");
+              pop(ex, ey - 62, "-" + e.value, "#c8b0ff", 34, 1.4);
+              showBanner(T("act.class.mage"), "#b6a6ff");
+            } else {
+              // ASSASSINAT (voleur) : flurry de frappes rapides + traînée d'ombres.
+              Audio.sfx("crit");
+              this.heroLunge = 1; this.hitstop = 0.05;
+              this.enemyShake = 1.5; this.enemyFlash = 1; this.screenShake = 0.7;
+              this.flashTint = 0.3; this.flashColor = "#ffd84a";
+              for (let i = 0; i < 4; i++)
+                this.slashes.push({
+                  x: ex + (Math.random() - 0.5) * 44, y: ey + (Math.random() - 0.5) * 32,
+                  angle: -0.8 + Math.random() * 1.6, life: 0.16 + i * 0.05,
+                  color: i % 2 ? "#ff4a6a" : "#ffd84a",
+                });
+              ringAt(ex, ey, 74, "#ffd84a");
+              this.particles.burst(ex, ey, "#ffd84a", 22, 200, 0.7, 3.4, true);
+              this.particles.burst(ex, ey, "#ff4a6a", 12, 150, 0.6, 3, true);
+              pop(ex, ey - 60, "-" + e.value, "#ffd84a", 32, 1.3);
+              showBanner(T("act.class.rogue"), "#ffd84a");
+            }
             break;
+          }
           case "enemySpecial":
             Audio.sfx("heavy");
             this.enemyLunge = 1; this.hitstop = 0.1;
@@ -925,6 +968,15 @@ export class CombatScene implements Scene {
         const y = i % 2 === 0 ? i * barH : (i + 1) * barH - h;
         g.fillRect(-12, y, VW + 24, h + 0.5);
       }
+    }
+
+    // bannière du nom d'attaque spéciale (flash bref, s'estompe)
+    if (this.abilityBanner > 0) {
+      const a = clamp(this.abilityBanner / 0.35, 0, 1) * clamp(this.abilityBanner / 0.9, 0, 1);
+      const slide = (1 - clamp(this.abilityBanner / 1.1, 0, 1)) * 24;
+      g.globalAlpha = Math.min(1, a);
+      textShadow(g, this.abilityBannerName.toUpperCase(), VW / 2, 120 - slide, 34, this.abilityBannerColor, "center");
+      g.globalAlpha = 1;
     }
 
     // bannière PHASE II
