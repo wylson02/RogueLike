@@ -912,6 +912,18 @@ export class GameContext {
         } else {
           this.pushLog(T("pnj.talk", { name: pnj.name, msg: pnj.talk() }), LogKind.System);
         }
+      } else if (pnj.name === "Garrick") {
+        // PRIME : Garrick te charge de traquer la Rongeuse dans le labyrinthe.
+        const st = this.questStatus("bounty_gnaw");
+        if (st === "inactive") {
+          this.pushLog(T("pnj.talk", { name: pnj.name, msg: T("bounty.garrick.offer") }), LogKind.System);
+          this.startQuest("bounty_gnaw");
+          pnj.setMessageKey("bounty.garrick.after");
+        } else if (st === "done") {
+          this.pushLog(T("pnj.talk", { name: pnj.name, msg: T("bounty.garrick.thanks") }), LogKind.System);
+        } else {
+          this.pushLog(T("pnj.talk", { name: pnj.name, msg: pnj.talk() }), LogKind.System);
+        }
       } else if (pnj.name === "Rival") {
         // Première rencontre (niveau 1) : LE SERMENT s'ouvre — comment réponds-tu au Rival ?
         if (this.currentLevel === 1 && !this.choices["rival_l1"]) {

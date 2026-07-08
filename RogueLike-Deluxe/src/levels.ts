@@ -57,6 +57,7 @@ function level1(): LevelData {
       new Pnj(P(28, 8), "Sentinelle", "pnj.sentinelle"),
       new Pnj(P(22, 8), "Rival", "rival.lvl1"),
       new Pnj(P(15, 8), "Bram", "companion.bram.idle"), // survivant à escorter jusqu'à la sortie
+      new Pnj(P(9, 3), "Garrick", "bounty.garrick.offer"), // donneur de prime (traquer la Rongeuse au niveau 2)
     ],
     seals: [],
     merchant: null,
@@ -70,7 +71,7 @@ function level2(): LevelData {
     map: MapCatalog.level2(),
     playerStart: P(1, 11),
     monsters: [
-      MonsterCatalog.spider(P(13, 4)),     // embuscade dans le couloir sinueux du nord
+      MonsterCatalog.gnawer(P(13, 4)),     // LA RONGEUSE : cible de la prime (quête bounty_gnaw)
       MonsterCatalog.slime(P(18, 4)),      // couloir nord
       MonsterCatalog.golem(P(16, 11)),     // patrouille la rotonde centrale
       MonsterCatalog.slime(P(15, 17)),     // route sud

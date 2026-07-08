@@ -634,6 +634,12 @@ export class CombatSession {
       this.addLog(T("combat.reward", { xp, gold }));
       this.ctx.pushLog(T("combat.reward", { xp, gold }), LogKind.Loot);
       this.emit({ type: "reward" });
+      // Prime : abattre la cible nommée accomplit la quête et verse la récompense.
+      if (this.enemy.nameKey === "mob.gnawer" && this.ctx.questStatus("bounty_gnaw") === "active") {
+        this.ctx.completeQuest("bounty_gnaw");
+        this.player.addGold(100);
+        this.ctx.pushLog(T("bounty.reward"), LogKind.Loot);
+      }
       if (ups > 0) {
         this.addLog(T("combat.levelup", { n: this.player.level }));
         this.emit({ type: "levelup" });

@@ -353,6 +353,12 @@ export const MonsterCatalog = {
     minGold: 30, maxGold: 55, minXp: 25, maxXp: 40,
     rank: MonsterRank.MiniBoss, aggroRange: 6, sprite: "warden",
   }),
+  // Cible de prime (quête bounty_gnaw) : une élite nommée qui rôde dans le labyrinthe.
+  gnawer: (pos: Pos) => new Monster({
+    nameKey: "mob.gnawer", pos, hp: 34, attack: 8,
+    minGold: 25, maxGold: 45, minXp: 30, maxXp: 45,
+    rank: MonsterRank.MiniBoss, aggroRange: 5, sprite: "spider", feminine: true, aiKind: "ambush",
+  }),
   sealWardenEnraged: (pos: Pos) => new Monster({
     nameKey: "mob.warden.enraged", pos, hp: 44, attack: 8,
     minGold: 45, maxGold: 80, minXp: 35, maxXp: 55,
