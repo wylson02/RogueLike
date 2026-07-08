@@ -54,6 +54,11 @@ const FR: Dict = {
   "film.sword.1": "Une lame patiente sur son socle, oubliée du temps.",
   "film.sword.2": "Ta main se referme — et l'acier s'éveille.",
   "film.sword.3": "Le temple gronde. Les portes se scellent. Le Gardien se dresse.",
+  "film.depths.1": "Le trône se fissure. Une lueur rouge sourd de dessous.",
+  "film.depths.2": "Il se soulève — et derrière lui, un gouffre s'ouvre.",
+  "film.depths.3": "Tu t'enfonces. Le monde du dessus n'est plus qu'une étincelle.",
+  "film.depths.4": "L'Abîme s'ouvre, immense et affamé.",
+  "film.depths.5": "Dans les ténèbres, deux braises s'allument. Il t'attendait.",
   "cine.skip": "ENTRÉE : continuer  •  ÉCHAP : passer",
   "cine.start": "ENTRÉE : commencer",
 
@@ -763,6 +768,11 @@ const EN: Dict = {
   "film.sword.1": "A blade waits on its pedestal, forgotten by time.",
   "film.sword.2": "Your hand closes — and the steel awakens.",
   "film.sword.3": "The temple roars. The doors seal. The Warden rises.",
+  "film.depths.1": "The throne cracks open. A red glow bleeds from beneath.",
+  "film.depths.2": "It rises — and behind it, a chasm yawns open.",
+  "film.depths.3": "You sink downward. The world above is now a single spark.",
+  "film.depths.4": "The Abyss opens, vast and hungry.",
+  "film.depths.5": "In the dark, two embers ignite. It was waiting for you.",
   "cine.skip": "ENTER: continue  •  ESC: skip",
   "cine.start": "ENTER: begin",
 

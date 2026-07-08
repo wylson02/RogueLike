@@ -9,7 +9,7 @@ import { SceneManager, Scene } from "./scenes";
 import { MainMenuScene } from "./menuScenes";
 import { ExploreScene, MerchantScene, CreedChoiceScene } from "./exploreScene";
 import { CombatScene } from "./combatScene";
-import { CinematicScene, bossIntroPages, depthsIntroPages, bossEncounterPages, loreMarkPages, EndingFilmScene, FilmScene, introFilmShots, swordFilmShots, EndScene, EndingId } from "./cinematics";
+import { CinematicScene, bossIntroPages, bossEncounterPages, loreMarkPages, EndingFilmScene, FilmScene, introFilmShots, swordFilmShots, depthsFilmShots, EndScene, EndingId } from "./cinematics";
 import { EndlessHubScene, RelicDraftScene, RunSummaryScene } from "./endlessScenes";
 import { G, Flow } from "./game";
 import { loadSettings, loadGame, clearSave, saveGame } from "./save";
@@ -117,12 +117,12 @@ Flow.bossIntroThenLevel4 = () => {
 };
 
 Flow.depthsIntroThenLevel5 = () => {
-  SceneManager.switchTo(() => new CinematicScene(depthsIntroPages(), () => {
+  SceneManager.switchTo(() => new FilmScene(depthsFilmShots(), () => {
     G.ctx.loadLevel(5);
     G.ctx.drainEvents();
     saveGame(G.ctx);
     Flow.toExplore();
-  }, "#6a2fa0"));
+  }));
   Audio.setMode("none");
 };
 

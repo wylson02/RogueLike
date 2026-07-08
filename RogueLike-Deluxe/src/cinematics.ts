@@ -802,6 +802,95 @@ function swordFilm(): FilmShot[] {
   ];
 }
 
+// ---- La Descente : derrière le trône fissuré, le gouffre vers l'Abîme et le Dévoreur ----
+function depthsFilm(): FilmShot[] {
+  // puits de veines qui défile (impression de chute)
+  const shaft = (g: CanvasRenderingContext2D, t: number, glow: number) => {
+    for (let i = 0; i < 5; i++) {
+      const yy = ((t * 140 + i * 150) % (VH + 150)) - 75;
+      drawCorruptionVeins(g, 40, yy, glow, 90, "#7a1020");
+      drawCorruptionVeins(g, VW - 40, yy, glow, 90, "#7a1020");
+    }
+  };
+  return [
+    { // 1. le trône se fissure ; la lumière rouge sourd de dessous
+      dur: 4.5, captionKey: "film.depths.1", captionColor: "#ff9aa4", sfx: "warden",
+      draw: (g, u, t, f) => {
+        const pulse = 0.4 + Math.sin(t * 2) * 0.3 + u * 0.3;
+        const gl = g.createRadialGradient(VW / 2, 300, 10, VW / 2, 300, 260);
+        gl.addColorStop(0, `rgba(160,20,40,${0.2 + u * 0.3})`); gl.addColorStop(1, "rgba(0,0,0,0)");
+        g.fillStyle = gl; g.fillRect(0, 0, VW, VH);
+        drawThrone(g, VW / 2, 300, 1.25, "#7a1020");
+        // fissures rouges qui s'ouvrent
+        g.save(); g.strokeStyle = "#ff2a44"; g.shadowColor = "#ff2a44"; g.shadowBlur = 12; g.lineWidth = 2;
+        for (let i = -2; i <= 2; i++) {
+          g.beginPath(); g.moveTo(VW / 2 + i * 14, 300);
+          g.lineTo(VW / 2 + i * 22 + Math.sin(i + t) * 6, 300 + 70 * (0.4 + u));
+          g.stroke();
+        }
+        g.restore();
+        drawCorruptionVeins(g, VW / 2, 330, u, 120, "#c0203a");
+        if (Math.random() < 0.5) f.particles.spawn({ x: VW / 2 + (Math.random() - 0.5) * 180, y: 330, vx: (Math.random() - 0.5) * 14, vy: -18 - Math.random() * 26, life: 3, maxLife: 3, size: 2, color: Math.random() < 0.5 ? "#c0203a" : "#3a0810", glow: true });
+      },
+    },
+    { // 2. le trône se soulève ; derrière lui, un passage béant vers le vide
+      dur: 4, captionKey: "film.depths.2", captionColor: "#ffb0b8", sfx: "door",
+      draw: (g, u, t, f) => {
+        const rise = clamp(u * 1.4, 0, 1);
+        drawGreatDoor(g, VW / 2, 250, 1.7, 0.5 + Math.sin(t * 2.4) * 0.3 + u * 0.2);
+        // le trône glisse vers le haut en révélant la gueule
+        drawThrone(g, VW / 2, 300 - rise * 220, 1.25 - rise * 0.4, "#7a1020");
+        // toi, au bord du gouffre
+        drawSpriteFigure(g, "player", VW / 2, 430, 46, 0.9 - u * 0.3);
+        if (Math.random() < 0.4) f.particles.spawn({ x: VW / 2 + (Math.random() - 0.5) * 120, y: 300, vx: (Math.random() - 0.5) * 10, vy: -14 - Math.random() * 20, life: 3, maxLife: 3, size: 1.8, color: "#c0203a", glow: true });
+      },
+    },
+    { // 3. la chute : le trône rétrécit au-dessus, tu t'enfonces dans le rouge
+      dur: 5, captionKey: "film.depths.3", captionColor: "#ff9aa4", sfx: "roar",
+      draw: (g, u, t, f) => {
+        shaft(g, t * 1.4 + u * 4, 0.7 + Math.sin(t * 3) * 0.2);
+        // point de lumière (le trône) qui s'éloigne vers le haut
+        drawThrone(g, VW / 2, 70 - u * 40, 0.35 - u * 0.15, "#7a1020");
+        // toi qui coules vers le bas-centre
+        drawSpriteFigure(g, "player", VW / 2, 220 + u * 120, 44, 1);
+        // cendres qui remontent (impression de vitesse)
+        for (let i = 0; i < 2; i++) f.particles.spawn({ x: Math.random() * VW, y: VH, vx: (Math.random() - 0.5) * 12, vy: -80 - Math.random() * 80, life: 1.4, maxLife: 1.4, size: 1.6 + Math.random(), color: Math.random() < 0.5 ? "#c0203a" : "#5a1020", glow: true });
+      },
+    },
+    { // 4. l'Abîme s'ouvre : une salle immense, un sol lointain, la pression du vide
+      dur: 4, captionKey: "film.depths.4", captionColor: "#c8a8ff", sfx: "phase2",
+      draw: (g, u, t) => {
+        const v = g.createRadialGradient(VW / 2, VH * 0.7, 20, VW / 2, VH * 0.7, VH);
+        v.addColorStop(0, `rgba(120,16,32,${0.16 + u * 0.14})`); v.addColorStop(1, "rgba(0,0,0,0)");
+        g.fillStyle = v; g.fillRect(0, 0, VW, VH);
+        // sol lointain
+        g.save(); g.strokeStyle = `rgba(140,40,60,${0.3 + u * 0.3})`; g.lineWidth = 2;
+        g.beginPath(); g.moveTo(VW / 2 - 260 * u, 430); g.lineTo(VW / 2 + 260 * u, 430); g.stroke(); g.restore();
+        drawSpriteFigure(g, "player", VW / 2, 410, 40, 0.9);
+        // lueur rouge à l'horizon
+        const h = g.createLinearGradient(0, VH, 0, VH - 180);
+        h.addColorStop(0, `rgba(160,20,40,${0.25 + u * 0.2})`); h.addColorStop(1, "rgba(0,0,0,0)");
+        g.fillStyle = h; g.fillRect(0, VH - 180, VW, 180);
+      },
+    },
+    { // 5. le Dévoreur veille : deux braises s'allument dans les ténèbres
+      dur: 5.5, captionKey: "film.depths.5", captionColor: "#ff8a94", sfx: "roar",
+      draw: (g, u, t, f) => {
+        const pulse = 0.5 + Math.sin(t * 3) * 0.5;
+        const grad = g.createRadialGradient(VW / 2, 250, 20, VW / 2, 250, 420);
+        grad.addColorStop(0, `rgba(${60 + u * 90},10,26,${0.2 + u * 0.35})`); grad.addColorStop(1, "rgba(0,0,0,0)");
+        g.fillStyle = grad; g.fillRect(0, 0, VW, VH);
+        drawCorruptionVeins(g, VW / 2, 320, 1, 160 * u, "#c0203a");
+        // la silhouette colossale émerge du noir
+        drawShadowFigure(g, VW / 2, 250, 1.6 * (0.6 + u * 0.4), "#ff2a44", u * pulse);
+        // toi, minuscule, en bas
+        drawSpriteFigure(g, "player", VW / 2, 460, 34, 0.8);
+        if (Math.random() < 0.6) f.particles.spawn({ x: VW / 2 + (Math.random() - 0.5) * 220, y: 340, vx: (Math.random() - 0.5) * 18, vy: -16 - Math.random() * 28, life: 2, maxLife: 2, size: 2, color: Math.random() < 0.5 ? "#c0203a" : "#3a0810", glow: true });
+      },
+    },
+  ];
+}
+
 // ===== La scène de film générique (identique au moteur des fins, pour tout moment) =====
 export class FilmScene implements Scene {
   private idx = 0; private st = 0; private t = 0;
@@ -843,6 +932,7 @@ export class FilmScene implements Scene {
 
 export function introFilmShots(): FilmShot[] { return introFilm(); }
 export function swordFilmShots(): FilmShot[] { return swordFilm(); }
+export function depthsFilmShots(): FilmShot[] { return depthsFilm(); }
 
 // ===== Écran de fin =====
 // Thème visuel par fin : dégradé de fond, halo/lueur du titre, teinte du titre, confettis.
