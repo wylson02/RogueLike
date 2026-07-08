@@ -7,6 +7,7 @@ import { Item, ItemCatalog, rollLoot, NIGHT_MERCHANT_NAME } from "./items";
 import { createLevel, hasLevel } from "./levels";
 import { generateFloor, isBossDepth } from "./procgen";
 import { rollCurse } from "./boons";
+import { PNJ_SKILL_GIFTS, SKILLS } from "./skills";
 import { T } from "./i18n";
 
 export enum LogKind { Info, Loot, Combat, Warning, System }
@@ -858,6 +859,19 @@ export class GameContext {
           return;
         } else {
           this.pushLog(T("pnj.talk", { name: pnj.name, msg: pnj.talk() }), LogKind.System);
+        }
+      } else if (PNJ_SKILL_GIFTS[pnj.name]) {
+        // PNJ enseignant : à la fin de son dialogue, il te transmet SA technique unique (une fois).
+        const skillId = PNJ_SKILL_GIFTS[pnj.name];
+        this.pushLog(T("pnj.talk", { name: pnj.name, msg: pnj.talk() }), LogKind.System);
+        if (!this.player.skills.includes(skillId)) {
+          this.pushLog(T("pnj.talk", { name: pnj.name, msg: T(`skillgift.${skillId}.offer`) }), LogKind.System);
+          this.player.learnSkill(skillId);
+          pnj.setMessageKey(`skillgift.${skillId}.after`); // au prochain passage : un écho de gratitude
+          const skillName = T(SKILLS[skillId].nameKey);
+          this.pushLog(T("skill.learned", { name: skillName }), LogKind.Loot);
+          this.showToast(T("skill.learned.toast", { name: skillName }), "#e8d8ff", "#2a1a4a", 10);
+          this.emit({ type: "sfx", name: "levelup" });
         }
       } else {
         this.pushLog(T("pnj.talk", { name: pnj.name, msg: pnj.talk() }), LogKind.System);

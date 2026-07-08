@@ -1,7 +1,8 @@
 // Simulation headless : traverse le jeu complet et vérifie la logique.
 import { GameContext, GameEvent } from "../src/context";
 import { CombatSession, CombatEvent } from "../src/combat";
-import { Monster, MonsterCatalog, Altar } from "../src/entities";
+import { Monster, MonsterCatalog, Altar, Player } from "../src/entities";
+import { defaultKit } from "../src/skills";
 import { CREED_CHOICES } from "../src/creed";
 import { saveGame, loadGame, clearSave } from "../src/save";
 import { T, getLang, setLang } from "../src/i18n";
@@ -666,6 +667,45 @@ console.log("=== FIN ALLIÉE : combat 2 v 1 contre le Dévoreur ===");
     if (s2.drainEvents().some(e => e.type === "allyFall")) sawFall = true;
   }
   check(sawFall && !s2.ally!.alive, "l'allié peut s'effondrer sous les coups (allyFall)");
+}
+
+console.log("=== COMPÉTENCES : kits enrichis + dons de PNJ ===");
+{
+  for (const cls of ["warrior", "mage", "rogue"] as const) {
+    const kit = defaultKit(cls);
+    check(kit.length === 4, `kit ${cls} : 4 compétences de départ (enrichi)`);
+    check(kit.every(id => !id.startsWith("pnj_")), `kit ${cls} : aucune technique unique de PNJ n'y fuite`);
+  }
+
+  // learnSkill : ajout, anti-doublon, remplacement
+  const p = new Player(P(0, 0));
+  p.skills = defaultKit("warrior");
+  p.learnSkill("pnj_orin_wall");
+  check(p.skills.includes("pnj_orin_wall") && p.skills.length === 5, "learnSkill ajoute la technique au kit");
+  p.learnSkill("pnj_orin_wall");
+  check(p.skills.length === 5, "learnSkill n'ajoute pas deux fois la même");
+  p.learnSkill("pnj_vesna_gambit", "w_smash");
+  check(p.skills.includes("pnj_vesna_gambit") && !p.skills.includes("w_smash"), "learnSkill(replaceId) remplace bien");
+
+  // wiring end-to-end : parler à Orin (niv 2) enseigne sa technique unique
+  const c = new GameContext();
+  c.loadLevel(2); c.drainEvents(); c.blockNightSpawnsForTicks(1e9);
+  const orin = c.pnjs.find(n => n.name === "Orin")!;
+  check(!!orin, "Orin présent au niveau 2");
+  const nbs: [number, number, any][] = [[1, 0, Dir.Right], [-1, 0, Dir.Left], [0, 1, Dir.Down], [0, -1, Dir.Up]];
+  let stepped = false;
+  for (const [dx, dy, dir] of nbs) {
+    const from = P(orin.pos.x - dx, orin.pos.y - dy);
+    if (c.map.isWalkable(from)) { c.player.setPosition(from); c.tryMove(dir); c.drainEvents(); stepped = true; break; }
+  }
+  check(stepped && c.player.skills.includes("pnj_orin_wall"), "parler à Orin enseigne Le Mur d'Orin");
+  const kitSize = c.player.skills.length;
+  // re-parler ne réapprend pas
+  for (const [dx, dy, dir] of nbs) {
+    const from = P(orin.pos.x - dx, orin.pos.y - dy);
+    if (c.map.isWalkable(from)) { c.player.setPosition(from); c.tryMove(dir); c.drainEvents(); break; }
+  }
+  check(c.player.skills.length === kitSize, "re-parler à Orin ne réapprend pas la technique");
 }
 
 console.log("=== i18n : parité FR/EN des clés du Serment ===");
