@@ -14,6 +14,10 @@ import { saveGame } from "./save";
 
 interface Floater { x: number; y: number; text: string; color: string; life: number; maxLife: number; size: number; }
 interface AnimStep { at: number; fn: () => void; }
+
+// Diagonale façon Pokémon : l'ennemi campe en haut-droite, l'équipe en bas-gauche.
+const EX = 630, EY = 215;   // ancre de l'ennemi
+const HX = 390, HY = 404;   // ancre du héros
 interface Slash { x: number; y: number; angle: number; life: number; color: string; }
 interface Ring { x: number; y: number; r: number; maxR: number; life: number; color: string; }
 interface Ghost { x: number; y: number; life: number; flip: boolean; size: number; }
@@ -73,9 +77,9 @@ export class CombatScene implements Scene {
   }
 
   // Position du Rival allié (légèrement en retrait du héros ; se rue en frappant)
-  // Équipe en bas-gauche (le coin est libéré : plus de panneau joueur), bien étalée ; l'élan monte vers l'ennemi.
-  private get allyX() { return 300 + this.allyLunge * 60; }
-  private get allyY() { return 420 - this.allyLunge * 100; }
+  // Équipe en bas-gauche, bien étalée ; l'élan file en diagonale vers l'ennemi (haut-droite).
+  private get allyX() { return 262 + this.allyLunge * 120; }
+  private get allyY() { return 420 - this.allyLunge * 90; }
 
   enter() {
     // Musique boss aussi pour le Gardien des Sceaux (mini-boss) : même thème que son dialogue.
@@ -176,8 +180,8 @@ export class CombatScene implements Scene {
   }
 
   // Position du héros sur le champ de bataille (il fait face à l'ennemi)
-  private get heroX() { return 465 + this.heroLunge * 15; }
-  private get heroY() { return 404 - this.heroLunge * 124; }
+  private get heroX() { return HX + this.heroLunge * 130; }
+  private get heroY() { return HY - this.heroLunge * 105; }
 
   update(dt: number) {
     // Hitstop : le monde entier se fige un battement à l'impact
@@ -213,8 +217,8 @@ export class CombatScene implements Scene {
       if (Math.random() < dt * rate) {
         const boss = rank === MonsterRank.Boss;
         this.particles.spawn({
-          x: VW / 2 + (Math.random() - 0.5) * (boss ? 230 : 170),
-          y: 200 + 60 + Math.random() * 40,
+          x: EX + (Math.random() - 0.5) * (boss ? 230 : 170),
+          y: EY + 60 + Math.random() * 40,
           vx: (Math.random() - 0.5) * 14,
           vy: -18 - Math.random() * 26,
           life: 1.6 + Math.random() * 1.4, maxLife: 3,
@@ -336,8 +340,8 @@ export class CombatScene implements Scene {
     this.steps = [];
     this.animT = 0;
     let at = 0.12;
-    const ex = VW / 2, ey = 200; // centre ennemi
-    const hx = 465, hy = 404;    // héros au sol (bas-gauche libéré, paire étalée)
+    const ex = EX, ey = EY;      // centre ennemi (haut-droite)
+    const hx = HX, hy = HY;      // héros au sol (bas-gauche)
     const pop = (x: number, y: number, txt: string, color: string, size: number, life = 1.1) =>
       this.floaters.push({ x, y, text: txt, color, life, maxLife: life, size });
     const slashAt = (x: number, y: number, color = "#fff") =>
@@ -772,9 +776,10 @@ export class CombatScene implements Scene {
     }
     g.restore();
 
-    // sol d'arène
+    // sols d'arène : deux plateformes en diagonale (ennemi haut-droite, équipe bas-gauche)
     g.fillStyle = "rgba(255,255,255,.04)";
-    g.beginPath(); g.ellipse(VW / 2, 300, 260, 60, 0, 0, Math.PI * 2); g.fill();
+    g.beginPath(); g.ellipse(EX, EY + 82, 220, 52, 0, 0, Math.PI * 2); g.fill();
+    g.beginPath(); g.ellipse(340, 462, 230, 48, 0, 0, Math.PI * 2); g.fill();
 
     // vignette
     const v = g.createRadialGradient(VW / 2, VH / 2, VH * 0.25, VW / 2, VH / 2, VH * 0.9);
@@ -784,9 +789,9 @@ export class CombatScene implements Scene {
 
     // ===== ennemi ===== (glisse depuis la droite pendant l'intro ; se rue en attaquant)
     const slide = this.introSlide();
-    const lungeX = -this.enemyLunge * this.enemyLunge * 150;
-    const lungeY = this.enemyLunge * this.enemyLunge * 70;
-    const ex = VW / 2 + (1 - slide) * (VW / 2 + 220) + lungeX, ey = 200 + lungeY;
+    const lungeX = -this.enemyLunge * this.enemyLunge * 190; // il plonge en diagonale vers l'équipe
+    const lungeY = this.enemyLunge * this.enemyLunge * 120;
+    const ex = EX + (1 - slide) * (VW / 2 + 220) + lungeX, ey = EY + lungeY;
     const size = Math.round((boss ? 190 : mini ? 150 : 120) * (1 + this.enemyCast * 0.14));
     const bob = Math.sin(this.t * (boss ? 1.6 : 2.6)) * 6;
     const shakeX = this.enemyShake > 0 ? (Math.random() - 0.5) * this.enemyShake * 14 : 0;
@@ -795,7 +800,7 @@ export class CombatScene implements Scene {
     // estrade de l'ennemi (halo de sol) + ombre — deux plateformes distinctes façon Pokémon
     if (slide >= 0.6) {
       g.save();
-      const esx = VW / 2, esy = ey + size / 2 + 6;
+      const esx = EX, esy = EY + size / 2 + 6;
       const est = g.createRadialGradient(esx, esy, 16, esx, esy, size * 1.5);
       est.addColorStop(0, "rgba(120,110,150,.14)"); est.addColorStop(1, "rgba(120,110,150,0)");
       g.fillStyle = est;
@@ -823,8 +828,8 @@ export class CombatScene implements Scene {
       g.restore();
     }
 
-    // barre PV ennemi (fixe : ne suit pas les lunges)
-    const exBar = VW / 2 + (1 - slide) * (VW / 2 + 220);
+    // barre PV ennemi (fixe : ne suit pas les lunges) — bandeau haut-droite, au-dessus de lui
+    const exBar = EX + (1 - slide) * (VW / 2 + 220);
     const bw = boss ? 420 : 320;
     const ehr = clamp(this.shownEnemyHp / this.enemy.maxHp, 0, 1);
     const epLeft = exBar - bw / 2 - 4, epW = bw + 8, epSk = 12;
@@ -951,59 +956,49 @@ export class CombatScene implements Scene {
         const a = this.session.ally;
         members.push({ name: T(a.nameKey), sprite: a.sprite, hp: this.shownAllyHp, max: a.maxHp, col: "#7a4fc0", down: !a.alive });
       }
-      const cw = 168, ch = 34, gap = 6, sk = 8, rx = 14 - (1 - slide) * 240;
-      members.forEach((m, i) => {
-        const ry = 14 + i * (ch + gap);
+      const cw = 190, gap = 6, sk = 9, rx = 14 - (1 - slide) * 260;
+      let ry = 14;
+      members.forEach((m) => {
+        const ch = m.lvl !== undefined ? 47 : 34; // la carte du joueur loge une ligne ATK/CRIT en plus
         g.fillStyle = "rgba(8,6,14,.82)";
         this.slantRect(g, rx, ry, cw, ch, sk); g.fill();
         g.strokeStyle = m.down ? "rgba(90,84,110,.5)" : "rgba(140,130,170,.45)"; g.lineWidth = 1.5;
         this.slantRect(g, rx, ry, cw, ch, sk); g.stroke();
         const spr = getSprite(m.sprite) ?? getSprite("pnj_orin");
-        if (spr) { g.save(); g.imageSmoothingEnabled = false; if (m.down) g.globalAlpha = 0.4; g.drawImage(spr, rx + 8, ry + 3, 28, 28); g.restore(); }
-        text(g, m.name, rx + 42, ry + 11, 12, m.down ? "#8a8098" : "#e8e0f0");
-        if (m.lvl !== undefined) textShadow(g, `Nv.${m.lvl}`, rx + cw - 12, ry + 11, 10, "#bfe0ff", "right");
-        const hbw = cw - 54, hbx = rx + 42, hby = ry + 19;
+        if (spr) { g.save(); g.imageSmoothingEnabled = false; if (m.down) g.globalAlpha = 0.4; g.drawImage(spr, rx + 9, ry + 3, 28, 28); g.restore(); }
+        text(g, m.name, rx + 44, ry + 11, 12, m.down ? "#8a8098" : "#e8e0f0");
+        if (m.lvl !== undefined) textShadow(g, `Nv.${m.lvl}`, rx + cw - 14, ry + 11, 10, "#bfe0ff", "right");
+        const hbw = cw - 58, hbx = rx + 44, hby = ry + 19;
         g.fillStyle = "#25141c"; g.beginPath(); g.roundRect(hbx, hby, hbw, 9, 3); g.fill();
         const hr = clamp(m.hp / m.max, 0, 1);
         g.fillStyle = m.down ? "#4a4458" : hr > 0.3 ? m.col : "#e02222"; g.beginPath(); g.roundRect(hbx, hby, hbw * hr, 9, 3); g.fill();
         textShadow(g, `${Math.max(0, Math.round(m.hp))}/${m.max}`, hbx + hbw / 2, hby + 5, 9, "#fff", "center");
+        if (m.lvl !== undefined) {
+          const pl = G.ctx.player;
+          text(g, `⚔ ${pl.attack}   ✦ ${pl.critChancePercent}%   🛡 ${pl.armor}`, rx + 44, ry + 38, 10, "#a8a4b8");
+        }
+        ry += ch + gap;
       });
       // pastilles sous le roster : statuts du joueur + buffs actifs (esquive, brume)
       if (slide >= 1) {
         const chips = [...G.ctx.player.statuses];
         if (this.session.dodgeTurnsLeft > 0) chips.push({ kind: "dodge", turns: this.session.dodgeTurnsLeft, power: this.session.dodgeTurnsLeft } as any);
         if (this.session.mistTurns > 0) chips.push({ kind: "mist", turns: this.session.mistTurns, power: this.session.mistTurns } as any);
-        if (chips.length > 0) this.statusChips(g, chips, rx + 6, 14 + members.length * (ch + gap), 1);
+        if (chips.length > 0) this.statusChips(g, chips, rx + 6, ry + 2, 1);
       }
     }
 
-    // ===== indicateur de tour =====
-    if (slide >= 1) {
-      const turnInput = this.state === "input" && !this.itemMenu && !this.skillMenu;
-      const label = turnInput ? "▶  " + T("combat.turn.you") : this.state === "anim" ? "⚔  " + T("combat.turn.resolving") : "";
-      if (label) {
-        g.font = `bold 13px ${FONT}`;
-        const tw = g.measureText(label).width + 28;
-        g.fillStyle = turnInput ? "rgba(20,44,60,.9)" : "rgba(30,24,44,.85)";
-        g.beginPath(); g.roundRect(VW / 2 - tw / 2, 116, tw, 24, 12); g.fill();
-        g.strokeStyle = turnInput ? "rgba(120,210,255,.6)" : "rgba(150,140,190,.4)"; g.lineWidth = 1.4;
-        g.beginPath(); g.roundRect(VW / 2 - tw / 2, 116, tw, 24, 12); g.stroke();
-        textShadow(g, label, VW / 2, 129, 13, turnInput ? "#8fe0ff" : "#c8c0d4", "center");
-      }
-    }
-
-    // (Le panneau joueur bas-gauche a été supprimé : les PV/niveau vivent sur le roster
-    //  haut-gauche, façon Pokémon — le coin bas-gauche est rendu au champ de bataille.)
-
-    // ===== journal (droite, glisse depuis la droite pendant l'intro) =====
-    const lw = 356, lh = 120, lx = VW - lw - 14 + (1 - slide) * 380, ly = VH - 214;
-    g.fillStyle = "rgba(8,6,14,.72)";
+    // ===== journal de combat : boîte compacte à droite, au-dessus du bandeau d'actions =====
+    const lw = 312, lh = 108, lx = VW - lw - 14 + (1 - slide) * 340, ly = 338;
+    g.fillStyle = "rgba(8,6,14,.78)";
     g.beginPath(); g.roundRect(lx, ly, lw, lh, 10); g.fill();
+    g.strokeStyle = "rgba(140,130,170,.3)"; g.lineWidth = 1;
+    g.beginPath(); g.roundRect(lx, ly, lw, lh, 10); g.stroke();
     // retour à la ligne des messages longs (les répliques de PNJ/spéciales dépassent la boîte)
     g.font = `bold 11px ${FONT}`;
     const maxTextW = lw - 24, rowH = 16, maxRows = 6;
     const wrapped: { text: string; last: boolean }[] = [];
-    const raw = this.session.log.slice(-6);
+    const raw = this.session.log.slice(-5);
     raw.forEach((l, li) => {
       const isLastEntry = li === raw.length - 1;
       const parts = wrapLine(g, l, maxTextW, 2);
@@ -1017,25 +1012,50 @@ export class CombatScene implements Scene {
       text(g, s, lx + 12, ly + 16 + i * rowH, 11, row.last ? "#fff" : "#9a92ac");
     });
 
-    // ===== boutons d'action =====
+    // ===== bandeau d'actions pleine largeur (tour + boutons), façon boîte de commande =====
+    const barY = VH - 72, barH = 62, by = VH - 64;
+    g.save();
+    g.globalAlpha = slide;
+    const barGrad = g.createLinearGradient(0, barY, 0, barY + barH);
+    barGrad.addColorStop(0, "rgba(16,12,26,.94)"); barGrad.addColorStop(1, "rgba(9,7,16,.94)");
+    g.fillStyle = barGrad;
+    g.beginPath(); g.roundRect(8, barY, VW - 16, barH, 10); g.fill();
+    g.strokeStyle = "rgba(140,130,170,.35)"; g.lineWidth = 1.5;
+    g.beginPath(); g.roundRect(8, barY, VW - 16, barH, 10); g.stroke();
+    // liseré d'accent en haut du bandeau (cyan à ton tour, pourpre pendant la résolution)
+    const turnInput = this.state === "input" && !this.itemMenu && !this.skillMenu;
+    g.strokeStyle = turnInput ? "rgba(120,210,255,.5)" : "rgba(140,90,220,.35)";
+    g.lineWidth = 2;
+    g.beginPath(); g.moveTo(18, barY + 1); g.lineTo(VW - 18, barY + 1); g.stroke();
+
+    // indicateur de tour, intégré à gauche du bandeau
+    const tLabel = turnInput ? "▶ " + T("combat.turn.you") : this.state === "anim" ? "⚔ " + T("combat.turn.resolving") : "";
+    if (tLabel) {
+      const blink = turnInput ? 0.75 + Math.sin(this.t * 5) * 0.25 : 1;
+      g.globalAlpha = slide * blink;
+      textShadow(g, tLabel, 24, barY + barH / 2, 13, turnInput ? "#8fe0ff" : "#b8a8d8", "left");
+      g.globalAlpha = slide;
+    }
+
+    // boutons d'action
     const acts = this.actions;
-    const btnW = acts.length > 5 ? 124 : acts.length > 4 ? 150 : 190, btnGap = acts.length > 5 ? 8 : 10, btnH = 46;
-    const bx0 = VW / 2 - (btnW * acts.length + btnGap * (acts.length - 1)) / 2, by = VH - 66;
-    g.globalAlpha = slide; // les boutons apparaissent en fin d'intro
+    const btnW = 118, btnGap = 8, btnH = 44;
+    const bx0 = VW - 22 - (btnW * acts.length + btnGap * (acts.length - 1));
     acts.forEach((a, i) => {
-      const bx = bx0 + i * (btnW + btnGap);
+      const bx = bx0 + i * (btnW + btnGap), byy = barY + (barH - btnH) / 2;
       const selected = i === this.sel && this.state === "input";
-      g.fillStyle = !a.enabled ? "rgba(30,26,40,.7)" : selected ? "rgba(140,30,30,.9)" : "rgba(30,24,44,.85)";
-      g.beginPath(); g.roundRect(bx, by, btnW, btnH, 8); g.fill();
+      g.fillStyle = !a.enabled ? "rgba(30,26,40,.7)" : selected ? "rgba(140,30,30,.92)" : "rgba(34,28,50,.9)";
+      g.beginPath(); g.roundRect(bx, byy, btnW, btnH, 8); g.fill();
+      if (selected) { g.save(); g.shadowColor = "#ff6050"; g.shadowBlur = 12; }
       g.strokeStyle = selected ? "#ffb0a0" : "rgba(140,130,170,.35)";
       g.lineWidth = selected ? 2 : 1;
-      g.beginPath(); g.roundRect(bx, by, btnW, btnH, 8); g.stroke();
-      textShadow(g, a.key, bx + 14, by + btnH / 2, 14, selected ? "#ffd84a" : "#7a7090", "center");
-      const maxChars = btnW < 150 ? 12 : 18;
-      const lbl = a.label.length > maxChars ? a.label.slice(0, maxChars - 1) + "…" : a.label;
-      text(g, lbl, bx + 26, by + btnH / 2, btnW < 150 ? 11 : 13, !a.enabled ? "#5a5470" : selected ? "#fff" : "#c8c0d4");
+      g.beginPath(); g.roundRect(bx, byy, btnW, btnH, 8); g.stroke();
+      if (selected) g.restore();
+      textShadow(g, a.key, bx + 13, byy + btnH / 2, 14, selected ? "#ffd84a" : "#7a7090", "center");
+      const lbl = a.label.length > 12 ? a.label.slice(0, 11) + "…" : a.label;
+      text(g, lbl, bx + 25, byy + btnH / 2, 11, !a.enabled ? "#5a5470" : selected ? "#fff" : "#c8c0d4");
     });
-    g.globalAlpha = 1;
+    g.restore();
     // Sous-menu Objet
     if (this.itemMenu && this.state === "input") {
       const list = this.consumables();
@@ -1119,7 +1139,7 @@ export class CombatScene implements Scene {
 
     // Pastilles de statut de l'ennemi (sous son sprite ; celles du joueur sont sur le roster)
     if (this.enemy.statuses.length > 0 && !this.enemy.isDead && slide >= 1) {
-      const ey2 = 200 + (boss ? 95 : mini ? 75 : 60) + 10;
+      const ey2 = EY + (boss ? 95 : mini ? 75 : 60) + 10;
       const nChips = this.enemy.statuses.filter(s => s.turns > 0).length;
       this.statusChips(g, this.enemy.statuses, exBar - nChips * 26, ey2, 1);
     }
