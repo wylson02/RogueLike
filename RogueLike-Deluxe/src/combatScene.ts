@@ -73,9 +73,9 @@ export class CombatScene implements Scene {
   }
 
   // Position du Rival allié (légèrement en retrait du héros ; se rue en frappant)
-  // Équipe placée dans la bande centrale (claire des panneaux qui flanquent en bas) ; l'élan monte vers l'ennemi.
-  private get allyX() { return 372 + this.allyLunge * 14; }
-  private get allyY() { return 352 - this.allyLunge * 80; }
+  // Équipe en bas, décalée à gauche (diagonale façon Pokémon) et bien séparée de l'ennemi ; l'élan monte vers lui.
+  private get allyX() { return 372 + this.allyLunge * 30; }
+  private get allyY() { return 416 - this.allyLunge * 96; }
 
   enter() {
     // Musique boss aussi pour le Gardien des Sceaux (mini-boss) : même thème que son dialogue.
@@ -176,8 +176,8 @@ export class CombatScene implements Scene {
   }
 
   // Position du héros sur le champ de bataille (il fait face à l'ennemi)
-  private get heroX() { return 496 - this.heroLunge * 12; }
-  private get heroY() { return 342 - this.heroLunge * 96; }
+  private get heroX() { return 430 + this.heroLunge * 20; }
+  private get heroY() { return 400 - this.heroLunge * 120; }
 
   update(dt: number) {
     // Hitstop : le monde entier se fige un battement à l'impact
@@ -337,7 +337,7 @@ export class CombatScene implements Scene {
     this.animT = 0;
     let at = 0.12;
     const ex = VW / 2, ey = 200; // centre ennemi
-    const hx = 496, hy = 342;    // héros au sol (bande centrale)
+    const hx = 430, hy = 400;    // héros au sol (bas, décalé à gauche)
     const pop = (x: number, y: number, txt: string, color: string, size: number, life = 1.1) =>
       this.floaters.push({ x, y, text: txt, color, life, maxLife: life, size });
     const slashAt = (x: number, y: number, color = "#fff") =>
@@ -792,6 +792,16 @@ export class CombatScene implements Scene {
     const shakeX = this.enemyShake > 0 ? (Math.random() - 0.5) * this.enemyShake * 14 : 0;
     const spr = getSprite(this.enemy.sprite + (Math.floor(this.t * 3) % 2 && getSprite(this.enemy.sprite + "_2") ? "_2" : ""));
 
+    // estrade de l'ennemi (halo de sol) + ombre — deux plateformes distinctes façon Pokémon
+    if (slide >= 0.6) {
+      g.save();
+      const esx = VW / 2, esy = ey + size / 2 + 6;
+      const est = g.createRadialGradient(esx, esy, 16, esx, esy, size * 1.5);
+      est.addColorStop(0, "rgba(120,110,150,.14)"); est.addColorStop(1, "rgba(120,110,150,0)");
+      g.fillStyle = est;
+      g.beginPath(); g.ellipse(esx, esy, size * 1.5, size * 0.34, 0, 0, Math.PI * 2); g.fill();
+      g.restore();
+    }
     // ombre
     g.fillStyle = "rgba(0,0,0,.5)";
     g.beginPath(); g.ellipse(ex, ey + size / 2 + 8, size * 0.36, size * 0.1, 0, 0, Math.PI * 2); g.fill();
@@ -872,10 +882,10 @@ export class CombatScene implements Scene {
     // ===== estrade d'équipe : un halo de sol sous les personnages (grounding) =====
     if (slide >= 0.6) {
       g.save();
-      const stg = g.createRadialGradient(430, 372, 20, 430, 372, 210);
+      const stg = g.createRadialGradient(400, 442, 20, 400, 442, 220);
       stg.addColorStop(0, "rgba(120,110,150,.16)"); stg.addColorStop(1, "rgba(120,110,150,0)");
       g.fillStyle = stg;
-      g.beginPath(); g.ellipse(430, 372, 210, 46, 0, 0, Math.PI * 2); g.fill();
+      g.beginPath(); g.ellipse(400, 442, 220, 48, 0, 0, Math.PI * 2); g.fill();
       g.restore();
     }
 
