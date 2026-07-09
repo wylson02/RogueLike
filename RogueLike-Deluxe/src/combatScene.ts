@@ -852,7 +852,7 @@ export class CombatScene implements Scene {
     g.lineWidth = 2;
     this.slantRect(g, epLeft, 40, epW, 42, epSk); g.stroke();
     const eface = getSprite(this.enemy.sprite);
-    if (eface) { g.imageSmoothingEnabled = false; g.drawImage(eface, epLeft + 10, 44, 34, 34); }
+    if (eface) { g.imageSmoothingEnabled = false; g.drawImage(eface, epLeft + 10, 43, 36, 36); }
     textShadow(g, this.enemy.name + (this.session.phase2 ? "  —  " + T("combat.phase2.title") : ""),
       exBar + 16, 54, boss ? 17 : 15, boss ? "#ff9090" : mini ? "#c8a8ff" : "#e8e0f0", "center");
     if (boss || mini) {
@@ -864,13 +864,15 @@ export class CombatScene implements Scene {
       g.strokeStyle = bcol; g.lineWidth = 1; g.beginPath(); g.roundRect(rbx, 44, rbw, 14, 4); g.stroke();
       textShadow(g, badge, rbx + rbw / 2, 51, 9, bcol, "center");
     }
+    // barre de PV décalée à droite du portrait (elle ne le recouvre plus)
+    const ebX = epLeft + 54, ebW = epW - 68;
     g.fillStyle = "#25141c";
-    g.beginPath(); g.roundRect(exBar - bw / 2 + 4, 66, bw - 8, 10, 4); g.fill();
-    const ehGrad = g.createLinearGradient(exBar - bw / 2, 0, exBar + bw / 2, 0);
+    g.beginPath(); g.roundRect(ebX, 66, ebW, 10, 4); g.fill();
+    const ehGrad = g.createLinearGradient(ebX, 0, ebX + ebW, 0);
     ehGrad.addColorStop(0, boss ? "#c02040" : "#b83a3a");
     ehGrad.addColorStop(1, boss ? "#ff5060" : "#e06848");
     g.fillStyle = ehGrad;
-    g.beginPath(); g.roundRect(exBar - bw / 2 + 4, 66, (bw - 8) * ehr, 10, 4); g.fill();
+    g.beginPath(); g.roundRect(ebX, 66, ebW * ehr, 10, 4); g.fill();
 
     // ===== INTENT : l'ennemi annonce son prochain coup =====
     if (!this.enemy.isDead && this.state !== "done" && slide >= 1) {
@@ -968,26 +970,26 @@ export class CombatScene implements Scene {
         const a = this.session.ally;
         members.push({ name: T(a.nameKey), sprite: a.sprite, hp: this.shownAllyHp, max: a.maxHp, col: "#7a4fc0", down: !a.alive });
       }
-      const cw = 190, gap = 6, sk = 9, rx = 14 - (1 - slide) * 260;
+      const cw = 236, gap = 7, sk = 11, rx = 14 - (1 - slide) * 300;
       let ry = 14;
       members.forEach((m) => {
-        const ch = m.lvl !== undefined ? 47 : 34; // la carte du joueur loge une ligne ATK/CRIT en plus
-        g.fillStyle = "rgba(8,6,14,.82)";
+        const ch = m.lvl !== undefined ? 58 : 42; // la carte du joueur loge une ligne ATK/CRIT en plus
+        g.fillStyle = "rgba(8,6,14,.84)";
         this.slantRect(g, rx, ry, cw, ch, sk); g.fill();
-        g.strokeStyle = m.down ? "rgba(90,84,110,.5)" : "rgba(140,130,170,.45)"; g.lineWidth = 1.5;
+        g.strokeStyle = m.down ? "rgba(90,84,110,.5)" : "rgba(140,130,170,.5)"; g.lineWidth = 1.5;
         this.slantRect(g, rx, ry, cw, ch, sk); g.stroke();
         const spr = getSprite(m.sprite) ?? getSprite("pnj_orin");
-        if (spr) { g.save(); g.imageSmoothingEnabled = false; if (m.down) g.globalAlpha = 0.4; g.drawImage(spr, rx + 9, ry + 3, 28, 28); g.restore(); }
-        text(g, m.name, rx + 44, ry + 11, 12, m.down ? "#8a8098" : "#e8e0f0");
-        if (m.lvl !== undefined) textShadow(g, `Nv.${m.lvl}`, rx + cw - 14, ry + 11, 10, "#bfe0ff", "right");
-        const hbw = cw - 58, hbx = rx + 44, hby = ry + 19;
-        g.fillStyle = "#25141c"; g.beginPath(); g.roundRect(hbx, hby, hbw, 9, 3); g.fill();
+        if (spr) { g.save(); g.imageSmoothingEnabled = false; if (m.down) g.globalAlpha = 0.4; g.drawImage(spr, rx + 11, ry + 4, 36, 36); g.restore(); }
+        text(g, m.name, rx + 54, ry + 13, 14, m.down ? "#8a8098" : "#e8e0f0");
+        if (m.lvl !== undefined) textShadow(g, `Nv.${m.lvl}`, rx + cw - 16, ry + 13, 12, "#bfe0ff", "right");
+        const hbw = cw - 70, hbx = rx + 54, hby = ry + 23;
+        g.fillStyle = "#25141c"; g.beginPath(); g.roundRect(hbx, hby, hbw, 12, 4); g.fill();
         const hr = clamp(m.hp / m.max, 0, 1);
-        g.fillStyle = m.down ? "#4a4458" : hr > 0.3 ? m.col : "#e02222"; g.beginPath(); g.roundRect(hbx, hby, hbw * hr, 9, 3); g.fill();
-        textShadow(g, `${Math.max(0, Math.round(m.hp))}/${m.max}`, hbx + hbw / 2, hby + 5, 9, "#fff", "center");
+        g.fillStyle = m.down ? "#4a4458" : hr > 0.3 ? m.col : "#e02222"; g.beginPath(); g.roundRect(hbx, hby, hbw * hr, 12, 4); g.fill();
+        textShadow(g, `${Math.max(0, Math.round(m.hp))}/${m.max}`, hbx + hbw / 2, hby + 6, 10, "#fff", "center");
         if (m.lvl !== undefined) {
           const pl = G.ctx.player;
-          text(g, `⚔ ${pl.attack}   ✦ ${pl.critChancePercent}%   🛡 ${pl.armor}`, rx + 44, ry + 38, 10, "#a8a4b8");
+          text(g, `⚔ ${pl.attack}   ✦ ${pl.critChancePercent}%   🛡 ${pl.armor}`, rx + 54, ry + 47, 12, "#b0acc0");
         }
         ry += ch + gap;
       });
