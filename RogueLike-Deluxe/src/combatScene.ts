@@ -73,9 +73,9 @@ export class CombatScene implements Scene {
   }
 
   // Position du Rival allié (légèrement en retrait du héros ; se rue en frappant)
-  // Équipe en bas, décalée à gauche (diagonale façon Pokémon) et bien séparée de l'ennemi ; l'élan monte vers lui.
-  private get allyX() { return 372 + this.allyLunge * 30; }
-  private get allyY() { return 416 - this.allyLunge * 96; }
+  // Équipe en bas-gauche (le coin est libéré : plus de panneau joueur), bien étalée ; l'élan monte vers l'ennemi.
+  private get allyX() { return 300 + this.allyLunge * 60; }
+  private get allyY() { return 420 - this.allyLunge * 100; }
 
   enter() {
     // Musique boss aussi pour le Gardien des Sceaux (mini-boss) : même thème que son dialogue.
@@ -146,8 +146,8 @@ export class CombatScene implements Scene {
 
   // Pastilles de statut (poison/brûlure/givre…) alignées à partir de (x,y) ; dir=1 vers la droite, -1 vers la gauche.
   private statusChips(g: CanvasRenderingContext2D, statuses: { kind: string; turns: number; power: number }[], x: number, y: number, dir: 1 | -1) {
-    const AB: Record<string, string> = { poison: "PSN", stun: "ÉTD", burn: "BRÛ", bleed: "SGN", chill: "GIV" };
-    const COL: Record<string, string> = { poison: "#7ae87a", stun: "#ffd84a", burn: "#ff7a3a", bleed: "#ff4a6a", chill: "#7ad4ff" };
+    const AB: Record<string, string> = { poison: "PSN", stun: "ÉTD", burn: "BRÛ", bleed: "SGN", chill: "GIV", dodge: "ESQ", mist: "BRM" };
+    const COL: Record<string, string> = { poison: "#7ae87a", stun: "#ffd84a", burn: "#ff7a3a", bleed: "#ff4a6a", chill: "#7ad4ff", dodge: "#8fd4ff", mist: "#8fd4ff" };
     g.font = `bold 9px ${FONT}`;
     let cx = x;
     for (const s of statuses) {
@@ -176,8 +176,8 @@ export class CombatScene implements Scene {
   }
 
   // Position du héros sur le champ de bataille (il fait face à l'ennemi)
-  private get heroX() { return 430 + this.heroLunge * 20; }
-  private get heroY() { return 400 - this.heroLunge * 120; }
+  private get heroX() { return 465 + this.heroLunge * 15; }
+  private get heroY() { return 404 - this.heroLunge * 124; }
 
   update(dt: number) {
     // Hitstop : le monde entier se fige un battement à l'impact
@@ -337,7 +337,7 @@ export class CombatScene implements Scene {
     this.animT = 0;
     let at = 0.12;
     const ex = VW / 2, ey = 200; // centre ennemi
-    const hx = 430, hy = 400;    // héros au sol (bas, décalé à gauche)
+    const hx = 465, hy = 404;    // héros au sol (bas-gauche libéré, paire étalée)
     const pop = (x: number, y: number, txt: string, color: string, size: number, life = 1.1) =>
       this.floaters.push({ x, y, text: txt, color, life, maxLife: life, size });
     const slashAt = (x: number, y: number, color = "#fff") =>
@@ -879,15 +879,8 @@ export class CombatScene implements Scene {
       g.globalAlpha = 1;
     }
 
-    // ===== estrade d'équipe : un halo de sol sous les personnages (grounding) =====
-    if (slide >= 0.6) {
-      g.save();
-      const stg = g.createRadialGradient(400, 442, 20, 400, 442, 220);
-      stg.addColorStop(0, "rgba(120,110,150,.16)"); stg.addColorStop(1, "rgba(120,110,150,0)");
-      g.fillStyle = stg;
-      g.beginPath(); g.ellipse(400, 442, 220, 48, 0, 0, Math.PI * 2); g.fill();
-      g.restore();
-    }
+    // (pas d'estrade côté équipe : seules les ombres individuelles posent les persos ;
+    //  l'estrade lumineuse est réservée à l'ennemi)
 
     // ===== héros sur le champ de bataille (traînées + lunge + emphase au lancer) =====
     {
@@ -975,9 +968,13 @@ export class CombatScene implements Scene {
         g.fillStyle = m.down ? "#4a4458" : hr > 0.3 ? m.col : "#e02222"; g.beginPath(); g.roundRect(hbx, hby, hbw * hr, 9, 3); g.fill();
         textShadow(g, `${Math.max(0, Math.round(m.hp))}/${m.max}`, hbx + hbw / 2, hby + 5, 9, "#fff", "center");
       });
-      // pastilles de statut du joueur, juste sous le roster
-      if (slide >= 1 && G.ctx.player.statuses.length > 0)
-        this.statusChips(g, G.ctx.player.statuses, rx + 6, 14 + members.length * (ch + gap), 1);
+      // pastilles sous le roster : statuts du joueur + buffs actifs (esquive, brume)
+      if (slide >= 1) {
+        const chips = [...G.ctx.player.statuses];
+        if (this.session.dodgeTurnsLeft > 0) chips.push({ kind: "dodge", turns: this.session.dodgeTurnsLeft, power: this.session.dodgeTurnsLeft } as any);
+        if (this.session.mistTurns > 0) chips.push({ kind: "mist", turns: this.session.mistTurns, power: this.session.mistTurns } as any);
+        if (chips.length > 0) this.statusChips(g, chips, rx + 6, 14 + members.length * (ch + gap), 1);
+      }
     }
 
     // ===== indicateur de tour =====
@@ -995,34 +992,8 @@ export class CombatScene implements Scene {
       }
     }
 
-    // ===== joueur (panneau bas-gauche, glisse depuis la gauche pendant l'intro) =====
-    const px = 20 - (1 - slide) * 360, py = VH - 210, pw = 300;
-    g.fillStyle = "rgba(8,6,14,.8)";
-    g.beginPath(); g.roundRect(px, py, pw, 116, 10); g.fill();
-    g.strokeStyle = this.playerFlash > 0 ? `rgba(255,80,80,${this.playerFlash})` : "rgba(140,130,170,.4)";
-    g.lineWidth = 2;
-    g.beginPath(); g.roundRect(px, py, pw, 116, 10); g.stroke();
-
-    const psprite = getSprite("player");
-    if (psprite) {
-      g.imageSmoothingEnabled = false;
-      g.drawImage(psprite, px + 14, py + 14 + Math.sin(this.t * 3) * 2, 56, 56);
-    }
-    const p = G.ctx.player;
-    const phr = clamp(this.shownPlayerHp / p.maxHp, 0, 1);
-    g.fillStyle = "#25141c";
-    g.beginPath(); g.roundRect(px + 84, py + 20, 190, 16, 5); g.fill();
-    const phGrad = g.createLinearGradient(px + 84, 0, px + 274, 0);
-    phGrad.addColorStop(0, phr > 0.35 ? "#b83a3a" : "#e02222");
-    phGrad.addColorStop(1, phr > 0.35 ? "#e06848" : "#ff5050");
-    g.fillStyle = phGrad;
-    g.beginPath(); g.roundRect(px + 84, py + 20, 190 * phr, 16, 5); g.fill();
-    textShadow(g, `${Math.round(this.shownPlayerHp)}/${p.maxHp}`, px + 179, py + 29, 12, "#fff", "center");
-    text(g, `ATK ${p.attack}   ARM ${p.armor}   CRIT ${p.critChancePercent}%`, px + 84, py + 52, 12, "#a8a4b8");
-    if (this.session.dodgeTurnsLeft > 0)
-      text(g, T("act.dodge.on", { n: this.session.dodgeTurnsLeft }), px + 84, py + 72, 12, "#8fd4ff");
-    text(g, `${T("hud.lvl")} ${p.level}`, px + 14, py + 96, 12, "#7ab8e8");
-    text(g, `⬤ ${p.gold}`, px + 100, py + 96, 12, "#ffd84a");
+    // (Le panneau joueur bas-gauche a été supprimé : les PV/niveau vivent sur le roster
+    //  haut-gauche, façon Pokémon — le coin bas-gauche est rendu au champ de bataille.)
 
     // ===== journal (droite, glisse depuis la droite pendant l'intro) =====
     const lw = 356, lh = 120, lx = VW - lw - 14 + (1 - slide) * 380, ly = VH - 214;
@@ -1152,9 +1123,6 @@ export class CombatScene implements Scene {
       const nChips = this.enemy.statuses.filter(s => s.turns > 0).length;
       this.statusChips(g, this.enemy.statuses, exBar - nChips * 26, ey2, 1);
     }
-    if (this.session.mistTurns > 0)
-      text(g, T("status.mist"), px + 200, py + 124, 12, "#8fd4ff");
-
     if (this.state === "done" && Math.sin(this.t * 4) > -0.2)
       textShadow(g, T("combat.continue"), VW / 2, by - 16, 13, "#ffd84a", "center");
 
