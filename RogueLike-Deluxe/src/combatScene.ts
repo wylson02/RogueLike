@@ -1,6 +1,6 @@
 // ===== Scène de combat : mise en scène du CombatSession =====
 import { Scene } from "./scenes";
-import { VW, VH, text, textShadow, Particles, FONT, wrapLine } from "./render";
+import { VW, VH, text, textShadow, Particles, AmbientFX, FONT, wrapLine } from "./render";
 import { Input } from "./input";
 import { Audio } from "./audio";
 import { T } from "./i18n";
@@ -17,7 +17,7 @@ interface AnimStep { at: number; fn: () => void; }
 
 // Diagonale façon Pokémon : l'ennemi campe en haut-droite, l'équipe en bas-gauche.
 const EX = 630, EY = 215;   // ancre de l'ennemi
-const HX = 390, HY = 404;   // ancre du héros
+const HX = 390, HY = 398;   // ancre du héros (remonté : le sprite agrandi garde ses pieds au-dessus du bandeau)
 interface Slash { x: number; y: number; angle: number; life: number; color: string; }
 interface Ring { x: number; y: number; r: number; maxR: number; life: number; color: string; }
 interface Ghost { x: number; y: number; life: number; flip: boolean; size: number; }
@@ -41,6 +41,14 @@ export class CombatScene implements Scene {
   private steps: AnimStep[] = [];
   private animT = 0;
   private particles = new Particles();
+  // Ambiance : brouillard bas + cendres flottantes (valeurs à ajuster librement ici)
+  private ambient = new AmbientFX({
+    fogBlobs: 8, motes: 56,
+    fogColor: "92,108,148", moteColor: "162,176,210",
+    fogOpacity: 0.08, moteOpacity: 0.2,
+    speed: 1, leftBias: 1.6, // densité renforcée sur la moitié gauche (comble le vide)
+    fogBand: { y: 405, h: 105 },
+  });
   private floaters: Floater[] = [];
   private enemyShake = 0;
   private screenShake = 0;
@@ -191,6 +199,7 @@ export class CombatScene implements Scene {
     this.enemyLunge = Math.max(0, this.enemyLunge - dt * 4.5);
     this.allyLunge = Math.max(0, this.allyLunge - dt * 4.5);
     this.allyFlash = Math.max(0, this.allyFlash - dt * 4);
+    this.ambient.update(dt);
     this.heroCast = Math.max(0, this.heroCast - dt * 2.6);
     this.enemyCast = Math.max(0, this.enemyCast - dt * 2.6);
     this.flashTint = Math.max(0, this.flashTint - dt * 5);
@@ -787,6 +796,9 @@ export class CombatScene implements Scene {
     v.addColorStop(1, "rgba(0,0,0,.65)");
     g.fillStyle = v; g.fillRect(-12, -12, VW + 24, VH + 24);
 
+    // ===== ambiance : brouillard + cendres, derrière les sprites et l'UI =====
+    this.ambient.draw(g);
+
     // ===== ennemi ===== (glisse depuis la droite pendant l'intro ; se rue en attaquant)
     const slide = this.introSlide();
     const lungeX = -this.enemyLunge * this.enemyLunge * 190; // il plonge en diagonale vers l'équipe
@@ -889,7 +901,7 @@ export class CombatScene implements Scene {
 
     // ===== héros sur le champ de bataille (traînées + lunge + emphase au lancer) =====
     {
-      const hsz = Math.round(108 * (1 + this.heroCast * 0.16));
+      const hsz = Math.round(124 * (1 + this.heroCast * 0.16)); // +15% : le héros a plus de présence
       for (const gh of this.ghosts) {
         const hspr = getSprite("player");
         if (!hspr) break;

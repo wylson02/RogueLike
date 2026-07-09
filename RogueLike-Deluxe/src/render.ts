@@ -114,6 +114,103 @@ export class Particles {
   }
 }
 
+// ===== Ambiance : brouillard bas + poussières flottantes (boucle infinie, pooling) =====
+// Effet paramétrable et réutilisable (combat, menus, scènes...). Tous les objets sont
+// pré-alloués au constructeur puis recyclés : AUCUNE allocation par frame.
+export interface AmbientOptions {
+  fogBlobs?: number;    // nappes de brouillard au sol
+  motes?: number;       // poussières/cendres flottantes
+  fogColor?: string;    // teinte du brouillard "r,g,b"
+  moteColor?: string;   // teinte des poussières "r,g,b"
+  fogOpacity?: number;  // opacité max d'une nappe
+  moteOpacity?: number; // opacité max d'une poussière
+  speed?: number;       // multiplicateur global de vitesse
+  leftBias?: number;    // 1 = uniforme ; >1 = densité renforcée sur la moitié gauche
+  fogBand?: { y: number; h: number }; // bande verticale du brouillard
+}
+
+export class AmbientFX {
+  private fog: { x: number; y: number; rx: number; ry: number; drift: number; phase: number; a: number }[] = [];
+  private motes: { x: number; y: number; vy: number; wob: number; phase: number; size: number; a: number }[] = [];
+  private o: Required<AmbientOptions>;
+  private t = 0;
+
+  constructor(opts: AmbientOptions = {}) {
+    this.o = {
+      fogBlobs: opts.fogBlobs ?? 7,
+      motes: opts.motes ?? 42,
+      fogColor: opts.fogColor ?? "96,112,150",     // bleu-gris froid
+      moteColor: opts.moteColor ?? "160,175,210",
+      fogOpacity: opts.fogOpacity ?? 0.055,
+      moteOpacity: opts.moteOpacity ?? 0.16,
+      speed: opts.speed ?? 1,
+      leftBias: opts.leftBias ?? 1.5,
+      fogBand: opts.fogBand ?? { y: 415, h: 95 },
+    };
+    const R = Math.random;
+    for (let i = 0; i < this.o.fogBlobs; i++)
+      this.fog.push({
+        x: R() * (VW + 400) - 200,
+        y: this.o.fogBand.y + R() * this.o.fogBand.h,
+        rx: 130 + R() * 150, ry: 26 + R() * 22,
+        drift: (6 + R() * 10) * (R() < 0.5 ? -1 : 1),
+        phase: R() * Math.PI * 2,
+        a: 0.5 + R() * 0.5,
+      });
+    for (let i = 0; i < this.o.motes; i++) this.motes.push(this.newMote(true));
+  }
+
+  // biais gauche : x tiré avec une puissance > 1 → plus dense à gauche
+  private biasedX() { return VW * Math.pow(Math.random(), this.o.leftBias); }
+  private newMote(anywhere: boolean) {
+    const R = Math.random;
+    return {
+      x: this.biasedX(),
+      y: anywhere ? R() * VH : VH + 6,
+      vy: -(5 + R() * 11),
+      wob: 4 + R() * 9,
+      phase: R() * Math.PI * 2,
+      size: 1 + R() * 1.6,
+      a: 0.35 + R() * 0.65,
+    };
+  }
+
+  update(dt: number) {
+    const s = this.o.speed;
+    this.t += dt;
+    for (const f of this.fog) {
+      f.x += f.drift * s * dt;
+      // boucle : la nappe qui sort ré-entre de l'autre côté
+      if (f.x > VW + f.rx + 60) f.x = -f.rx - 60;
+      if (f.x < -f.rx - 60) f.x = VW + f.rx + 60;
+    }
+    for (let i = 0; i < this.motes.length; i++) {
+      const m = this.motes[i];
+      m.y += m.vy * s * dt;
+      if (m.y < -8) this.motes[i] = this.newMote(false); // recyclage (pas d'allocation cachée : objet simple réutilisé)
+    }
+  }
+
+  draw(g: CanvasRenderingContext2D) {
+    // nappes de brouillard (dégradés doux, sous les sprites)
+    for (const f of this.fog) {
+      const breathe = 0.75 + Math.sin(this.t * 0.35 + f.phase) * 0.25;
+      const grad = g.createRadialGradient(f.x, f.y, 4, f.x, f.y, f.rx);
+      grad.addColorStop(0, `rgba(${this.o.fogColor},${(this.o.fogOpacity * f.a * breathe).toFixed(3)})`);
+      grad.addColorStop(1, `rgba(${this.o.fogColor},0)`);
+      g.fillStyle = grad;
+      g.beginPath(); g.ellipse(f.x, f.y, f.rx, f.ry, 0, 0, Math.PI * 2); g.fill();
+    }
+    // poussières / cendres qui montent en flânant
+    for (const m of this.motes) {
+      const wx = m.x + Math.sin(this.t * 0.6 + m.phase) * m.wob;
+      const tw = 0.6 + Math.sin(this.t * 1.8 + m.phase * 2) * 0.4; // scintillement
+      g.fillStyle = `rgba(${this.o.moteColor},${(this.o.moteOpacity * m.a * tw).toFixed(3)})`;
+      g.fillRect(wx, m.y, m.size, m.size);
+    }
+  }
+}
+
 // ===== Tweens de position des entités =====
 const tweenMap = new Map<object, { x: number; y: number }>();
 export function renderPos(ent: object, logical: Pos, dt: number, snap = false): { x: number; y: number } {
