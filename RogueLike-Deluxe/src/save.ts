@@ -18,6 +18,7 @@ interface SaveData {
   rivalSpared?: boolean;
   questStates?: Record<string, string>; // état des quêtes (dont "failed" définitif)
   devourerFilmSeen?: boolean;
+  abyssKingFilmSeen?: boolean;
   companion?: { questId: string; nameKey: string; sprite: string; x: number; y: number; hp: number; maxHp: number; attack: number; alive: boolean } | null;
   p: {
     maxHp: number; hp: number; attack: number; armor: number;
@@ -47,6 +48,7 @@ export function saveGame(ctx: GameContext) {
       rivalSpared: ctx.rivalSpared,
       questStates: ctx.questStates,
       devourerFilmSeen: ctx.devourerFilmSeen,
+      abyssKingFilmSeen: ctx.abyssKingFilmSeen,
       companion: ctx.companion
         ? { questId: ctx.companion.questId, nameKey: ctx.companion.nameKey, sprite: ctx.companion.sprite, x: ctx.companion.pos.x, y: ctx.companion.pos.y, hp: ctx.companion.hp, maxHp: ctx.companion.maxHp, attack: ctx.companion.attack, alive: ctx.companion.alive }
         : null,
@@ -125,6 +127,7 @@ export function loadGame(ctx: GameContext): number | null {
     ctx.rivalSpared = data.rivalSpared ?? false;
     ctx.questStates = (data.questStates ?? {}) as Record<string, QuestStatus>;
     ctx.devourerFilmSeen = data.devourerFilmSeen ?? false;
+    ctx.abyssKingFilmSeen = data.abyssKingFilmSeen ?? false;
     ctx.companion = data.companion
       ? { questId: data.companion.questId, nameKey: data.companion.nameKey, sprite: data.companion.sprite, pos: P(data.companion.x, data.companion.y), hp: data.companion.hp, maxHp: data.companion.maxHp, attack: data.companion.attack, alive: data.companion.alive }
       : null;

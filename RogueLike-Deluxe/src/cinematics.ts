@@ -981,6 +981,104 @@ function devourerFilm(spared: boolean): FilmShot[] {
 
 export function devourerFilmShots(spared: boolean): FilmShot[] { return devourerFilm(spared); }
 
+// ---- LE FAUX ROI : face au Roi de l'Abîme, sur son trône fissuré (niveau 4) ----
+// Plan 4 conditionnel selon le Serment : Emprise → il te tend la main ; Clémence → il lève sa lame.
+function abyssKingFilm(emprise: boolean): FilmShot[] {
+  const throneY = 265;
+  const shots: FilmShot[] = [
+    { // 1. la salle du trône : une silhouette affaissée, immobile — on croirait un cadavre
+      dur: 4, captionKey: "film.king.1", captionColor: "#c8bcd8", sfx: "night",
+      draw: (g, u, t, f) => {
+        drawThrone(g, VW / 2, throneY, 1.25, "#3a1020");
+        drawShadowFigure(g, VW / 2, throneY + 6, 0.85, "#5a1522", 0.12); // avachi, presque éteint
+        drawSpriteFigure(g, "player", VW / 2, 470, 34, 0.85);
+        // torches qui vacillent
+        if (Math.random() < 0.5) f.particles.spawn({ x: VW / 2 + (Math.random() < 0.5 ? -230 : 230) + (Math.random() - 0.5) * 16, y: 210, vx: (Math.random() - 0.5) * 8, vy: -20 - Math.random() * 18, life: 1.2, maxLife: 1.2, size: 2, color: "#ff9d2e", glow: true });
+      },
+    },
+    { // 2. la couronne accroche la lumière ; les veines remontent du sol VERS le trône
+      dur: 4.5, captionKey: "film.king.2", captionColor: "#ffd84a", sfx: "seal",
+      draw: (g, u, t) => {
+        drawCorruptionVeins(g, VW / 2, 430, u, 170, "#7a1020"); // le trône se nourrit du sol
+        drawThrone(g, VW / 2, throneY, 1.25, "#5a1020");
+        drawShadowFigure(g, VW / 2, throneY + 4, 0.9, "#8a2030", 0.2 + u * 0.2);
+        // la couronne scintille
+        const gl = 0.3 + u * 0.7 + Math.sin(t * 5) * 0.15;
+        g.save(); g.strokeStyle = "#ffd84a"; g.shadowColor = "#ffd84a"; g.shadowBlur = 12 * gl; g.globalAlpha = gl; g.lineWidth = 2.5;
+        g.beginPath();
+        for (let i = -2; i <= 2; i++) { const x = VW / 2 + i * 9; g.moveTo(x - 4, throneY - 52); g.lineTo(x, throneY - 64); g.lineTo(x + 4, throneY - 52); }
+        g.stroke(); g.restore();
+        drawSpriteFigure(g, "player", VW / 2, 470, 34, 0.85);
+      },
+    },
+    { // 3. il se lève — trop grand ; le trône saigne de lumière rouge derrière lui
+      dur: 4.5, captionKey: "film.king.3", captionColor: "#ff9090", sfx: "warden",
+      draw: (g, u, t, f) => {
+        const bleed = g.createRadialGradient(VW / 2, throneY, 20, VW / 2, throneY, 320);
+        bleed.addColorStop(0, `rgba(200,30,50,${0.15 + u * 0.3})`); bleed.addColorStop(1, "rgba(0,0,0,0)");
+        g.fillStyle = bleed; g.fillRect(0, 0, VW, VH);
+        drawThrone(g, VW / 2, throneY, 1.25, "#c0203a");
+        const rise = clamp(u * 1.4, 0, 1);
+        drawShadowFigure(g, VW / 2, throneY + 6 - rise * 46, 0.9 + rise * 0.55, "#ff2a44", 0.3 + rise * 0.5);
+        drawSpriteFigure(g, "player", VW / 2, 470, 34, 0.85);
+        if (Math.random() < 0.6) f.particles.spawn({ x: VW / 2 + (Math.random() - 0.5) * 180, y: throneY + 60, vx: (Math.random() - 0.5) * 16, vy: -18 - Math.random() * 24, life: 1.6, maxLife: 1.6, size: 2, color: Math.random() < 0.5 ? "#c0203a" : "#3a0810", glow: true });
+      },
+    },
+  ];
+  if (emprise) {
+    shots.push({ // 4a. EMPRISE : il te tend la main — le trône t'appelle aussi
+      dur: 4.5, captionKey: "film.king.hand", captionColor: "#e0c0ff", sfx: "phase2",
+      draw: (g, u, t) => {
+        drawThrone(g, VW / 2, throneY, 1.25, "#7a1020");
+        drawShadowFigure(g, VW / 2, throneY - 40, 1.45, "#ff2a44", 0.6);
+        // une lueur chaude s'ouvre entre vous : l'offre
+        const oy = 380, glw = clamp(u * 1.6, 0, 1) * (0.7 + Math.sin(t * 3) * 0.3);
+        const og = g.createRadialGradient(VW / 2, oy, 4, VW / 2, oy, 60);
+        og.addColorStop(0, `rgba(255,216,74,${0.5 * glw})`); og.addColorStop(1, "rgba(255,216,74,0)");
+        g.fillStyle = og; g.fillRect(VW / 2 - 70, oy - 70, 140, 140);
+        drawSpriteFigure(g, "player", VW / 2, 470, 34, 0.9);
+      },
+    });
+  } else {
+    shots.push({ // 4b. CLÉMENCE : il lève sa lame — encore un qui croit briser la Boucle
+      dur: 4.5, captionKey: "film.king.blade", captionColor: "#ff8a94", sfx: "sword",
+      draw: (g, u, t) => {
+        drawThrone(g, VW / 2, throneY, 1.25, "#7a1020");
+        drawShadowFigure(g, VW / 2, throneY - 40, 1.45, "#ff2a44", 0.6);
+        // la lame se dresse, incandescente
+        const lift = clamp(u * 1.5, 0, 1);
+        g.save(); g.strokeStyle = "#ff5060"; g.shadowColor = "#ff2a44"; g.shadowBlur = 16; g.lineWidth = 5; g.lineCap = "round";
+        g.beginPath();
+        g.moveTo(VW / 2 + 58, throneY - 10);
+        g.lineTo(VW / 2 + 58 + lift * 40, throneY - 10 - lift * 130);
+        g.stroke(); g.restore();
+        drawSpriteFigure(g, "player", VW / 2, 470, 34, 0.9);
+      },
+    });
+  }
+  shots.push({ // 5. il fond sur toi — l'éclair de sa lame barre l'écran, le noir avale tout
+    dur: 3.6, captionKey: "film.king.5", captionColor: "#ff2a44", sfx: "roar",
+    draw: (g, u) => {
+      const sh = (1 - u) * 7;
+      g.save(); g.translate((Math.random() - 0.5) * sh, (Math.random() - 0.5) * sh);
+      const sc = 1 + u * 2.2;
+      drawShadowFigure(g, VW / 2, 300 + u * 90, 1.5 * sc, "#ff2a44", 0.85);
+      // deux entailles incandescentes traversent le cadre
+      const sl = clamp((u - 0.35) * 3, 0, 1);
+      if (sl > 0) {
+        g.strokeStyle = "#ffe0e0"; g.shadowColor = "#ff2a44"; g.shadowBlur = 22; g.lineWidth = 6; g.lineCap = "round"; g.globalAlpha = sl;
+        g.beginPath(); g.moveTo(VW * 0.15, VH * 0.2); g.lineTo(VW * 0.15 + sl * VW * 0.7, VH * 0.2 + sl * VH * 0.55); g.stroke();
+        g.beginPath(); g.moveTo(VW * 0.85, VH * 0.25); g.lineTo(VW * 0.85 - sl * VW * 0.65, VH * 0.25 + sl * VH * 0.5); g.stroke();
+      }
+      g.restore();
+      g.fillStyle = `rgba(0,0,0,${clamp((u - 0.6) * 2.6, 0, 1)})`; g.fillRect(0, 0, VW, VH);
+    },
+  });
+  return shots;
+}
+
+export function abyssKingFilmShots(emprise: boolean): FilmShot[] { return abyssKingFilm(emprise); }
+
 // ===== La scène de film générique (identique au moteur des fins, pour tout moment) =====
 export class FilmScene implements Scene {
   private idx = 0; private st = 0; private t = 0;

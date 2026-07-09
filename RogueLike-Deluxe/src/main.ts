@@ -9,7 +9,7 @@ import { SceneManager, Scene } from "./scenes";
 import { MainMenuScene } from "./menuScenes";
 import { ExploreScene, MerchantScene, CreedChoiceScene } from "./exploreScene";
 import { CombatScene } from "./combatScene";
-import { CinematicScene, bossIntroPages, bossEncounterPages, loreMarkPages, EndingFilmScene, FilmScene, introFilmShots, swordFilmShots, depthsFilmShots, endlessFilmShots, devourerFilmShots, EndScene, EndingId } from "./cinematics";
+import { CinematicScene, bossIntroPages, bossEncounterPages, loreMarkPages, EndingFilmScene, FilmScene, introFilmShots, swordFilmShots, depthsFilmShots, endlessFilmShots, devourerFilmShots, abyssKingFilmShots, EndScene, EndingId } from "./cinematics";
 import { EndlessHubScene, RelicDraftScene, RunSummaryScene } from "./endlessScenes";
 import { EpicSelectScene } from "./epicScenes";
 import { EpicCombatScene } from "./epicCombat";
@@ -82,6 +82,14 @@ Flow.bossEncounter = (monster: Monster) => {
     saveGame(G.ctx);
     Audio.setMode("boss");
     SceneManager.switchTo(() => new FilmScene(devourerFilmShots(G.ctx.rivalSpared), () => Flow.startCombat(monster)));
+    return;
+  }
+  // LE FAUX ROI : même traitement pour le Roi de l'Abîme (plan 4 selon le Serment : Emprise/Clémence).
+  if (monster.nameKey === "mob.boss" && !G.ctx.endless && !G.ctx.abyssKingFilmSeen) {
+    G.ctx.abyssKingFilmSeen = true;
+    saveGame(G.ctx);
+    Audio.setMode("boss");
+    SceneManager.switchTo(() => new FilmScene(abyssKingFilmShots(G.ctx.oath < 0), () => Flow.startCombat(monster)));
     return;
   }
   const pages = bossEncounterPages(monster.nameKey);
