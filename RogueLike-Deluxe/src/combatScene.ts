@@ -138,6 +138,31 @@ export class CombatScene implements Scene {
     return out.slice(0, 3);
   }
 
+  // Panneau incliné (parallélogramme) — cadrage dynamique façon Pokémon, mais teintes sombres.
+  private slantRect(g: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, sk: number) {
+    g.beginPath();
+    g.moveTo(x + sk, y); g.lineTo(x + w, y); g.lineTo(x + w - sk, y + h); g.lineTo(x, y + h); g.closePath();
+  }
+
+  // Pastilles de statut (poison/brûlure/givre…) alignées à partir de (x,y) ; dir=1 vers la droite, -1 vers la gauche.
+  private statusChips(g: CanvasRenderingContext2D, statuses: { kind: string; turns: number; power: number }[], x: number, y: number, dir: 1 | -1) {
+    const AB: Record<string, string> = { poison: "PSN", stun: "ÉTD", burn: "BRÛ", bleed: "SGN", chill: "GIV" };
+    const COL: Record<string, string> = { poison: "#7ae87a", stun: "#ffd84a", burn: "#ff7a3a", bleed: "#ff4a6a", chill: "#7ad4ff" };
+    g.font = `bold 9px ${FONT}`;
+    let cx = x;
+    for (const s of statuses) {
+      if (s.turns <= 0) continue;
+      const col = COL[s.kind] ?? "#c8c0d4";
+      const label = (AB[s.kind] ?? "?") + (s.power ? " " + s.power : "");
+      const w = g.measureText(label).width + 12;
+      const bx = dir < 0 ? cx - w : cx;
+      g.fillStyle = "rgba(8,6,14,.92)"; g.beginPath(); g.roundRect(bx, y, w, 15, 4); g.fill();
+      g.strokeStyle = col; g.lineWidth = 1; g.beginPath(); g.roundRect(bx, y, w, 15, 4); g.stroke();
+      textShadow(g, label, bx + w / 2, y + 8, 9, col, "center");
+      cx += dir * (w + 4);
+    }
+  }
+
   // Consommables de l'inventaire, groupés par type
   private consumables(): { id: string; name: string; count: number }[] {
     const map = new Map<string, { id: string; name: string; count: number }>();
@@ -792,16 +817,26 @@ export class CombatScene implements Scene {
     const exBar = VW / 2 + (1 - slide) * (VW / 2 + 220);
     const bw = boss ? 420 : 320;
     const ehr = clamp(this.shownEnemyHp / this.enemy.maxHp, 0, 1);
-    g.fillStyle = "rgba(8,6,14,.82)";
-    g.beginPath(); g.roundRect(exBar - bw / 2 - 4, 40, bw + 8, 42, 8); g.fill();
-    // bordure + portrait (bandeau symétrique du panneau joueur)
-    g.strokeStyle = boss ? "rgba(255,80,90,.5)" : mini ? "rgba(150,120,220,.5)" : "rgba(140,130,170,.4)";
+    const epLeft = exBar - bw / 2 - 4, epW = bw + 8, epSk = 12;
+    g.fillStyle = "rgba(8,6,14,.84)";
+    this.slantRect(g, epLeft, 40, epW, 42, epSk); g.fill();
+    // bordure + portrait + badge de rang (bandeau incliné, symétrique du panneau joueur)
+    g.strokeStyle = boss ? "rgba(255,80,90,.55)" : mini ? "rgba(150,120,220,.55)" : "rgba(140,130,170,.45)";
     g.lineWidth = 2;
-    g.beginPath(); g.roundRect(exBar - bw / 2 - 4, 40, bw + 8, 42, 8); g.stroke();
+    this.slantRect(g, epLeft, 40, epW, 42, epSk); g.stroke();
     const eface = getSprite(this.enemy.sprite);
-    if (eface) { g.imageSmoothingEnabled = false; g.drawImage(eface, exBar - bw / 2 + 4, 44, 34, 34); }
+    if (eface) { g.imageSmoothingEnabled = false; g.drawImage(eface, epLeft + 10, 44, 34, 34); }
     textShadow(g, this.enemy.name + (this.session.phase2 ? "  —  " + T("combat.phase2.title") : ""),
       exBar + 16, 54, boss ? 17 : 15, boss ? "#ff9090" : mini ? "#c8a8ff" : "#e8e0f0", "center");
+    if (boss || mini) {
+      const badge = boss ? T("rank.boss") : T("rank.elite");
+      const bcol = boss ? "#ff6070" : "#c8a8ff";
+      g.font = `bold 9px ${FONT}`;
+      const rbw = g.measureText(badge).width + 12, rbx = epLeft + epW - epSk - rbw - 2;
+      g.fillStyle = "rgba(8,6,14,.92)"; g.beginPath(); g.roundRect(rbx, 44, rbw, 14, 4); g.fill();
+      g.strokeStyle = bcol; g.lineWidth = 1; g.beginPath(); g.roundRect(rbx, 44, rbw, 14, 4); g.stroke();
+      textShadow(g, badge, rbx + rbw / 2, 51, 9, bcol, "center");
+    }
     g.fillStyle = "#25141c";
     g.beginPath(); g.roundRect(exBar - bw / 2 + 4, 66, bw - 8, 10, 4); g.fill();
     const ehGrad = g.createLinearGradient(exBar - bw / 2, 0, exBar + bw / 2, 0);
@@ -904,31 +939,35 @@ export class CombatScene implements Scene {
         textShadow(g, T(a.nameKey), this.allyX, this.allyY + asz / 2 + 4, 11, "#8a8098", "center");
     }
 
-    // ===== rangée de portraits d'équipe (haut-gauche) : l'équipe d'un coup d'œil =====
+    // ===== rangée de portraits d'équipe (haut-gauche) : panneaux inclinés + niveau + statuts =====
     {
-      const members: { name: string; sprite: string; hp: number; max: number; col: string; down?: boolean }[] = [
-        { name: T("combat.you"), sprite: "player", hp: this.shownPlayerHp, max: G.ctx.player.maxHp, col: "#e06848" },
+      const members: { name: string; sprite: string; hp: number; max: number; col: string; down?: boolean; lvl?: number; statuses?: any[] }[] = [
+        { name: T("combat.you"), sprite: "player", hp: this.shownPlayerHp, max: G.ctx.player.maxHp, col: "#e06848", lvl: G.ctx.player.level, statuses: G.ctx.player.statuses },
       ];
       if (this.session.ally) {
         const a = this.session.ally;
         members.push({ name: T(a.nameKey), sprite: a.sprite, hp: this.shownAllyHp, max: a.maxHp, col: "#7a4fc0", down: !a.alive });
       }
-      const cw = 160, ch = 34, gap = 6, rx = 14 - (1 - slide) * 220;
+      const cw = 168, ch = 34, gap = 6, sk = 8, rx = 14 - (1 - slide) * 240;
       members.forEach((m, i) => {
         const ry = 14 + i * (ch + gap);
-        g.fillStyle = "rgba(8,6,14,.8)";
-        g.beginPath(); g.roundRect(rx, ry, cw, ch, 7); g.fill();
-        g.strokeStyle = m.down ? "rgba(90,84,110,.5)" : "rgba(140,130,170,.4)"; g.lineWidth = 1.5;
-        g.beginPath(); g.roundRect(rx, ry, cw, ch, 7); g.stroke();
+        g.fillStyle = "rgba(8,6,14,.82)";
+        this.slantRect(g, rx, ry, cw, ch, sk); g.fill();
+        g.strokeStyle = m.down ? "rgba(90,84,110,.5)" : "rgba(140,130,170,.45)"; g.lineWidth = 1.5;
+        this.slantRect(g, rx, ry, cw, ch, sk); g.stroke();
         const spr = getSprite(m.sprite) ?? getSprite("pnj_orin");
-        if (spr) { g.save(); g.imageSmoothingEnabled = false; if (m.down) g.globalAlpha = 0.4; g.drawImage(spr, rx + 4, ry + 3, 28, 28); g.restore(); }
-        text(g, m.name, rx + 38, ry + 11, 12, m.down ? "#8a8098" : "#e8e0f0");
-        const hbw = cw - 46, hbx = rx + 38, hby = ry + 19;
+        if (spr) { g.save(); g.imageSmoothingEnabled = false; if (m.down) g.globalAlpha = 0.4; g.drawImage(spr, rx + 8, ry + 3, 28, 28); g.restore(); }
+        text(g, m.name, rx + 42, ry + 11, 12, m.down ? "#8a8098" : "#e8e0f0");
+        if (m.lvl !== undefined) textShadow(g, `Nv.${m.lvl}`, rx + cw - 12, ry + 11, 10, "#bfe0ff", "right");
+        const hbw = cw - 54, hbx = rx + 42, hby = ry + 19;
         g.fillStyle = "#25141c"; g.beginPath(); g.roundRect(hbx, hby, hbw, 9, 3); g.fill();
         const hr = clamp(m.hp / m.max, 0, 1);
-        g.fillStyle = m.down ? "#4a4458" : m.col; g.beginPath(); g.roundRect(hbx, hby, hbw * hr, 9, 3); g.fill();
+        g.fillStyle = m.down ? "#4a4458" : hr > 0.3 ? m.col : "#e02222"; g.beginPath(); g.roundRect(hbx, hby, hbw * hr, 9, 3); g.fill();
         textShadow(g, `${Math.max(0, Math.round(m.hp))}/${m.max}`, hbx + hbw / 2, hby + 5, 9, "#fff", "center");
       });
+      // pastilles de statut du joueur, juste sous le roster
+      if (slide >= 1 && G.ctx.player.statuses.length > 0)
+        this.statusChips(g, G.ctx.player.statuses, rx + 6, 14 + members.length * (ch + gap), 1);
     }
 
     // ===== indicateur de tour =====
@@ -1097,22 +1136,11 @@ export class CombatScene implements Scene {
       text(g, T("combat.skillmenu.hint"), x2 + 16, fy + 34, 10, "#8a8098", "left");
     }
 
-    // Statuts actifs (pastilles) — burn/bleed/chill inclus, avec puissance
-    const STATUS_COL: Record<string, string> = {
-      poison: "#7ae87a", stun: "#ffd84a", burn: "#ff7a3a", bleed: "#ff4a6a", chill: "#7ad4ff",
-    };
-    const chip = (s: { kind: string; turns: number; power: number }) =>
-      `${T("status." + s.kind)}${s.power ? " " + s.power : ""} (${s.turns})`;
-    if (this.enemy.statuses.length > 0 && !this.enemy.isDead) {
-      let sx0 = exBar - (this.enemy.statuses.length - 1) * 55;
-      for (const s of this.enemy.statuses) {
-        textShadow(g, chip(s), sx0, 118, 12, STATUS_COL[s.kind] ?? "#7ae87a", "center");
-        sx0 += 110;
-      }
-    }
-    if (G.ctx.player.statuses.length > 0) {
-      const parts = G.ctx.player.statuses.map(chip).join("   ");
-      text(g, parts, px + 14, py + 124, 12, "#7ae87a");
+    // Pastilles de statut de l'ennemi (sous son sprite ; celles du joueur sont sur le roster)
+    if (this.enemy.statuses.length > 0 && !this.enemy.isDead && slide >= 1) {
+      const ey2 = 200 + (boss ? 95 : mini ? 75 : 60) + 10;
+      const nChips = this.enemy.statuses.filter(s => s.turns > 0).length;
+      this.statusChips(g, this.enemy.statuses, exBar - nChips * 26, ey2, 1);
     }
     if (this.session.mistTurns > 0)
       text(g, T("status.mist"), px + 200, py + 124, 12, "#8fd4ff");

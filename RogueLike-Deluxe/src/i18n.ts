@@ -303,6 +303,8 @@ const FR: Dict = {
   "combat.you": "Toi",
   "combat.turn.you": "À TON TOUR",
   "combat.turn.resolving": "RÉSOLUTION…",
+  "rank.boss": "BOSS",
+  "rank.elite": "ÉLITE",
 
   "bossintro.t": "DERNIÈRE PORTE",
   "bossintro.1": "Le temple se tait.",
@@ -1115,6 +1117,8 @@ const EN: Dict = {
   "combat.you": "You",
   "combat.turn.you": "YOUR TURN",
   "combat.turn.resolving": "RESOLVING…",
+  "rank.boss": "BOSS",
+  "rank.elite": "ELITE",
 
   "bossintro.t": "THE LAST DOOR",
   "bossintro.1": "The temple falls silent.",
