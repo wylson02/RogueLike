@@ -1,6 +1,6 @@
 // ===== Audio procédural : musique d'ambiance + SFX, 100% WebAudio =====
 
-export type MusicMode = "none" | "menu" | "explore" | "night" | "combat" | "boss";
+export type MusicMode = "none" | "menu" | "explore" | "night" | "combat" | "boss" | "warden";
 
 class AudioSys {
   private ac: AudioContext | null = null;
@@ -67,11 +67,12 @@ class AudioSys {
     this.applyMode();
   }
 
-  // Quelle piste MP3 correspond à un mode (avec repli nuit → exploration)
+  // Quelle piste MP3 correspond à un mode (avec replis : nuit → exploration, gardien → boss)
   private trackKeyFor(m: MusicMode): string | null {
     if (m === "none") return null;
     if (this.declared.has(m)) return m;
     if (m === "night" && this.declared.has("explore")) return "explore";
+    if (m === "warden" && this.declared.has("boss")) return "boss";
     return null;
   }
 
@@ -126,7 +127,7 @@ class AudioSys {
 
   private schedule() {
     if (!this.ac || this.mode === "none") return;
-    const bpm = this.mode === "combat" ? 138 : this.mode === "boss" ? 116 : 66;
+    const bpm = this.mode === "combat" ? 138 : this.mode === "boss" || this.mode === "warden" ? 116 : 66;
     const stepDur = 60 / bpm / 2; // croches
     while (this.nextTime < this.ac.currentTime + 0.18) {
       this.playStep(this.step, this.nextTime, stepDur);

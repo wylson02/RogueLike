@@ -86,7 +86,8 @@ Flow.bossEncounter = (monster: Monster) => {
   }
   const pages = bossEncounterPages(monster.nameKey);
   if (!pages) { Flow.startCombat(monster); return; }
-  Audio.setMode("boss");
+  // Le Gardien des Sceaux a son propre thème (warden.mp3) dès le dialogue.
+  Audio.setMode(monster.nameKey.startsWith("mob.warden") ? "warden" : "boss");
   SceneManager.switchTo(() => new CinematicScene(pages, () => Flow.startCombat(monster), "#c02840"));
 };
 

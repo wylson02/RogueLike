@@ -90,9 +90,9 @@ export class CombatScene implements Scene {
   private get allyY() { return 420 - this.allyLunge * 90; }
 
   enter() {
-    // Musique boss aussi pour le Gardien des Sceaux (mini-boss) : même thème que son dialogue.
-    const bossMusic = this.enemy.rank === MonsterRank.Boss || this.enemy.nameKey.startsWith("mob.warden");
-    Audio.setMode(bossMusic ? "boss" : "combat");
+    // Le Gardien des Sceaux a SON thème (warden.mp3, même piste que son dialogue) ; les boss gardent boss.mp3.
+    const warden = this.enemy.nameKey.startsWith("mob.warden");
+    Audio.setMode(warden ? "warden" : this.enemy.rank === MonsterRank.Boss ? "boss" : "combat");
     if (this.enemy.rank === MonsterRank.Boss) Audio.sfx("roar");
     else Audio.sfx("hit");
   }
