@@ -9,7 +9,7 @@ import { SceneManager, Scene } from "./scenes";
 import { MainMenuScene } from "./menuScenes";
 import { ExploreScene, MerchantScene, CreedChoiceScene } from "./exploreScene";
 import { CombatScene } from "./combatScene";
-import { CinematicScene, bossIntroPages, bossEncounterPages, loreMarkPages, EndingFilmScene, FilmScene, introFilmShots, swordFilmShots, depthsFilmShots, endlessFilmShots, EndScene, EndingId } from "./cinematics";
+import { CinematicScene, bossIntroPages, bossEncounterPages, loreMarkPages, EndingFilmScene, FilmScene, introFilmShots, swordFilmShots, depthsFilmShots, endlessFilmShots, devourerFilmShots, EndScene, EndingId } from "./cinematics";
 import { EndlessHubScene, RelicDraftScene, RunSummaryScene } from "./endlessScenes";
 import { EpicSelectScene } from "./epicScenes";
 import { EpicCombatScene } from "./epicCombat";
@@ -75,6 +75,15 @@ Flow.startCombat = (monster: Monster) => {
 // Rencontre de boss : la musique boss se lance, le boss prononce son dialogue,
 // puis le combat démarre à la fin du dialogue.
 Flow.bossEncounter = (monster: Monster) => {
+  // LE RÉVEIL : face au Dévoreur (boss final, Aventure), un mini-film se joue — une seule fois.
+  // Si on fuit/meurt et qu'on revient, on retombe sur le dialogue classique.
+  if (monster.nameKey === "mob.superboss" && !G.ctx.endless && !G.ctx.devourerFilmSeen) {
+    G.ctx.devourerFilmSeen = true;
+    saveGame(G.ctx);
+    Audio.setMode("boss");
+    SceneManager.switchTo(() => new FilmScene(devourerFilmShots(G.ctx.rivalSpared), () => Flow.startCombat(monster)));
+    return;
+  }
   const pages = bossEncounterPages(monster.nameKey);
   if (!pages) { Flow.startCombat(monster); return; }
   Audio.setMode("boss");

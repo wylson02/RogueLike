@@ -59,6 +59,11 @@ const FR: Dict = {
   "film.depths.3": "Tu t'enfonces. Le monde du dessus n'est plus qu'une étincelle.",
   "film.depths.4": "L'Abîme s'ouvre, immense et affamé.",
   "film.depths.5": "Dans les ténèbres, deux braises s'allument. Il t'attendait.",
+  "film.dev.1": "Il était là depuis le début. Il te regardait descendre.",
+  "film.dev.2": "La lumière elle-même se penche vers lui — et disparaît.",
+  "film.dev.ally": "Une lame se lève à tes côtés. Cette fois, vous êtes deux.",
+  "film.dev.echo": "Dans sa masse, tu te reconnais. Voilà ce qu'il fait des vaincus.",
+  "film.dev.5": "Il n'y a plus rien à fuir. DÉVORE OU SOIS DÉVORÉ.",
   "cine.skip": "ENTRÉE : continuer  •  ÉCHAP : passer",
   "cine.start": "ENTRÉE : commencer",
 
@@ -927,6 +932,11 @@ const EN: Dict = {
   "film.depths.3": "You sink downward. The world above is now a single spark.",
   "film.depths.4": "The Abyss opens, vast and hungry.",
   "film.depths.5": "In the dark, two embers ignite. It was waiting for you.",
+  "film.dev.1": "It was here all along. Watching you descend.",
+  "film.dev.2": "Light itself leans toward it — and vanishes.",
+  "film.dev.ally": "A blade rises at your side. This time, you are two.",
+  "film.dev.echo": "Within its mass, you recognize yourself. This is what it makes of the fallen.",
+  "film.dev.5": "There is nowhere left to run. DEVOUR OR BE DEVOURED.",
   "cine.skip": "ENTER: continue  •  ESC: skip",
   "cine.start": "ENTER: begin",
 

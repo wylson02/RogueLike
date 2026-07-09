@@ -891,6 +891,96 @@ function depthsFilm(): FilmShot[] {
   ];
 }
 
+// ---- LE RÉVEIL : face au Dévoreur d'Âmes, juste avant le dernier combat ----
+// Plan 4 conditionnel : le Rival épargné surgit à tes côtés, sinon ton écho corrompu.
+function devourerFilm(spared: boolean): FilmShot[] {
+  const shots: FilmShot[] = [
+    { // 1. le noir total ; deux braises s'allument très haut — il était là depuis le début
+      dur: 4, captionKey: "film.dev.1", captionColor: "#ff8a94", sfx: "night",
+      draw: (g, u, t) => {
+        drawSpriteFigure(g, "player", VW / 2, 470, 34, 0.85);
+        const glow = clamp((u - 0.35) * 2, 0, 1) * (0.7 + Math.sin(t * 3) * 0.3);
+        if (glow > 0) {
+          g.save(); g.fillStyle = "#ff2a44"; g.shadowColor = "#ff2a44"; g.shadowBlur = 26 * glow;
+          g.globalAlpha = glow;
+          g.beginPath(); g.ellipse(VW / 2 - 34, 120, 11, 15, 0, 0, Math.PI * 2); g.fill();
+          g.beginPath(); g.ellipse(VW / 2 + 34, 120, 11, 15, 0, 0, Math.PI * 2); g.fill();
+          g.restore();
+        }
+      },
+    },
+    { // 2. il aspire la lumière : tout implose vers lui, les veines irradient
+      dur: 4.5, captionKey: "film.dev.2", captionColor: "#ffb0b8", sfx: "charge",
+      draw: (g, u, t, f) => {
+        drawCorruptionVeins(g, VW / 2, 320, u, 200, "#c0203a");
+        drawShadowFigure(g, VW / 2, 240, 1.2 * (0.5 + u * 0.5), "#ff2a44", u * 0.7);
+        drawSpriteFigure(g, "player", VW / 2, 470, 34, 0.8);
+        // implosion : les particules naissent au bord et foncent vers sa masse
+        for (let i = 0; i < 3; i++) {
+          const ang = Math.random() * Math.PI * 2, d = 280 + Math.random() * 200;
+          const px = VW / 2 + Math.cos(ang) * d, py = 240 + Math.sin(ang) * d * 0.6;
+          f.particles.spawn({ x: px, y: py, vx: (VW / 2 - px) * 0.9, vy: (240 - py) * 0.9, life: 1.1, maxLife: 1.1, size: 1.8 + Math.random() * 1.4, color: Math.random() < 0.5 ? "#c0203a" : "#8a8098", glow: true });
+        }
+        const vg = g.createRadialGradient(VW / 2, 240, 60, VW / 2, 240, 480);
+        vg.addColorStop(0, "rgba(0,0,0,0)"); vg.addColorStop(1, `rgba(0,0,0,${0.3 + u * 0.4})`);
+        g.fillStyle = vg; g.fillRect(0, 0, VW, VH);
+      },
+    },
+    { // 3. les âmes dévorées : des silhouettes spectrales tournoient vers sa gueule
+      dur: 4.5, captionKey: "bossenc.devourer.2", captionColor: "#8fd4ff", sfx: "phase2",
+      draw: (g, u, t, f) => {
+        drawShadowFigure(g, VW / 2, 240, 1.3, "#ff2a44", 0.6 + Math.sin(t * 3) * 0.2);
+        drawCorruptionVeins(g, VW / 2, 320, 1, 200, "#7a1020");
+        // âmes en orbite qui spiralent vers le centre
+        for (let i = 0; i < 5; i++) {
+          const a = t * (0.6 + i * 0.13) + i * 1.4;
+          const r = (170 - i * 22) * (1 - u * 0.45);
+          drawShadowFigure(g, VW / 2 + Math.cos(a) * r, 250 + Math.sin(a) * r * 0.45, 0.28, "#8fd4ff", 0.35);
+        }
+        if (Math.random() < 0.7) f.particles.spawn({ x: VW / 2 + (Math.random() - 0.5) * 320, y: 250 + (Math.random() - 0.5) * 140, vx: (Math.random() - 0.5) * 20, vy: -14 - Math.random() * 18, life: 1.4, maxLife: 1.4, size: 1.8, color: "#8fd4ff", glow: true });
+      },
+    },
+  ];
+  if (spared) {
+    shots.push({ // 4a. le Rival épargné surgit à tes côtés, lame levée — vous serez deux
+      dur: 4.5, captionKey: "film.dev.ally", captionColor: "#c8a8ff", sfx: "sword",
+      draw: (g, u) => {
+        drawShadowFigure(g, VW / 2, 230, 1.35, "#ff2a44", 0.7);
+        drawSpriteFigure(g, "player", VW / 2 - 60, 452, 44, 1);
+        const rin = clamp(u * 1.8, 0, 1); // il entre par la droite
+        drawSpriteFigure(g, "rival", VW / 2 + 60 + (1 - rin) * 260, 452, 44, rin, "#8a5fd0");
+      },
+    });
+  } else {
+    shots.push({ // 4b. dans sa masse : ton propre écho corrompu — ce que tu risques de devenir
+      dur: 4.5, captionKey: "film.dev.echo", captionColor: "#ff9aa4", sfx: "warden",
+      draw: (g, u, t) => {
+        drawShadowFigure(g, VW / 2, 240, 1.4, "#ff2a44", 0.7);
+        const pulse = 0.4 + Math.sin(t * 2.4) * 0.25;
+        drawSpriteFigure(g, "player", VW / 2, 232, 52, clamp(u * 1.6, 0, 1) * 0.5, "#ff2a44");
+        drawShadowFigure(g, VW / 2, 232, 0.5, "#ff2a44", pulse * u);
+        drawSpriteFigure(g, "player", VW / 2, 470, 34, 0.85);
+      },
+    });
+  }
+  shots.push({ // 5. les yeux plein cadre — le noir avale tout
+    dur: 3.6, captionKey: "film.dev.5", captionColor: "#ff2a44", sfx: "roar",
+    draw: (g, u) => {
+      const sh = (1 - u) * 8;
+      g.save(); g.translate((Math.random() - 0.5) * sh, (Math.random() - 0.5) * sh);
+      const sc = 1 + u * 5; // les yeux foncent sur toi
+      g.fillStyle = "#ff2a44"; g.shadowColor = "#ff2a44"; g.shadowBlur = 40;
+      g.beginPath(); g.ellipse(VW / 2 - 40 * sc, VH / 2 - 20, 13 * sc, 18 * sc, 0, 0, Math.PI * 2); g.fill();
+      g.beginPath(); g.ellipse(VW / 2 + 40 * sc, VH / 2 - 20, 13 * sc, 18 * sc, 0, 0, Math.PI * 2); g.fill();
+      g.restore();
+      g.fillStyle = `rgba(0,0,0,${clamp((u - 0.55) * 2.3, 0, 1)})`; g.fillRect(0, 0, VW, VH);
+    },
+  });
+  return shots;
+}
+
+export function devourerFilmShots(spared: boolean): FilmShot[] { return devourerFilm(spared); }
+
 // ===== La scène de film générique (identique au moteur des fins, pour tout moment) =====
 export class FilmScene implements Scene {
   private idx = 0; private st = 0; private t = 0;

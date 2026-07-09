@@ -62,6 +62,7 @@ export class GameContext {
   map3LastSealHintShown = false;
   prisonerFreed = false;
   rivalDefeated = false;
+  devourerFilmSeen = false; // le film du Réveil ne se joue qu'une fois (repli : dialogue classique)
 
   // ===== Quêtes & compagnon =====
   questStates: Record<string, QuestStatus> = {}; // questId -> état (persistant ; "failed" définitif)
