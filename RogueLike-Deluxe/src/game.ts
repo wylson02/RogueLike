@@ -35,4 +35,7 @@ export const Flow: {
   startEndless: (classId: ClassId) => void;
   relicDraft: () => void;
   runSummary: () => void;
+  // ===== Le Panthéon (boss-rush action) =====
+  epicHub: () => void;
+  epicStart: (index: number) => void;
 } = {} as any;

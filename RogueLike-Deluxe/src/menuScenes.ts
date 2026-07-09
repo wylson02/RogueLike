@@ -26,6 +26,7 @@ export class MainMenuScene implements Scene {
       this.items.push({ key: "menu.continue", args: { level: savedLevel() }, action: () => Flow.continueGame() });
     this.items.push({ key: "menu.new", action: () => SceneManager.push(new ClassSelectScene()) });
     this.items.push({ key: "menu.endless", action: () => Flow.endlessHub() });
+    this.items.push({ key: "menu.epic", action: () => Flow.epicHub() });
     this.items.push({ key: "menu.options", action: () => SceneManager.push(new OptionsScene()) });
     this.items.push({ key: "menu.credits", action: () => SceneManager.push(new CreditsScene()) });
     this.items.push({ key: "menu.quit", action: () => { try { window.close(); } catch { } } });

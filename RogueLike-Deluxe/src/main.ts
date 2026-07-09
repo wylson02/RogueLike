@@ -11,6 +11,9 @@ import { ExploreScene, MerchantScene, CreedChoiceScene } from "./exploreScene";
 import { CombatScene } from "./combatScene";
 import { CinematicScene, bossIntroPages, bossEncounterPages, loreMarkPages, EndingFilmScene, FilmScene, introFilmShots, swordFilmShots, depthsFilmShots, endlessFilmShots, EndScene, EndingId } from "./cinematics";
 import { EndlessHubScene, RelicDraftScene, RunSummaryScene } from "./endlessScenes";
+import { EpicSelectScene } from "./epicScenes";
+import { EpicCombatScene } from "./epicCombat";
+import { EPIC_BOSSES, markEpicCleared } from "./epicMode";
 import { G, Flow } from "./game";
 import { loadSettings, loadGame, clearSave, saveGame } from "./save";
 import { Monster, Merchant, ClassId, applyClass } from "./entities";
@@ -152,6 +155,24 @@ Flow.startEndless = (classId: ClassId) => {
 Flow.relicDraft = () => SceneManager.switchTo(() => new RelicDraftScene());
 
 Flow.runSummary = () => SceneManager.switchTo(() => new RunSummaryScene());
+
+// ===== Le Panthéon (boss-rush action) =====
+Flow.epicHub = () => { SceneManager.switchTo(() => new EpicSelectScene()); Audio.setMode("menu"); };
+
+// Cinématique de rencontre du Colosse, puis le combat d'action. À l'issue : déblocage du suivant
+// si victoire, et retour au menu de sélection dans tous les cas.
+Flow.epicStart = (index: number) => {
+  const boss = EPIC_BOSSES[index];
+  const startFight = () => {
+    SceneManager.switchTo(() => new EpicCombatScene(boss, (won) => {
+      if (won) markEpicCleared(index);
+      Flow.epicHub();
+    }));
+    SceneManager.fadeSpeed = 5;
+  };
+  SceneManager.switchTo(() => new CinematicScene(boss.intro(), startFight, boss.glow));
+  Audio.setMode("boss");
+};
 
 // ===== Écran de démarrage (débloque l'audio au premier input) =====
 class BootScene implements Scene {

@@ -114,6 +114,9 @@ class InputSys {
     return false;
   }
 
+  // Touche actuellement maintenue (nécessaire au combat temps réel du Panthéon)
+  isDown(k: GameKey): boolean { return this.held.has(k); }
+
   clear() { this.pressed.clear(); }
 }
 
