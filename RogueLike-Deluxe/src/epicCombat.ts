@@ -19,6 +19,10 @@ interface Floater { x: number; y: number; text: string; color: string; life: num
 // Projectile / onde de choc : persiste et voyage seul (le boss peut agir après l'avoir lancé).
 interface Projectile { x: number; y: number; vx: number; r: number; dmg: number; color: string; life: number; hit: boolean; wave: boolean; }
 interface Ghost { x: number; life: number; }
+// Éruption au sol télégraphée (bullet-hell) : delay = compte à rebours visible, puis active = explosion.
+interface Zone { x: number; r: number; delay: number; active: number; dmg: number; color: string; hit: boolean; fromSky: boolean; }
+// Spectre : réplique fantomatique qui te tire dessus en tenaille.
+interface Phantom { x: number; y: number; timer: number; dmg: number; color: string; fired: boolean; life: number; speed: number; }
 
 type BossState = "idle" | "windup" | "active" | "recovery" | "stagger";
 
@@ -74,6 +78,10 @@ export class EpicCombatScene implements Scene {
   private ambient: AmbientFX;
   private floaters: Floater[] = [];
   private projectiles: Projectile[] = [];
+  private zones: Zone[] = [];        // éruptions au sol / météores
+  private phantoms: Phantom[] = [];  // spectres en tenaille
+  private beamX = 0;                 // position du rayon balayant
+  private beamVX = 0;                // vitesse/sens du rayon
   private ghosts: Ghost[] = [];
   private screenShake = 0;
   private hitstop = 0;
@@ -145,6 +153,8 @@ export class EpicCombatScene implements Scene {
     this.updateHero(dt);
     this.updateBoss(dt);
     this.updateProjectiles(dt);
+    this.updateZones(dt);
+    this.updatePhantoms(dt);
 
     this.checkPhaseChange();
     if (this.bhp <= 0 && this.phase === "fight") this.win();
@@ -372,7 +382,13 @@ export class EpicCombatScene implements Scene {
     this.moveBanner = 1.0; this.moveBannerText = T(a.labelKey); this.moveBannerColor = a.color;
     if (a.kind === "slam" || a.kind === "dive") this.slamX = this.hx;
     if (a.kind === "dive") { this.airborne = true; this.diveFromX = this.bx; }
-    Audio.sfx(a.kind === "dive" ? "roar" : "guard");
+    // Rayon : démarre du bord opposé au héros et balaie vers lui puis au-delà.
+    if (a.kind === "beam") {
+      const fromRight = this.hx < (ARENA_L + ARENA_R) / 2;
+      this.beamX = fromRight ? ARENA_R + 40 : ARENA_L - 40;
+      this.beamVX = (fromRight ? -1 : 1) * (a.speed ?? 360);
+    }
+    Audio.sfx(a.kind === "dive" ? "roar" : a.kind === "teleport" ? "dodge" : "guard");
   }
 
   // Déclenchement de la hitbox à l'entrée de la phase active.
@@ -410,8 +426,8 @@ export class EpicCombatScene implements Scene {
         this.particles.burst(this.slamX, FLOOR_Y, a.color, 40, 230, 0.9, 4.6, true);
         this.particles.burst(this.slamX, FLOOR_Y, "#fff", 16, 150, 0.6, 3, true);
         Audio.sfx("phase2");
-        // ANÉANTISSEMENT : l'impact libère deux ondes de choc en prime.
-        if (a.labelKey === "epic.mv.annihilation") {
+        // ANÉANTISSEMENT / OUBLI : l'impact libère deux ondes de choc en prime.
+        if (a.labelKey === "epic.mv.annihilation" || a.labelKey === "epic.mv.oblivion") {
           for (const dir of [-1, 1] as const)
             this.projectiles.push({ x: this.slamX, y: FLOOR_Y - 12, vx: dir * 320, r: 30, dmg: Math.round(a.dmg * 0.6), color: a.color, life: 2.2, hit: false, wave: true });
         }
@@ -431,6 +447,57 @@ export class EpicCombatScene implements Scene {
         this.particles.burst(this.bx, FLOOR_Y - this.boss.size * 0.3, a.color, 26, 170, 0.7, 3.6, true);
         Audio.sfx("crit");
         break;
+      case "zones": {
+        // Motif d'éruptions au sol avec des interstices sûrs : place-toi dans les trous.
+        const count = a.hits ?? 6;
+        const span = ARENA_R - ARENA_L;
+        const gap = Math.floor(Math.random() * count); // une colonne épargnée (refuge)
+        for (let k = 0; k < count; k++) {
+          if (k === gap) continue;
+          const x = ARENA_L + span * (k + 0.5) / count;
+          this.zones.push({ x, r: (span / count) * 0.62, delay: 0.55 + Math.random() * 0.15, active: 0.22, dmg: a.dmg, color: a.color, hit: false, fromSky: false });
+        }
+        Audio.sfx("warden");
+        break;
+      }
+      case "rain": {
+        // Pluie de météores : positions étalées, retombées échelonnées (bullet-hell vertical).
+        const count = a.hits ?? 8;
+        for (let k = 0; k < count; k++) {
+          const x = ARENA_L + 30 + Math.random() * (ARENA_R - ARENA_L - 60);
+          this.zones.push({ x, r: 46, delay: 0.5 + k * 0.14 + Math.random() * 0.1, active: 0.2, dmg: a.dmg, color: a.color, hit: false, fromSky: true });
+        }
+        // plus deux impacts garantis autour de la position actuelle du héros (anti-immobilisme)
+        for (const off of [-70, 70])
+          this.zones.push({ x: clamp(this.hx + off, ARENA_L, ARENA_R), r: 46, delay: 0.8, active: 0.2, dmg: a.dmg, color: a.color, hit: false, fromSky: true });
+        Audio.sfx("phase2");
+        break;
+      }
+      case "beam":
+        this.screenShake = 0.6;
+        this.flashTint = 0.2; this.flashColor = a.color;
+        Audio.sfx("chain");
+        break;
+      case "teleport": {
+        // Se dissout puis réapparaît en flanquant le héros, et frappe autour de lui.
+        this.particles.burst(this.bx, FLOOR_Y - this.boss.size * 0.35, a.color, 20, 140, 0.6, 3.4, true);
+        const side = this.hx < (ARENA_L + ARENA_R) / 2 ? 1 : -1;
+        this.bx = clamp(this.hx + side * 100, ARENA_L + 40, ARENA_R - 40);
+        this.particles.burst(this.bx, FLOOR_Y - this.boss.size * 0.35, a.color, 24, 160, 0.7, 3.6, true);
+        this.hitstop = 0.05;
+        Audio.sfx("crit");
+        break;
+      }
+      case "phantom": {
+        // Spectres surgissant aux flancs pour un feu croisé.
+        const y = FLOOR_Y - this.boss.size * 0.35;
+        const spots = [ARENA_L + 60, ARENA_R - 60, (ARENA_L + ARENA_R) / 2];
+        const n = Math.min(spots.length, a.hits ?? 2);
+        for (let k = 0; k < n; k++)
+          this.phantoms.push({ x: spots[k], y, timer: 0.5 + k * 0.22, dmg: a.dmg, color: a.color, fired: false, life: 1.6, speed: a.speed ?? 460 });
+        Audio.sfx("warden");
+        break;
+      }
       case "dash":
         Audio.sfx("roar");
         break;
@@ -458,12 +525,19 @@ export class EpicCombatScene implements Scene {
         this.swingHit = true;
         this.hurtHero(a.dmg, this.hx < this.slamX ? -1 : 1, true);
       }
-    } else if (a.kind === "spin") {
-      // frappe tournoyante : dangereuse des deux côtés à la fois
+    } else if (a.kind === "spin" || a.kind === "teleport") {
+      // frappe tournoyante / réapparition : dangereuse des deux côtés à la fois
       if (!this.swingHit && this.dist < a.range && this.invuln <= 0 && this.rollTimer <= 0) {
         this.swingHit = true;
         this.hurtHero(a.dmg, this.hx < this.bx ? -1 : 1, true);
       }
+    } else if (a.kind === "beam") {
+      // rayon vertical qui balaie : roule au travers (i-frames) ou tiens-toi du bon côté
+      this.beamX += this.beamVX * dt;
+      if (Math.abs(this.hx - this.beamX) < a.range && this.invuln <= 0 && this.rollTimer <= 0) {
+        this.hurtHero(a.dmg, this.beamVX > 0 ? 1 : -1, true); // l'invuln post-coup évite le multi-hit
+      }
+      if (Math.random() < dt * 60) this.particles.spawn({ x: this.beamX + (Math.random() - 0.5) * a.range, y: 40 + Math.random() * (FLOOR_Y - 40), vx: 0, vy: 40, life: 0.3, maxLife: 0.3, size: 3, color: a.color, glow: true });
     } else if (a.kind === "sweep" || a.kind === "combo") {
       // arc devant le boss
       const x0 = this.bFacing > 0 ? this.bx : this.bx - a.range;
@@ -494,6 +568,44 @@ export class EpicCombatScene implements Scene {
         if (!p.wave) { this.projectiles.splice(i, 1); continue; }
       }
       if (p.life <= 0 || p.x < ARENA_L - 60 || p.x > ARENA_R + 60) this.projectiles.splice(i, 1);
+    }
+  }
+
+  // Éruptions au sol / météores : télégraphe (delay) puis explosion (active).
+  private updateZones(dt: number) {
+    for (let i = this.zones.length - 1; i >= 0; i--) {
+      const z = this.zones[i];
+      if (z.delay > 0) {
+        z.delay -= dt;
+        if (z.delay <= 0) { // l'impact frappe
+          this.screenShake = Math.max(this.screenShake, 0.6);
+          this.particles.burst(z.x, FLOOR_Y, z.color, 20, 160, 0.6, 3.4, true);
+          Audio.sfx("hit");
+        }
+        continue;
+      }
+      if (!z.hit && Math.abs(this.hx - z.x) < z.r && this.invuln <= 0 && this.rollTimer <= 0 && this.flaskTimer <= 0) {
+        z.hit = true;
+        this.hurtHero(z.dmg, this.hx < z.x ? -1 : 1, true);
+      }
+      z.active -= dt;
+      if (z.active <= 0) this.zones.splice(i, 1);
+    }
+  }
+
+  // Spectres : après un court délai, chacun tire un projectile vers le héros, puis s'efface.
+  private updatePhantoms(dt: number) {
+    for (let i = this.phantoms.length - 1; i >= 0; i--) {
+      const ph = this.phantoms[i];
+      ph.timer -= dt;
+      if (ph.timer <= 0 && !ph.fired) {
+        ph.fired = true;
+        const dir = this.hx < ph.x ? -1 : 1;
+        this.projectiles.push({ x: ph.x + dir * 20, y: ph.y, vx: dir * ph.speed, r: 14, dmg: ph.dmg, color: ph.color, life: 2.4, hit: false, wave: false });
+        this.particles.burst(ph.x, ph.y, ph.color, 12, 120, 0.5, 3, true);
+        Audio.sfx("hit");
+      }
+      if (ph.fired) { ph.life -= dt; if (ph.life <= 0) this.phantoms.splice(i, 1); }
     }
   }
 
@@ -557,7 +669,7 @@ export class EpicCombatScene implements Scene {
       this.particles.burst(this.bx, FLOOR_Y - this.boss.size * 0.4, this.boss.glow, 40, 220, 1.1, 4.5, true);
       this.bstate = "idle"; this.bidle = 0.6; this.cur = null; this.comboLeft = 0;
       this.airborne = false;
-      this.projectiles = [];
+      this.projectiles = []; this.zones = []; this.phantoms = [];
       Audio.sfx("phase2");
     }
   }
@@ -612,13 +724,18 @@ export class EpicCombatScene implements Scene {
 
     // ---- télégraphes de danger (avant les sprites, au sol) ----
     this.drawTelegraph(g);
+    this.drawZones(g);
     // ---- projectiles / ondes ----
     for (const p of this.projectiles) this.drawProjectile(g, p);
+    // ---- spectres (derrière le boss) ----
+    this.drawPhantoms(g);
 
     // ---- boss ----
     this.drawBoss(g);
     // ---- héros ----
     this.drawHero(g);
+    // ---- rayon balayant (par-dessus tout) ----
+    this.drawBeam(g);
 
     // ---- particules & dégâts flottants ----
     this.particles.draw(g);
@@ -681,8 +798,16 @@ export class EpicCombatScene implements Scene {
       g.fillRect(x0, FLOOR_Y - 30, a.range, 44);
     } else if (a.kind === "shockwave") {
       g.beginPath(); g.ellipse(this.bx, FLOOR_Y + 6, 40 + prog * 30, 16, 0, 0, Math.PI * 2); g.fill();
-    } else if (a.kind === "projectile" || a.kind === "volley") {
+    } else if (a.kind === "projectile" || a.kind === "volley" || a.kind === "phantom") {
       g.beginPath(); g.arc(this.bx + this.bFacing * 30, FLOOR_Y - this.boss.size * 0.35, 8 + prog * 10, 0, Math.PI * 2); g.fill();
+    } else if (a.kind === "beam") {
+      // ligne fantôme au point de départ + flèche du sens de balayage
+      g.globalAlpha = 0.3 + prog * 0.4;
+      g.fillRect(this.beamX - 2, 0, 4, FLOOR_Y + 30);
+      const arrow = this.beamVX > 0 ? "»»»" : "«««";
+      textShadow(g, arrow, this.beamX + Math.sign(this.beamVX) * 26, FLOOR_Y - 60, 20, a.color, "center");
+    } else if (a.kind === "teleport") {
+      g.beginPath(); g.arc(this.bx, FLOOR_Y - this.boss.size * 0.35, 20 + prog * 16, 0, Math.PI * 2); g.stroke();
     }
     g.restore();
   }
@@ -697,6 +822,60 @@ export class EpicCombatScene implements Scene {
     } else {
       g.beginPath(); g.arc(p.x, p.y, p.r, 0, Math.PI * 2); g.fill();
     }
+    g.restore();
+  }
+
+  private drawZones(g: CanvasRenderingContext2D) {
+    for (const z of this.zones) {
+      g.save();
+      if (z.delay > 0) {
+        // télégraphe : cercle qui se resserre + réticule ; météore qui tombe
+        const p = clamp(1 - z.delay / 0.7, 0, 1);
+        g.globalAlpha = 0.2 + p * 0.4;
+        g.strokeStyle = z.color; g.lineWidth = 2;
+        g.beginPath(); g.ellipse(z.x, FLOOR_Y + 6, z.r, z.r * 0.34, 0, 0, Math.PI * 2); g.stroke();
+        g.globalAlpha = 0.15 + p * 0.35; g.fillStyle = z.color;
+        g.beginPath(); g.ellipse(z.x, FLOOR_Y + 6, z.r * (1 - p * 0.5), z.r * 0.34 * (1 - p * 0.5), 0, 0, Math.PI * 2); g.fill();
+        if (z.fromSky) { // le météore descend
+          const my = -20 + p * (FLOOR_Y - 20);
+          g.shadowColor = z.color; g.shadowBlur = 16;
+          g.beginPath(); g.arc(z.x, my, 10, 0, Math.PI * 2); g.fill();
+        }
+      } else {
+        // explosion
+        const p = clamp(z.active / 0.22, 0, 1);
+        g.globalAlpha = p * 0.8; g.fillStyle = z.color;
+        g.shadowColor = z.color; g.shadowBlur = 20;
+        g.beginPath(); g.ellipse(z.x, FLOOR_Y, z.r * (1.1 - p * 0.2), z.r * 0.5, 0, 0, Math.PI * 2); g.fill();
+      }
+      g.restore();
+    }
+  }
+
+  private drawPhantoms(g: CanvasRenderingContext2D) {
+    const spr = getSprite(this.boss.sprite);
+    const size = this.boss.size * 0.7;
+    for (const ph of this.phantoms) {
+      g.save();
+      g.globalAlpha = (ph.fired ? clamp(ph.life / 1.1, 0, 1) : clamp(1 - ph.timer / 0.5, 0.2, 0.5)) * 0.6;
+      g.imageSmoothingEnabled = false;
+      g.shadowColor = ph.color; g.shadowBlur = 18;
+      if (spr) g.drawImage(spr, ph.x - size / 2, FLOOR_Y - size, size, size);
+      g.restore();
+    }
+  }
+
+  private drawBeam(g: CanvasRenderingContext2D) {
+    if (this.bstate !== "active" || !this.cur || this.cur.kind !== "beam") return;
+    const w = this.cur.range;
+    g.save();
+    g.globalAlpha = 0.32;
+    const bg = g.createLinearGradient(this.beamX - w, 0, this.beamX + w, 0);
+    bg.addColorStop(0, "rgba(0,0,0,0)"); bg.addColorStop(0.5, this.cur.color); bg.addColorStop(1, "rgba(0,0,0,0)");
+    g.fillStyle = bg;
+    g.fillRect(this.beamX - w, 0, w * 2, FLOOR_Y + 40);
+    g.globalAlpha = 0.9; g.fillStyle = "#fff";
+    g.fillRect(this.beamX - 3, 0, 6, FLOOR_Y + 40);
     g.restore();
   }
 

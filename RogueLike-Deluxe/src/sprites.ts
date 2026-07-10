@@ -582,6 +582,98 @@ export function initSprites() {
     r: "#2a0a12", R: "#481523", g: "#ff3040", s: "#9aa8c8", O,
   });
 
+  // ================= PANTHÉON — COLOSSES SECRETS =================
+  // TISSEUR DE NÉANT : œil eldritch flottant, tentacules de vide.
+  sprites["voidweaver"] = mk([
+    "........................",
+    "..........vvvv..........",
+    "........vvVVVVvv........",
+    ".......vVVVVVVVVv.......",
+    "......vVVVVVVVVVVv......",
+    ".....vVVVeeeeeeVVVv.....",
+    ".....vVVeeEEEEeeVVv.....",
+    "....vVVeeEEEEEEeeVVv....",
+    "....vVVeEEEwwEEEeVVv....",
+    "....vVVeEEEwwEEEeVVv....",
+    "....vVVeeEEEEEEeeVVv....",
+    ".....vVVeeEEEEeeVVv.....",
+    ".....vVVVeeeeeeVVVv.....",
+    "......vVVVVVVVVVVv......",
+    ".......vVVVVVVVVv.......",
+    "........vvVVVVvv........",
+    "....v.....vvvv.....v....",
+    "...vv....v.vv.v....vv...",
+    "..vv....vv.vv.vv....vv..",
+    ".vv....vv..vv..vv....vv.",
+    ".v....vv...vv...vv....v.",
+    "....vvv....vv....vvv....",
+    "...vv......vv......vv...",
+    "..vv.......vv.......vv..",
+  ], {
+    v: "#2e1450", V: "#6a34a8", e: "#1a6a9a", E: "#78dcff", w: "#080814",
+  });
+
+  // CHIMÈRE D'OS : crâne bestial cornu, orbites incandescentes.
+  sprites["bonechimera"] = mk([
+    "..O..................O..",
+    ".OBO................OBO.",
+    ".OBBO..............OBBO.",
+    ".OBBBO............OBBBO.",
+    "..OBBBOOOOOOOOOOOOBBBO..",
+    "..OBbbbbbbbbbbbbbbbbBO..",
+    ".OBbbbbbbbbbbbbbbbbbbBO.",
+    ".OBbbbeeeebbbbeeeebbbBO.",
+    ".OBbbeEEEEbbbbEEEEebbBO.",
+    ".OBbbeEErEbbbbErEEebbBO.",
+    ".OBbbbeeeebbbbeeeebbbBO.",
+    ".OBbbbbbbbbbbbbbbbbbbBO.",
+    ".OBbbbbbbbbbbbbbbbbbbBO.",
+    ".OBbbbffbffbffbffbbbbBO.",
+    "..OBbfbfbfbfbfbfbfbbBO..",
+    "..OBbbbffbffbffbffbbBO..",
+    "...OBbbbbbbbbbbbbbbBO...",
+    "....OBbbbbbbbbbbbbBO....",
+    ".....OBbbbbbbbbbbBO.....",
+    "......OBbbbbbbbbBO......",
+    ".......OBbbbbbbBO.......",
+    "........OBbbbbBO........",
+    ".........OBbbBO.........",
+    "..........OBBO..........",
+  ], {
+    B: "#8a7d68", b: "#e8ddc4", e: "#3a0a0a", E: "#ff3a24", r: "#ff8a60", f: "#b7a988", O,
+  });
+
+  // L'ORIGINE : tyran cosmique couronné, cœur ardent. Le vrai final.
+  sprites["origin"] = mk([
+    "...........gg...........",
+    ".....g....gGGg....g.....",
+    "....gg...gGGGGg...gg....",
+    "...gGg..gGGGGGGg..gGg...",
+    "...gGGggGGGGGGGGggGGg...",
+    "....gGGGGwwwwwwGGGGg....",
+    "....OwwwWWWWWWWWwwwO....",
+    "...OwWWWWeeeeeeWWWWwO...",
+    "...OwWWeeEEEEEEeeWWwO...",
+    "...OwWWeEErrrrEEeWWwO...",
+    "...OwWWeeEEEEEEeeWWwO...",
+    "...OwWWWWWrrrrWWWWWwO...",
+    "....OwWWWWWWWWWWWWwO....",
+    ".....OaAAAAAAAAAAaO.....",
+    "....OaAArrrrrrrrAAaO....",
+    "...OaAAArRRRRRRrAAAaO...",
+    "...OaAAARRRcccRRRAAaO...",
+    "...OaAAArRRRRRRrAAAaO...",
+    "...OaAAAArrrrrrAAAAaO...",
+    "....OaAAAAAAAAAAAAaO....",
+    ".....OaaAAAAAAAAaaO.....",
+    "......OaaOaaaaOaaO......",
+    ".......OO..gg..OO.......",
+    "...........gg...........",
+  ], {
+    g: "#ffd84a", G: "#ffb020", w: "#fff2d0", W: "#ffe0a0", e: "#7a0e0e",
+    E: "#ff4030", r: "#ff2a2a", R: "#c01020", c: "#fff0a0", a: "#b89050", A: "#e8c070", O: "#2a1408",
+  });
+
   sprites["it_abysskey"] = mk([
     "................",
     "................",

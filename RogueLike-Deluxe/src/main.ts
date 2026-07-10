@@ -11,9 +11,9 @@ import { ExploreScene, MerchantScene, CreedChoiceScene } from "./exploreScene";
 import { CombatScene } from "./combatScene";
 import { CinematicScene, bossIntroPages, bossEncounterPages, loreMarkPages, EndingFilmScene, FilmScene, introFilmShots, swordFilmShots, depthsFilmShots, endlessFilmShots, devourerFilmShots, abyssKingFilmShots, EndScene, EndingId } from "./cinematics";
 import { EndlessHubScene, RelicDraftScene, RunSummaryScene } from "./endlessScenes";
-import { EpicSelectScene } from "./epicScenes";
+import { EpicSelectScene, EpicRevealScene } from "./epicScenes";
 import { EpicCombatScene } from "./epicCombat";
-import { EPIC_BOSSES, markEpicCleared } from "./epicMode";
+import { EPIC_BOSSES, markEpicCleared, epicShouldReveal } from "./epicMode";
 import { G, Flow } from "./game";
 import { loadSettings, loadGame, clearSave, saveGame } from "./save";
 import { Monster, Merchant, ClassId, applyClass } from "./entities";
@@ -175,7 +175,15 @@ Flow.relicDraft = () => SceneManager.switchTo(() => new RelicDraftScene());
 Flow.runSummary = () => SceneManager.switchTo(() => new RunSummaryScene());
 
 // ===== Le Panthéon (boss-rush action) =====
-Flow.epicHub = () => { SceneManager.switchTo(() => new EpicSelectScene()); Audio.setMode("menu"); };
+// Si les 5 premiers Colosses viennent d'être vaincus, on joue d'abord la RÉVÉLATION des 3 secrets.
+Flow.epicHub = () => {
+  if (epicShouldReveal()) {
+    SceneManager.switchTo(() => new EpicRevealScene(() => SceneManager.switchTo(() => new EpicSelectScene())));
+    return;
+  }
+  SceneManager.switchTo(() => new EpicSelectScene());
+  Audio.setMode("menu");
+};
 
 // Cinématique de rencontre du Colosse, puis le combat d'action. À l'issue : déblocage du suivant
 // si victoire, et retour au menu de sélection dans tous les cas.
