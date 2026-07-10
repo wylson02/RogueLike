@@ -135,6 +135,16 @@ export function loadGame(ctx: GameContext): number | null {
   } catch { return null; }
 }
 
+// Efface TOUTES les données du jeu (sauvegarde d'histoire, réglages, méta, Panthéon).
+// Utilisé par le combo secret de réinitialisation.
+export function resetAllData() {
+  try {
+    const keys: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && k.startsWith("abyss")) keys.push(k); }
+    for (const k of keys) localStorage.removeItem(k);
+  } catch { }
+}
+
 export interface Settings { lang: Lang; musicVol: number; sfxVol: number; binds?: Record<string, string>; }
 export function saveSettings(s: Settings) {
   try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(s)); } catch { }

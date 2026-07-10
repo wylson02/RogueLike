@@ -15,7 +15,7 @@ import { EpicSelectScene, EpicRevealScene } from "./epicScenes";
 import { EpicCombatScene } from "./epicCombat";
 import { EPIC_BOSSES, markEpicCleared, epicShouldReveal, epicClearedCount } from "./epicMode";
 import { G, Flow } from "./game";
-import { loadSettings, loadGame, clearSave, saveGame } from "./save";
+import { loadSettings, loadGame, clearSave, saveGame, saveSettings, resetAllData } from "./save";
 import { Monster, Merchant, ClassId, applyClass } from "./entities";
 import { loadMeta, applyMetaToPlayer, essenceMultiplier } from "./meta";
 
@@ -39,6 +39,9 @@ setLang(G.settings.lang);
 G.ctx = new GameContext();
 G.world = new WorldRenderer();
 Input.attach(canvas);
+// Auto-réparation : une config de touches héritée qui priverait Valider/Annuler de leur touche
+// (soft-lock d'anciennes versions) est purgée au démarrage.
+if (G.settings.binds && !Input.validateBinds(G.settings.binds)) { G.settings.binds = {}; saveSettings(G.settings); }
 Input.applyBindings(G.settings.binds); // touches personnalisées du joueur
 Input.onAny = () => { Audio.ensure(); Audio.setMusicVol(G.settings.musicVol); Audio.setSfxVol(G.settings.sfxVol); };
 
@@ -236,15 +239,44 @@ class BootScene implements Scene {
 
 SceneManager.switchNow(new BootScene());
 
+// ===== Combo SECRET de réinitialisation (façon soft-reset DS) =====
+// Maintiens Q + E + ÉCHAP (tabL + tabR + cancel) pendant 2 s, n'importe où, pour tout effacer.
+const RESET_HOLD = 2.0;
+let resetHold = 0;
+let didReset = false;
+function updateResetCombo(dt: number) {
+  const combo = Input.isDown("tabL") && Input.isDown("tabR") && Input.isDown("cancel");
+  resetHold = combo ? resetHold + dt : 0;
+  if (resetHold >= RESET_HOLD && !didReset) {
+    didReset = true;
+    resetAllData();
+    try { location.reload(); } catch { }
+  }
+}
+function drawResetCombo(gg: CanvasRenderingContext2D) {
+  if (resetHold < 0.45) return; // discret : n'apparaît qu'une fois le combo bien enclenché
+  const p = Math.min(1, resetHold / RESET_HOLD);
+  gg.save();
+  gg.globalAlpha = Math.min(1, (resetHold - 0.3) * 2);
+  gg.fillStyle = "rgba(5,4,10,.72)"; gg.fillRect(0, 0, VW, VH);
+  textShadow(gg, T("reset.hold"), VW / 2, VH / 2 - 20, 24, "#ff8080", "center");
+  const bw = 360, bx = VW / 2 - bw / 2, by = VH / 2 + 18;
+  gg.fillStyle = "#241c34"; gg.beginPath(); gg.roundRect(bx, by, bw, 14, 6); gg.fill();
+  gg.fillStyle = "#ff4040"; gg.beginPath(); gg.roundRect(bx, by, bw * p, 14, 6); gg.fill();
+  gg.restore();
+}
+
 // ===== Boucle =====
 let last = performance.now();
 function frame(now: number) {
   const dt = Math.min(0.1, (now - last) / 1000);
   last = now;
   Input.pollGamepad();
+  updateResetCombo(dt);
   SceneManager.update(dt);
   g.setTransform(1, 0, 0, 1, 0, 0);
   SceneManager.draw(g);
+  drawResetCombo(g);
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
