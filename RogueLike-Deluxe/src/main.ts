@@ -15,7 +15,7 @@ import { EpicSelectScene, EpicRevealScene } from "./epicScenes";
 import { EpicCombatScene } from "./epicCombat";
 import { EPIC_BOSSES, markEpicCleared, epicShouldReveal, epicClearedCount } from "./epicMode";
 import { G, Flow } from "./game";
-import { loadSettings, loadGame, clearSave, saveGame, saveSettings, resetAllData } from "./save";
+import { loadSettings, loadGame, clearSave, saveGame, saveSettings } from "./save";
 import { Monster, Merchant, ClassId, applyClass } from "./entities";
 import { loadMeta, applyMetaToPlayer, essenceMultiplier } from "./meta";
 
@@ -239,50 +239,15 @@ class BootScene implements Scene {
 
 SceneManager.switchNow(new BootScene());
 
-// ===== Combo SECRET de réinitialisation (SÉQUENCE façon code Konami) =====
-// Saisis ↑ ↑ ↓ ↓ ← → ← → (une touche après l'autre) : efface tout et relance.
-// Séquence = zéro ghosting clavier (contrairement à un appui simultané), fiable sur tout clavier.
-const RESET_SEQ = ["ArrowUp", "ArrowUp", "ArrowDown", "ArrowDown", "ArrowLeft", "ArrowRight", "ArrowLeft", "ArrowRight"];
-let seqPos = 0, seqLast = 0;
-let resetFlash = 0, resetPending = false;
-window.addEventListener("keydown", (e) => {
-  const now = performance.now();
-  if (now - seqLast > 1500) seqPos = 0; // trop lent entre deux touches → on repart de zéro
-  seqLast = now;
-  if (e.code === RESET_SEQ[seqPos]) {
-    seqPos++;
-    if (seqPos >= RESET_SEQ.length) { seqPos = 0; resetPending = true; resetFlash = 1.0; }
-  } else {
-    seqPos = e.code === RESET_SEQ[0] ? 1 : 0; // tolère un faux départ qui recommence la séquence
-  }
-});
-function updateReset(dt: number) {
-  if (resetFlash > 0) {
-    resetFlash -= dt;
-    if (resetFlash <= 0 && resetPending) { resetPending = false; resetAllData(); try { location.reload(); } catch { } }
-  }
-}
-function drawReset(gg: CanvasRenderingContext2D) {
-  if (resetFlash <= 0) return;
-  gg.save();
-  gg.globalAlpha = Math.min(1, resetFlash * 2);
-  gg.fillStyle = "rgba(110,8,8,.85)"; gg.fillRect(0, 0, VW, VH);
-  gg.shadowColor = "#ff2020"; gg.shadowBlur = 24;
-  textShadow(gg, T("reset.hold"), VW / 2, VH / 2, 32, "#fff", "center");
-  gg.restore();
-}
-
 // ===== Boucle =====
 let last = performance.now();
 function frame(now: number) {
   const dt = Math.min(0.1, (now - last) / 1000);
   last = now;
   Input.pollGamepad();
-  updateReset(dt);
   SceneManager.update(dt);
   g.setTransform(1, 0, 0, 1, 0, 0);
   SceneManager.draw(g);
-  drawReset(g);
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
