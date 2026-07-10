@@ -88,14 +88,14 @@ Flow.bossEncounter = (monster: Monster) => {
   if (monster.nameKey === "mob.boss" && !G.ctx.endless && !G.ctx.abyssKingFilmSeen) {
     G.ctx.abyssKingFilmSeen = true;
     saveGame(G.ctx);
-    Audio.setMode("boss");
+    Audio.setMode("abyssking"); // son thème (orgue de cathédrale maudite) dès le film
     SceneManager.switchTo(() => new FilmScene(abyssKingFilmShots(G.ctx.oath < 0), () => Flow.startCombat(monster)));
     return;
   }
   const pages = bossEncounterPages(monster.nameKey);
   if (!pages) { Flow.startCombat(monster); return; }
-  // Le Gardien des Sceaux a son propre thème (warden.mp3) dès le dialogue.
-  Audio.setMode(monster.nameKey.startsWith("mob.warden") ? "warden" : "boss");
+  // Thèmes dédiés dès le dialogue : Gardien des Sceaux (warden.mp3), Roi de l'Abîme (abyssking.mp3).
+  Audio.setMode(monster.nameKey.startsWith("mob.warden") ? "warden" : monster.nameKey === "mob.boss" ? "abyssking" : "boss");
   SceneManager.switchTo(() => new CinematicScene(pages, () => Flow.startCombat(monster), "#c02840"));
 };
 
