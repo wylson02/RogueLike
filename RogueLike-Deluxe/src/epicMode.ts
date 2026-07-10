@@ -263,7 +263,7 @@ export const EPIC_SECRET_START = 5;
 // ===== Persistance des déblocages (clé dédiée, indépendante de la sauvegarde d'histoire) =====
 const EPIC_KEY = "abyss-epic-v1";
 
-interface EpicData { cleared: number; revealed?: boolean; } // vaincus (0..8) + secrets dévoilés ?
+interface EpicData { cleared: number; revealed?: boolean; ranks?: Record<number, string>; } // vaincus (0..8) + secrets + meilleurs rangs
 
 function load(): EpicData {
   try {
@@ -298,6 +298,16 @@ export function epicShouldReveal(): boolean {
   return !d.revealed && d.cleared >= EPIC_SECRET_START;
 }
 export function markEpicRevealed() { const d = load(); d.revealed = true; save(d); }
+
+// ===== Rangs de combat (S > A > B > C) : on ne garde que le meilleur =====
+const RANK_ORDER = ["C", "B", "A", "S"];
+export function epicBestRank(index: number): string | null { return load().ranks?.[index] ?? null; }
+export function recordEpicRank(index: number, rank: string) {
+  const d = load();
+  d.ranks = d.ranks ?? {};
+  const cur = d.ranks[index];
+  if (cur === undefined || RANK_ORDER.indexOf(rank) > RANK_ORDER.indexOf(cur)) { d.ranks[index] = rank; save(d); }
+}
 
 // Nombre de cartes à afficher dans le menu : 5, ou les 8 une fois les secrets dévoilés.
 export function epicVisibleCount(): number {

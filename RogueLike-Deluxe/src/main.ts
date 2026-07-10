@@ -13,7 +13,7 @@ import { CinematicScene, bossIntroPages, bossEncounterPages, loreMarkPages, Endi
 import { EndlessHubScene, RelicDraftScene, RunSummaryScene } from "./endlessScenes";
 import { EpicSelectScene, EpicRevealScene } from "./epicScenes";
 import { EpicCombatScene } from "./epicCombat";
-import { EPIC_BOSSES, markEpicCleared, epicShouldReveal } from "./epicMode";
+import { EPIC_BOSSES, markEpicCleared, epicShouldReveal, epicClearedCount } from "./epicMode";
 import { G, Flow } from "./game";
 import { loadSettings, loadGame, clearSave, saveGame } from "./save";
 import { Monster, Merchant, ClassId, applyClass } from "./entities";
@@ -49,8 +49,12 @@ Flow.startNew = (classId: ClassId) => {
   clearSave();
   G.ctx = new GameContext();
   applyClass(G.ctx.player, classId);
+  // Faveur du Panthéon : chaque Colosse vaincu endurcit tous tes héros (+2 PV max).
+  const favor = epicClearedCount() * 2;
+  if (favor > 0) { G.ctx.player.maxHp += favor; G.ctx.player.hp = G.ctx.player.maxHp; }
   SceneManager.switchTo(() => new FilmScene(introFilmShots(), () => {
     G.ctx.pushLog(T("level.enter1"), LogKind.System);
+    if (favor > 0) G.ctx.pushLog(T("epic.favor", { n: favor }), LogKind.Loot);
     G.ctx.loadLevel(1);
     G.ctx.drainEvents();
     saveGame(G.ctx);
@@ -160,9 +164,13 @@ Flow.startEndless = (classId: ClassId) => {
   applyClass(G.ctx.player, classId);
   const meta = loadMeta();
   applyMetaToPlayer(G.ctx.player, meta);
+  // Faveur du Panthéon : les Colosses vaincus endurcissent aussi les descendeurs.
+  const favor = epicClearedCount() * 2;
+  if (favor > 0) { G.ctx.player.maxHp += favor; G.ctx.player.hp = G.ctx.player.maxHp; }
   // Cinématique de plongeon dans l'Abîme, puis le run démarre (étage 1 chargé à la fin du film).
   SceneManager.switchTo(() => new FilmScene(endlessFilmShots(), () => {
     G.ctx.startEndlessRun(essenceMultiplier(meta));
+    if (favor > 0) G.ctx.pushLog(T("epic.favor", { n: favor }), LogKind.Loot);
     G.ctx.drainEvents();
     Flow.toExplore();
     Audio.setMode("explore");
@@ -193,7 +201,7 @@ Flow.epicStart = (index: number) => {
     SceneManager.switchTo(() => new EpicCombatScene(boss, (won) => {
       if (won) markEpicCleared(index);
       Flow.epicHub();
-    }));
+    }, index));
     SceneManager.fadeSpeed = 5;
   };
   SceneManager.switchTo(() => new CinematicScene(boss.intro(), startFight, boss.glow));

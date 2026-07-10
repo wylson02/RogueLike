@@ -9,7 +9,7 @@ import { getSprite } from "./sprites";
 import { clamp } from "./core";
 import {
   EPIC_BOSSES, EPIC_SECRET_START, isEpicUnlocked, isEpicCleared, epicClearedCount,
-  epicVisibleCount, markEpicRevealed,
+  epicVisibleCount, markEpicRevealed, epicBestRank,
 } from "./epicMode";
 
 export class EpicSelectScene implements Scene {
@@ -95,6 +95,17 @@ export class EpicSelectScene implements Scene {
 
       // numéro
       textShadow(g, "" + (i + 1), cx + 12, cy + 18, 17, cleared ? "#ffd84a" : "#c8c0d4", "left");
+      // meilleur rang obtenu (badge haut-droite : S doré, A violet, B bleu, C gris)
+      const rank = epicBestRank(i);
+      if (rank && cleared) {
+        const RC: Record<string, string> = { S: "#ffd84a", A: "#c8a8ff", B: "#8fd4ff", C: "#a8a4b8" };
+        g.save();
+        g.fillStyle = "rgba(8,6,14,.9)"; g.beginPath(); g.roundRect(cx + cardW - 26, cy + 6, 20, 20, 5); g.fill();
+        g.strokeStyle = RC[rank] ?? "#a8a4b8"; g.lineWidth = 1.4;
+        g.beginPath(); g.roundRect(cx + cardW - 26, cy + 6, 20, 20, 5); g.stroke();
+        textShadow(g, rank, cx + cardW - 16, cy + 16, 13, RC[rank] ?? "#a8a4b8", "center");
+        g.restore();
+      }
 
       // portrait
       const spr = getSprite(b.sprite);

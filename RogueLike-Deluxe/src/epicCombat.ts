@@ -9,7 +9,7 @@ import { Audio } from "./audio";
 import { T } from "./i18n";
 import { getSprite } from "./sprites";
 import { clamp, lerp } from "./core";
-import { EpicBoss, EpicAttack, EPIC_HERO } from "./epicMode";
+import { EpicBoss, EpicAttack, EPIC_HERO, recordEpicRank } from "./epicMode";
 
 const ARENA_L = 96, ARENA_R = 864;   // bornes du sol
 const FLOOR_Y = 452;                 // ligne de sol (pieds des combattants)
@@ -85,6 +85,19 @@ export class EpicCombatScene implements Scene {
   private ghosts: Ghost[] = [];
   private screenShake = 0;
   private hitstop = 0;
+  private slowmo = 0;               // bullet-time (secondes réelles restantes) : parade parfaite / phase / exécution
+  private camZoom = 1;              // caméra dynamique (léger zoom recentré sur l'action)
+  private camFx = VW / 2;
+  private camFy = VH / 2;
+  private rings: { x: number; y: number; r: number; maxR: number; life: number; color: string }[] = [];
+  private atkStepped = false;       // le pas d'engagement de la frappe a-t-il été fait ?
+  private revealBanner = 0;         // "NOUVEAU COUP" révélé à l'entrée d'une phase
+  private revealText = "";
+  // ---- stats de rang ----
+  private fightT = 0;
+  private dmgTaken = 0;
+  private parries = 0;
+  private rank: string | null = null;
   private flashTint = 0;
   private flashColor = "#fff";
   private phaseBanner = 0;
@@ -94,14 +107,16 @@ export class EpicCombatScene implements Scene {
   private shownBhp: number;
   private shownHp: number;
 
-  constructor(boss: EpicBoss, onOutcome: (won: boolean) => void) {
+  constructor(boss: EpicBoss, onOutcome: (won: boolean) => void, private bossIndex = -1) {
     this.boss = boss;
     this.onOutcome = onOutcome;
     this.bhp = boss.hp; this.bmaxhp = boss.hp;
     this.shownBhp = boss.hp; this.shownHp = this.hp;
+    // Ambiance aux couleurs du Colosse : ses cendres hantent SON arène.
+    const glow = hexToRgb(boss.glow) ?? "180,170,210";
     this.ambient = new AmbientFX({
-      fogBlobs: 7, motes: 44, fogColor: "120,110,150", moteColor: "180,170,210",
-      fogOpacity: 0.07, moteOpacity: 0.18, speed: 1, fogBand: { y: 430, h: 110 },
+      fogBlobs: 7, motes: 48, fogColor: "120,110,150", moteColor: glow,
+      fogOpacity: 0.07, moteOpacity: 0.2, speed: 1, fogBand: { y: 430, h: 110 },
     });
   }
 
@@ -120,10 +135,19 @@ export class EpicCombatScene implements Scene {
     this.flashTint = Math.max(0, this.flashTint - dt * 5);
     this.phaseBanner = Math.max(0, this.phaseBanner - dt);
     this.moveBanner = Math.max(0, this.moveBanner - dt);
+    this.revealBanner = Math.max(0, this.revealBanner - dt);
     this.bflash = Math.max(0, this.bflash - dt * 4);
     this.staminaFlash = Math.max(0, this.staminaFlash - dt * 3);
     this.ambient.update(dt);
     this.updateFx(dt);
+    // ---- caméra dynamique : zoom cible selon le moment, recentrée sur l'action ----
+    let zTarget = 1, fx = VW / 2, fy = VH / 2;
+    if (this.phase === "won") { zTarget = 1.14; fx = this.bx; fy = FLOOR_Y - this.boss.size * 0.4; }
+    else if (this.phase === "lost") { zTarget = 1.1; fx = this.hx; fy = FLOOR_Y - 46; }
+    else if (this.slowmo > 0) { zTarget = 1.07; fx = (this.hx + this.bx) / 2; fy = FLOOR_Y - 70; }
+    this.camZoom = lerp(this.camZoom, zTarget, clamp(dt * 4, 0, 1));
+    this.camFx = lerp(this.camFx, fx, clamp(dt * 5, 0, 1));
+    this.camFy = lerp(this.camFy, fy, clamp(dt * 5, 0, 1));
     this.shownBhp = lerp(this.shownBhp, Math.max(0, this.bhp), clamp(dt * 9, 0, 1));
     this.shownHp = lerp(this.shownHp, Math.max(0, this.hp), clamp(dt * 9, 0, 1));
 
@@ -137,6 +161,16 @@ export class EpicCombatScene implements Scene {
     if (this.phase === "won" || this.phase === "lost") {
       this.outcomeT += dt;
       this.bdeathT += dt;
+      // exécution : le Colosse vaincu se désagrège en cendres qui montent
+      if (this.phase === "won" && Math.random() < dt * 34) {
+        this.particles.spawn({
+          x: this.bx + (Math.random() - 0.5) * this.boss.size * 0.6,
+          y: FLOOR_Y - Math.random() * this.boss.size * 0.8,
+          vx: (Math.random() - 0.5) * 14, vy: -34 - Math.random() * 50,
+          life: 1.7, maxLife: 1.7, size: 1.8 + Math.random() * 1.8,
+          color: Math.random() < 0.6 ? this.boss.glow : "#8a8098", glow: true,
+        });
+      }
       // brève tenue puis retour (confirmable)
       if (this.outcomeT > 1.4 && Input.consume("confirm")) this.onOutcome(this.phase === "won");
       if (this.outcomeT > 6) this.onOutcome(this.phase === "won");
@@ -146,15 +180,19 @@ export class EpicCombatScene implements Scene {
     // ---- FIGHT ----
     if (this.hitstop > 0) { this.hitstop -= dt; return; } // gel d'impact
     this.t += dt;
+    this.fightT += dt;
+    // bullet-time : le monde ralentit (parade parfaite / bascule de phase), toi tu restes lucide
+    const gdt = this.slowmo > 0 ? dt * 0.3 : dt;
+    this.slowmo = Math.max(0, this.slowmo - dt);
 
     // abandon (retour au Panthéon, sans progression)
     if (Input.consume("cancel")) { this.onOutcome(false); return; }
 
-    this.updateHero(dt);
-    this.updateBoss(dt);
-    this.updateProjectiles(dt);
-    this.updateZones(dt);
-    this.updatePhantoms(dt);
+    this.updateHero(gdt);
+    this.updateBoss(gdt);
+    this.updateProjectiles(gdt);
+    this.updateZones(gdt);
+    this.updatePhantoms(gdt);
 
     this.checkPhaseChange();
     if (this.bhp <= 0 && this.phase === "fight") this.win();
@@ -169,6 +207,11 @@ export class EpicCombatScene implements Scene {
     for (let i = this.ghosts.length - 1; i >= 0; i--) {
       this.ghosts[i].life -= dt * 3.5;
       if (this.ghosts[i].life <= 0) this.ghosts.splice(i, 1);
+    }
+    for (let i = this.rings.length - 1; i >= 0; i--) {
+      const r = this.rings[i];
+      r.life -= dt; r.r += (r.maxR - r.r) * dt * 9;
+      if (r.life <= 0) this.rings.splice(i, 1);
     }
     this.particles.update(dt);
   }
@@ -258,7 +301,7 @@ export class EpicCombatScene implements Scene {
   }
 
   private startAttack(kind: "light" | "heavy") {
-    this.atkKind = kind; this.atkHit = false; this.atkPhase = "windup";
+    this.atkKind = kind; this.atkHit = false; this.atkPhase = "windup"; this.atkStepped = false;
     this.atkTimer = kind === "light"
       ? EPIC_HERO.lightWindup + EPIC_HERO.lightActive + EPIC_HERO.lightRecovery
       : EPIC_HERO.heavyWindup + EPIC_HERO.heavyActive + EPIC_HERO.heavyRecovery;
@@ -274,6 +317,13 @@ export class EpicCombatScene implements Scene {
     const full = total[0] + total[1] + total[2];
     const elapsed = full - this.atkTimer;
     this.atkPhase = elapsed < total[0] ? "windup" : elapsed < total[0] + total[1] ? "active" : "recovery";
+
+    // pas d'engagement : la frappe porte le corps en avant (le coup se SENT)
+    if (this.atkPhase === "active" && !this.atkStepped) {
+      this.atkStepped = true;
+      this.hx = clamp(this.hx + this.hFacing * (this.atkKind === "heavy" ? 26 : 13), ARENA_L, ARENA_R);
+      if (this.atkKind === "heavy") this.ghosts.push({ x: this.hx - this.hFacing * 18, life: 0.8 });
+    }
 
     if (this.atkPhase === "active" && !this.atkHit) {
       const reach = this.atkKind === "heavy" ? H.heavyReach : H.lightReach;
@@ -294,9 +344,10 @@ export class EpicCombatScene implements Scene {
     const poiseBreak = heavy && (this.bstate === "windup");
     this.bhp -= dmg;
     this.bflash = 1;
-    this.hitstop = heavy ? 0.09 : 0.05;
-    this.screenShake = heavy ? 0.9 : 0.5;
+    this.hitstop = heavy ? 0.12 : 0.05;
+    this.screenShake = heavy ? 1.1 : 0.5;
     const col = heavy ? "#ffd8b0" : "#ffb0a0";
+    if (heavy) this.rings.push({ x: this.bx, y: FLOOR_Y - this.boss.size * 0.35, r: 10, maxR: 130, life: 0.4, color: col });
     this.particles.burst(this.bx, FLOOR_Y - this.boss.size * 0.35, col, heavy ? 24 : 14, 170, 0.7, heavy ? 4 : 3, true);
     this.pop(this.bx, FLOOR_Y - this.boss.size * 0.5, "-" + dmg, col, heavy ? 30 : 24);
     Audio.sfx(heavy ? "crit" : "hit");
@@ -617,7 +668,11 @@ export class EpicCombatScene implements Scene {
       // Parade : bloquer dans la toute première fenêtre annule tout et chancelle le boss.
       if (this.blockHeld <= EPIC_HERO.parryWindow) {
         Audio.sfx("seal");
+        this.parries++;
+        this.slowmo = 0.55;   // BULLET-TIME : le monde ralentit, ta fenêtre de riposte s'ouvre
+        this.hitstop = 0.1;
         this.flashTint = 0.35; this.flashColor = "#ffe14a";
+        this.rings.push({ x: this.hx + fromDir * -16, y: FLOOR_Y - 44, r: 8, maxR: 110, life: 0.45, color: "#ffe14a" });
         this.particles.burst(this.hx + fromDir * -18, FLOOR_Y - 40, "#ffe14a", 20, 130, 0.6, 3.5, true);
         this.pop(this.hx, FLOOR_Y - 84, T("epic.parry"), "#ffe14a", 24, 1.2);
         this.staggerBoss(1.2);
@@ -634,6 +689,7 @@ export class EpicCombatScene implements Scene {
       }
       const reduced = Math.max(1, Math.round(dmg * (1 - EPIC_HERO.blockReduce)));
       this.hp -= reduced;
+      this.dmgTaken += reduced;
       Audio.sfx("guard");
       this.particles.burst(this.hx + fromDir * -14, FLOOR_Y - 40, "#8fd4ff", 12, 90, 0.5, 3, true);
       this.pop(this.hx, FLOOR_Y - 70, "-" + reduced, "#8fd4ff", 18);
@@ -646,6 +702,7 @@ export class EpicCombatScene implements Scene {
 
   private takeHit(dmg: number, fromDir: number, knock: boolean) {
     this.hp -= dmg;
+    this.dmgTaken += dmg;
     this.hurtTimer = 0.28;
     this.invuln = 0.5;              // brefs i-frames après un coup (évite le stun-lock)
     this.atkTimer = 0; this.atkKind = null;
@@ -664,9 +721,25 @@ export class EpicCombatScene implements Scene {
     if (this.bphase < thresholds.length && frac <= thresholds[this.bphase]) {
       this.bphase++;
       this.phaseBanner = 2.0;
-      this.screenShake = 1.6; this.hitstop = 0.12;
+      this.screenShake = 2; this.hitstop = 0.18; this.slowmo = 0.7; // le monde retient son souffle
       this.flashTint = 0.5; this.flashColor = this.boss.glow;
+      this.rings.push({ x: this.bx, y: FLOOR_Y - this.boss.size * 0.4, r: 14, maxR: 320, life: 0.6, color: this.boss.glow });
       this.particles.burst(this.bx, FLOOR_Y - this.boss.size * 0.4, this.boss.glow, 40, 220, 1.1, 4.5, true);
+      // l'arène tremble : des débris pleuvent du plafond
+      for (let i = 0; i < 22; i++) {
+        this.particles.spawn({
+          x: Math.random() * VW, y: -10 - Math.random() * 40,
+          vx: (Math.random() - 0.5) * 20, vy: 140 + Math.random() * 160,
+          life: 1.6, maxLife: 1.6, size: 2 + Math.random() * 2.4,
+          color: Math.random() < 0.4 ? this.boss.glow : "#6a6280", glow: Math.random() < 0.4,
+        });
+      }
+      // révélation : les coups débloqués par cette phase s'annoncent
+      const revealed = this.boss.attacks.filter(a => a.fromPhase === this.bphase);
+      if (revealed.length > 0) {
+        this.revealBanner = 2.6;
+        this.revealText = revealed.map(a => T(a.labelKey)).join("  •  ");
+      }
       this.bstate = "idle"; this.bidle = 0.6; this.cur = null; this.comboLeft = 0;
       this.airborne = false;
       this.projectiles = []; this.zones = []; this.phantoms = [];
@@ -674,8 +747,19 @@ export class EpicCombatScene implements Scene {
     }
   }
 
+  // Rang de combat : les dégâts subis pèsent, chaque parade rachète, la lenteur pénalise un peu.
+  private computeRank(): string {
+    const score = this.dmgTaken - this.parries * 8 + (this.fightT > 130 ? 15 : 0);
+    if (this.dmgTaken === 0 || score <= 12) return "S";
+    if (score <= 50) return "A";
+    if (score <= 105) return "B";
+    return "C";
+  }
+
   private win() {
     this.phase = "won"; this.outcomeT = 0; this.bdeathT = 0.001;
+    this.rank = this.computeRank();
+    if (this.bossIndex >= 0) recordEpicRank(this.bossIndex, this.rank);
     this.screenShake = 1.4; this.flashTint = 0.4; this.flashColor = "#fff";
     this.particles.burst(this.bx, FLOOR_Y - this.boss.size * 0.4, "#fff", 40, 180, 1.2, 4.5, true);
     this.particles.burst(this.bx, FLOOR_Y - this.boss.size * 0.4, "#ffd84a", 24, 130, 1.4, 3, true);
@@ -699,11 +783,23 @@ export class EpicCombatScene implements Scene {
     g.save();
     if (this.screenShake > 0)
       g.translate((Math.random() - 0.5) * this.screenShake * 10, (Math.random() - 0.5) * this.screenShake * 10);
+    // caméra dynamique : léger zoom recentré sur l'action (parade, phase, exécution)
+    if (this.camZoom > 1.002) {
+      g.translate(this.camFx, this.camFy);
+      g.scale(this.camZoom, this.camZoom);
+      g.translate(-this.camFx, -this.camFy);
+    }
 
     // fond
     const grad = g.createLinearGradient(0, 0, 0, VH);
     grad.addColorStop(0, this.boss.bg[0]); grad.addColorStop(0.6, this.boss.bg[1]); grad.addColorStop(1, this.boss.bg[2]);
     g.fillStyle = grad; g.fillRect(-12, -12, VW + 24, VH + 24);
+    // l'arène s'imprègne de la couleur du Colosse à chaque phase franchie
+    if (this.bphase > 0) {
+      g.globalAlpha = 0.05 * this.bphase;
+      g.fillStyle = this.boss.glow; g.fillRect(-12, -12, VW + 24, VH + 24);
+      g.globalAlpha = 1;
+    }
 
     // colonnes parallaxe
     g.save();
@@ -736,6 +832,15 @@ export class EpicCombatScene implements Scene {
     this.drawHero(g);
     // ---- rayon balayant (par-dessus tout) ----
     this.drawBeam(g);
+
+    // ---- anneaux de choc (parade, coup lourd, phase) ----
+    for (const r of this.rings) {
+      g.save();
+      g.globalAlpha = clamp(r.life / 0.45, 0, 1) * 0.85;
+      g.strokeStyle = r.color; g.lineWidth = 3.5; g.shadowColor = r.color; g.shadowBlur = 14;
+      g.beginPath(); g.arc(r.x, r.y, r.r, 0, Math.PI * 2); g.stroke();
+      g.restore();
+    }
 
     // ---- particules & dégâts flottants ----
     this.particles.draw(g);
@@ -942,18 +1047,30 @@ export class EpicCombatScene implements Scene {
     if (spr) g.drawImage(spr, this.hx - size / 2, FLOOR_Y - size, size, size);
     g.restore();
 
-    // arme / effet d'attaque
+    // arme / effet d'attaque : double arc de lame avec traînée (le coup a un corps)
     if (this.atkKind && this.atkPhase !== "windup") {
       const reach = this.atkKind === "heavy" ? EPIC_HERO.heavyReach : EPIC_HERO.lightReach;
-      const col = this.atkKind === "heavy" ? "#ffd8b0" : "#dfe6ff";
-      g.save();
-      g.globalAlpha = this.atkPhase === "active" ? 0.9 : 0.4;
-      g.strokeStyle = col; g.lineWidth = this.atkKind === "heavy" ? 6 : 4;
-      g.shadowColor = col; g.shadowBlur = 12;
+      const heavy = this.atkKind === "heavy";
+      const col = heavy ? "#ffd8b0" : "#dfe6ff";
+      const active = this.atkPhase === "active";
       const cx = this.hx + this.hFacing * 20, cy = FLOOR_Y - size * 0.55;
-      g.beginPath();
-      g.arc(cx, cy, reach * 0.7, this.hFacing > 0 ? -0.9 : Math.PI - 0.9 + 1.8, this.hFacing > 0 ? 0.9 : Math.PI + 0.9 + 1.8);
-      g.stroke();
+      const a0 = this.hFacing > 0 ? -0.9 : Math.PI - 0.9 + 1.8;
+      const a1 = this.hFacing > 0 ? 0.9 : Math.PI + 0.9 + 1.8;
+      g.save();
+      // traînée large et diffuse derrière le tranchant
+      g.globalAlpha = active ? 0.35 : 0.15;
+      g.strokeStyle = col; g.lineWidth = heavy ? 16 : 10; g.shadowColor = col; g.shadowBlur = 18;
+      g.beginPath(); g.arc(cx, cy, reach * 0.62, a0, a1); g.stroke();
+      // tranchant net
+      g.globalAlpha = active ? 0.95 : 0.4;
+      g.lineWidth = heavy ? 6 : 4; g.shadowBlur = 12;
+      g.beginPath(); g.arc(cx, cy, reach * 0.72, a0, a1); g.stroke();
+      // pointe incandescente sur la lourde
+      if (heavy && active) {
+        g.globalAlpha = 0.9; g.fillStyle = "#fff";
+        const tip = this.hFacing > 0 ? a1 : a0;
+        g.beginPath(); g.arc(cx + Math.cos(tip) * reach * 0.72, cy + Math.sin(tip) * reach * 0.72, 4, 0, Math.PI * 2); g.fill();
+      }
       g.restore();
     }
     // bouclier de garde
@@ -1043,6 +1160,13 @@ export class EpicCombatScene implements Scene {
       textShadow(g, T("epic.phase", { n: this.bphase + 1 }), VW / 2, VH / 2 - 40, 42, this.boss.glow, "center");
       g.globalAlpha = 1;
     }
+    // révélation des coups débloqués par la phase
+    if (this.revealBanner > 0) {
+      const a = clamp(this.revealBanner / 0.5, 0, 1);
+      g.globalAlpha = Math.min(1, a);
+      textShadow(g, T("epic.newmove", { name: this.revealText }), VW / 2, VH / 2 + 4, 17, "#ffd0d0", "center");
+      g.globalAlpha = 1;
+    }
   }
 
   private drawIntro(g: CanvasRenderingContext2D) {
@@ -1055,12 +1179,42 @@ export class EpicCombatScene implements Scene {
 
   private drawOutcome(g: CanvasRenderingContext2D, won: boolean) {
     const a = clamp(this.outcomeT / 1.2, 0, 1);
-    g.fillStyle = `rgba(5,4,10,${a * 0.72})`;
+    g.fillStyle = `rgba(5,4,10,${a * (won ? 0.72 : 0.84)})`;
     g.fillRect(0, 0, VW, VH);
+    // défaite : dans le noir, seules les braises du Colosse te regardent mourir
+    if (!won) {
+      const e = clamp((this.outcomeT - 0.5) / 1.2, 0, 1) * (0.7 + Math.sin(this.t * 3) * 0.3);
+      if (e > 0) {
+        g.save(); g.fillStyle = this.boss.glow; g.shadowColor = this.boss.glow; g.shadowBlur = 30 * e; g.globalAlpha = e;
+        const ey = FLOOR_Y - this.boss.size * 0.62;
+        g.beginPath(); g.ellipse(this.bx - 16, ey, 7, 10, 0, 0, Math.PI * 2); g.fill();
+        g.beginPath(); g.ellipse(this.bx + 16, ey, 7, 10, 0, 0, Math.PI * 2); g.fill();
+        g.restore();
+      }
+    }
     g.save();
     g.shadowColor = won ? "#ffd84a" : "#c02840"; g.shadowBlur = 24;
     textShadow(g, won ? T("epic.win") : T("epic.dead"), VW / 2, VH / 2 - 16, 52, won ? "#ffe6a0" : "#ff6070", "center");
     g.restore();
+    // rang de combat (victoire) : la lettre tombe avec un léger rebond
+    if (won && this.rank) {
+      const ra = clamp((this.outcomeT - 0.8) / 0.4, 0, 1);
+      if (ra > 0) {
+        const RC: Record<string, string> = { S: "#ffd84a", A: "#c8a8ff", B: "#8fd4ff", C: "#a8a4b8" };
+        const scale = 1 + (1 - ra) * 1.6;
+        g.save();
+        g.globalAlpha = ra;
+        g.translate(VW / 2 + 268, VH / 2 - 30); g.scale(scale, scale);
+        g.shadowColor = RC[this.rank]; g.shadowBlur = 26;
+        g.font = `bold 64px ${FONT}`; g.textAlign = "center"; g.textBaseline = "middle";
+        g.fillStyle = RC[this.rank];
+        g.fillText(this.rank, 0, 0);
+        g.restore();
+        const mm = Math.floor(this.fightT / 60), ss = Math.floor(this.fightT % 60);
+        text(g, T("epic.rank.stats", { time: `${mm}:${ss.toString().padStart(2, "0")}`, dmg: Math.round(this.dmgTaken), parry: this.parries }),
+          VW / 2, VH / 2 + 24, 13, "#c8c0d4", "center");
+      }
+    }
     if (this.outcomeT > 1.4 && Math.sin(this.t * 5) > -0.3)
       text(g, T("epic.continue"), VW / 2, VH / 2 + 48, 16, "#c8c0d4", "center");
   }
@@ -1068,3 +1222,11 @@ export class EpicCombatScene implements Scene {
 
 // Type interne : copie mutable d'une attaque en cours d'exécution.
 interface EpicAtk extends EpicAttack { }
+
+// "#rrggbb" → "r,g,b" (pour teinter l'AmbientFX aux couleurs du Colosse)
+function hexToRgb(hex: string): string | null {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex);
+  if (!m) return null;
+  const n = parseInt(m[1], 16);
+  return `${(n >> 16) & 255},${(n >> 8) & 255},${n & 255}`;
+}
