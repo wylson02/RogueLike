@@ -43,6 +43,7 @@ class InputSys {
   private padPrev: Record<number, boolean> = {};
   private padAxisPrev = { x: 0, y: 0 };
   private codeMap = new Map<string, GameKey>(); // code physique → action (reconstruit au remappage)
+  private heldCodes = new Set<string>();        // codes physiques bruts maintenus (combo de reset, indépendant du remappage)
   private captureCb: ((code: string) => void) | null = null; // capture d'une touche (écran de réglages)
   onAny: (() => void) | null = null;
 
@@ -52,16 +53,18 @@ class InputSys {
       // Capture pour le remappage : on avale la prochaine touche brute.
       if (this.captureCb) { e.preventDefault(); const cb = this.captureCb; this.captureCb = null; cb(e.code); return; }
       if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Space", "Tab"].includes(e.code)) e.preventDefault();
+      this.heldCodes.add(e.code); // suivi brut (combo de reset)
       const k = this.mapKey(e);
       if (!k) return;
       if (!this.held.has(k)) { this.held.add(k); this.press(k); }
       this.onAny?.();
     });
     window.addEventListener("keyup", (e) => {
+      this.heldCodes.delete(e.code);
       const k = this.mapKey(e);
       if (k) this.held.delete(k);
     });
-    window.addEventListener("blur", () => { this.held.clear(); });
+    window.addEventListener("blur", () => { this.held.clear(); this.heldCodes.clear(); });
     el.focus();
     el.addEventListener("click", () => el.focus());
   }
@@ -93,6 +96,9 @@ class InputSys {
     const binds = this.computeBinds(overrides);
     return ESSENTIAL.every(a => binds[a].length > 0);
   }
+
+  // Touche physique brute maintenue (combo de reset, indépendant du remappage).
+  isCodeDown(code: string): boolean { return this.heldCodes.has(code); }
 
   // Touche actuellement liée à une action (pour l'affichage).
   boundCode(action: GameKey): string {

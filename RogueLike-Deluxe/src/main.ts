@@ -240,12 +240,14 @@ class BootScene implements Scene {
 SceneManager.switchNow(new BootScene());
 
 // ===== Combo SECRET de réinitialisation (façon soft-reset DS) =====
-// Maintiens Q + E + ÉCHAP (tabL + tabR + cancel) pendant 2 s, n'importe où, pour tout effacer.
+// Maintiens les 4 flèches ↑ ↓ ← → ensemble pendant 2 s, n'importe où, pour tout effacer.
+// Codes physiques bruts : indépendant du clavier (AZERTY/QWERTY) ET du remappage.
 const RESET_HOLD = 2.0;
 let resetHold = 0;
 let didReset = false;
 function updateResetCombo(dt: number) {
-  const combo = Input.isDown("tabL") && Input.isDown("tabR") && Input.isDown("cancel");
+  const combo = Input.isCodeDown("ArrowUp") && Input.isCodeDown("ArrowDown")
+    && Input.isCodeDown("ArrowLeft") && Input.isCodeDown("ArrowRight");
   resetHold = combo ? resetHold + dt : 0;
   if (resetHold >= RESET_HOLD && !didReset) {
     didReset = true;

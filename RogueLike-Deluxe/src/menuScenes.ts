@@ -4,7 +4,7 @@ import { VW, VH, text, textShadow, Particles, FONT } from "./render";
 import { Input, BIND_ORDER, codeLabel } from "./input";
 import { Audio } from "./audio";
 import { T, setLang, Lang } from "./i18n";
-import { hasSave, savedLevel, saveSettings } from "./save";
+import { hasSave, savedLevel, saveSettings, resetAllData } from "./save";
 import { G, Flow } from "./game";
 import { getSprite } from "./sprites";
 import { ClassId, ClassCatalog } from "./entities";
@@ -208,11 +208,15 @@ export class ClassSelectScene implements Scene {
 // ===== Options (overlay) =====
 export class OptionsScene implements Scene {
   private sel = 0;
-  private static readonly N = 5; // musique, sfx, langue, contrôles, retour
+  private confirmReset = false; // demande de confirmation avant la remise à zéro
+  private static readonly N = 6; // musique, sfx, langue, contrôles, réinitialiser, retour
   update(dt: number) {
-    if (Input.consume("cancel")) { Audio.sfx("back"); saveSettings(G.settings); SceneManager.pop(); return; }
-    if (Input.consume("up")) { this.sel = (this.sel + OptionsScene.N - 1) % OptionsScene.N; Audio.sfx("ui"); }
-    if (Input.consume("down")) { this.sel = (this.sel + 1) % OptionsScene.N; Audio.sfx("ui"); }
+    if (Input.consume("cancel")) {
+      if (this.confirmReset) { this.confirmReset = false; Audio.sfx("back"); return; }
+      Audio.sfx("back"); saveSettings(G.settings); SceneManager.pop(); return;
+    }
+    if (Input.consume("up")) { this.sel = (this.sel + OptionsScene.N - 1) % OptionsScene.N; this.confirmReset = false; Audio.sfx("ui"); }
+    if (Input.consume("down")) { this.sel = (this.sel + 1) % OptionsScene.N; this.confirmReset = false; Audio.sfx("ui"); }
     const dir = Input.consume("right") ? 1 : Input.consume("left") ? -1 : 0;
     if (dir !== 0) {
       if (this.sel === 0) { G.settings.musicVol = Math.round((G.settings.musicVol + dir * 0.1) * 10) / 10; G.settings.musicVol = Math.max(0, Math.min(1, G.settings.musicVol)); Audio.setMusicVol(G.settings.musicVol); Audio.sfx("ui"); }
@@ -226,13 +230,18 @@ export class OptionsScene implements Scene {
     if (Input.consume("confirm")) {
       if (this.sel === 2) { G.settings.lang = (G.settings.lang === "fr" ? "en" : "fr") as Lang; setLang(G.settings.lang); Audio.sfx("ui"); }
       if (this.sel === 3) { Audio.sfx("confirm"); SceneManager.push(new KeybindScene()); }
-      if (this.sel === 4) { Audio.sfx("back"); saveSettings(G.settings); SceneManager.pop(); }
+      if (this.sel === 4) {
+        // Réinitialiser le jeu : demande confirmation, puis efface tout et recharge.
+        if (!this.confirmReset) { this.confirmReset = true; Audio.sfx("locked"); }
+        else { Audio.sfx("confirm"); resetAllData(); try { location.reload(); } catch { } }
+      }
+      if (this.sel === 5) { Audio.sfx("back"); saveSettings(G.settings); SceneManager.pop(); }
     }
   }
 
   draw(g: CanvasRenderingContext2D) {
     dimBackground(g, 0.72);
-    const w = 460, h = 320, x = VW / 2 - w / 2, y = VH / 2 - h / 2;
+    const w = 460, h = 360, x = VW / 2 - w / 2, y = VH / 2 - h / 2;
     panel(g, x, y, w, h, T("options.title"));
 
     const rows = [
@@ -240,16 +249,18 @@ export class OptionsScene implements Scene {
       { label: T("options.sfx"), value: G.settings.sfxVol },
       { label: T("options.lang"), value: -1 },
       { label: T("options.controls"), value: -3 },
+      { label: this.confirmReset ? T("options.reset.confirm") : T("options.reset"), value: -4 },
       { label: T("options.back"), value: -2 },
     ];
     rows.forEach((r, i) => {
-      const ry = y + 58 + i * 50;
+      const ry = y + 54 + i * 48;
       const selected = i === this.sel;
+      const isReset = r.value === -4;
       if (selected) {
-        g.fillStyle = "rgba(120,25,25,.5)";
-        g.beginPath(); g.roundRect(x + 16, ry - 18, w - 32, 38, 6); g.fill();
+        g.fillStyle = isReset ? "rgba(150,30,30,.6)" : "rgba(120,25,25,.5)";
+        g.beginPath(); g.roundRect(x + 16, ry - 17, w - 32, 36, 6); g.fill();
       }
-      text(g, r.label, x + 34, ry, 16, selected ? "#fff" : "#a89ec0");
+      text(g, r.label, x + 34, ry, isReset ? 15 : 16, isReset ? (selected ? "#ff9090" : "#c88888") : (selected ? "#fff" : "#a89ec0"));
       if (r.value >= 0) {
         // slider
         const sx = x + 220, sw = 180;
