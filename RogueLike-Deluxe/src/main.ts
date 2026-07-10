@@ -1,11 +1,12 @@
 // ===== Point d'entrée : boucle de jeu, câblage des scènes =====
-import { VW, VH, WorldRenderer, text, textShadow, FONT } from "./render";
+import { VW, VH, WorldRenderer, text } from "./render";
 import { initSprites } from "./sprites";
 import { Input } from "./input";
 import { Audio } from "./audio";
 import { setLang, T } from "./i18n";
 import { GameContext, LogKind } from "./context";
-import { SceneManager, Scene } from "./scenes";
+import { SceneManager } from "./scenes";
+import { TitleScene, titleAttractPages } from "./titleScenes";
 import { MainMenuScene } from "./menuScenes";
 import { ExploreScene, MerchantScene, CreedChoiceScene } from "./exploreScene";
 import { CombatScene } from "./combatScene";
@@ -212,32 +213,12 @@ Flow.epicStart = (index: number) => {
   Audio.setMode("boss");
 };
 
-// ===== Écran de démarrage (débloque l'audio au premier input) =====
-class BootScene implements Scene {
-  private t = 0;
-  update(dt: number) {
-    this.t += dt;
-    if (Input.consume("confirm")) {
-      Audio.ensure();
-      Flow.toMenu();
-    }
-  }
-  draw(gg: CanvasRenderingContext2D) {
-    gg.fillStyle = "#080610";
-    gg.fillRect(0, 0, VW, VH);
-    gg.save();
-    gg.shadowColor = "#c02828"; gg.shadowBlur = 24;
-    gg.font = `bold 46px ${FONT}`;
-    gg.textAlign = "center"; gg.textBaseline = "middle";
-    gg.fillStyle = "#f0e2c8";
-    gg.fillText(T("title"), VW / 2, VH / 2 - 40);
-    gg.restore();
-    if (Math.sin(this.t * 4) > -0.3)
-      textShadow(gg, T("cine.start"), VW / 2, VH / 2 + 60, 16, "#c8c0d4", "center");
-  }
-}
-
-SceneManager.switchNow(new BootScene());
+// ===== Lancement : mini-cinématique d'accueil (skippable) → écran-titre stylé → menu =====
+SceneManager.switchNow(new CinematicScene(
+  titleAttractPages(),
+  () => SceneManager.switchTo(() => new TitleScene()),
+  "#c04030",
+));
 
 // ===== Boucle =====
 let last = performance.now();
