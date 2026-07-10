@@ -8,6 +8,7 @@ import { hasSave, savedLevel, saveSettings, resetAllData } from "./save";
 import { G, Flow } from "./game";
 import { getSprite } from "./sprites";
 import { ClassId, ClassCatalog } from "./entities";
+import { clamp } from "./core";
 
 export class MainMenuScene implements Scene {
   private sel = 0;
@@ -33,9 +34,12 @@ export class MainMenuScene implements Scene {
   }
 
   private lightning = 0; // éclair d'ambiance occasionnel
+  private shine = -0.4;  // reflet balayant sur le titre (cohérent avec l'écran-titre)
 
   update(dt: number) {
     this.t += dt;
+    this.shine += dt * 0.42;
+    if (this.shine > 1.6) this.shine = -0.5;
     this.lightning = Math.max(0, this.lightning - dt * 4);
     if (Math.random() < dt * 0.12) this.lightning = 0.6 + Math.random() * 0.4;
     // braises
@@ -113,26 +117,42 @@ export class MainMenuScene implements Scene {
 
     this.particles.draw(g);
 
-    // titre
+    // titre (taille auto pour tenir dans la largeur, halo pulsé, reflet balayant)
+    const title = T("title");
     const ty = 108 + Math.sin(this.t * 1.1) * 3;
+    let fs = 54;
+    g.font = `bold ${fs}px ${FONT}`;
+    while (g.measureText(title).width > VW - 220 && fs > 28) { fs -= 2; g.font = `bold ${fs}px ${FONT}`; }
+    const tw = g.measureText(title).width;
     g.save();
-    g.shadowColor = "#c02828"; g.shadowBlur = 26;
-    g.font = `bold 54px ${FONT}`;
     g.textAlign = "center"; g.textBaseline = "middle";
-    g.fillStyle = "#f0e2c8";
-    g.fillText(T("title"), VW / 2, ty);
+    g.font = `bold ${fs}px ${FONT}`;
+    g.shadowColor = "#c02828"; g.shadowBlur = 26 + Math.sin(this.t * 2) * 8;
+    g.fillStyle = "#7a1414"; g.fillText(title, VW / 2, ty);
     g.shadowBlur = 0;
+    // corps du titre avec reflet balayant (même langage que l'écran-titre)
+    const p = this.shine;
+    const sg = g.createLinearGradient(VW / 2 - tw / 2, 0, VW / 2 + tw / 2, 0);
+    const base = "#f0e2c8";
+    sg.addColorStop(0, base);
+    sg.addColorStop(clamp(p - 0.16, 0.001, 0.999), base);
+    sg.addColorStop(clamp(p, 0.002, 0.999), "#fffcec");
+    sg.addColorStop(clamp(p + 0.16, 0.003, 1), base);
+    g.fillStyle = sg;
+    g.fillText(title, VW / 2, ty);
     g.restore();
-    text(g, T("subtitle"), VW / 2, ty + 44, 15, "#9a8fae", "center");
+    text(g, T("subtitle"), VW / 2, ty + fs * 0.62 + 12, 15, "#9a8fae", "center");
 
-    // épée décorative
+    // épées décoratives : TOUJOURS en dehors du titre (position mesurée, plus de chevauchement)
     const sw = getSprite("it_legend");
     if (sw) {
+      const off = tw / 2 + 58;
+      const bob = Math.sin(this.t * 1.6) * 3;
       g.save();
       g.imageSmoothingEnabled = false;
-      g.shadowColor = "#ffd84a"; g.shadowBlur = 12;
-      g.drawImage(sw, VW / 2 - 190 - 32, ty - 36, 64, 64);
-      g.drawImage(sw, VW / 2 + 190 - 32, ty - 36, 64, 64);
+      g.shadowColor = "#ffd84a"; g.shadowBlur = 12 + Math.sin(this.t * 2.4) * 5;
+      g.drawImage(sw, VW / 2 - off - 32, ty - 36 + bob, 64, 64);
+      g.drawImage(sw, VW / 2 + off - 32, ty - 36 + bob, 64, 64);
       g.restore();
     }
 
