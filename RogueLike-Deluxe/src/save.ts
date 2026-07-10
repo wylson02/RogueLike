@@ -135,7 +135,7 @@ export function loadGame(ctx: GameContext): number | null {
   } catch { return null; }
 }
 
-export interface Settings { lang: Lang; musicVol: number; sfxVol: number; }
+export interface Settings { lang: Lang; musicVol: number; sfxVol: number; binds?: Record<string, string>; }
 export function saveSettings(s: Settings) {
   try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(s)); } catch { }
 }

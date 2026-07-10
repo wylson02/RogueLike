@@ -1,7 +1,7 @@
 // ===== Menu principal, options, crédits =====
 import { Scene, SceneManager, panel, dimBackground } from "./scenes";
 import { VW, VH, text, textShadow, Particles, FONT } from "./render";
-import { Input } from "./input";
+import { Input, BIND_ORDER, codeLabel } from "./input";
 import { Audio } from "./audio";
 import { T, setLang, Lang } from "./i18n";
 import { hasSave, savedLevel, saveSettings } from "./save";
@@ -208,10 +208,11 @@ export class ClassSelectScene implements Scene {
 // ===== Options (overlay) =====
 export class OptionsScene implements Scene {
   private sel = 0;
+  private static readonly N = 5; // musique, sfx, langue, contrôles, retour
   update(dt: number) {
     if (Input.consume("cancel")) { Audio.sfx("back"); saveSettings(G.settings); SceneManager.pop(); return; }
-    if (Input.consume("up")) { this.sel = (this.sel + 3) % 4; Audio.sfx("ui"); }
-    if (Input.consume("down")) { this.sel = (this.sel + 1) % 4; Audio.sfx("ui"); }
+    if (Input.consume("up")) { this.sel = (this.sel + OptionsScene.N - 1) % OptionsScene.N; Audio.sfx("ui"); }
+    if (Input.consume("down")) { this.sel = (this.sel + 1) % OptionsScene.N; Audio.sfx("ui"); }
     const dir = Input.consume("right") ? 1 : Input.consume("left") ? -1 : 0;
     if (dir !== 0) {
       if (this.sel === 0) { G.settings.musicVol = Math.round((G.settings.musicVol + dir * 0.1) * 10) / 10; G.settings.musicVol = Math.max(0, Math.min(1, G.settings.musicVol)); Audio.setMusicVol(G.settings.musicVol); Audio.sfx("ui"); }
@@ -224,23 +225,25 @@ export class OptionsScene implements Scene {
     }
     if (Input.consume("confirm")) {
       if (this.sel === 2) { G.settings.lang = (G.settings.lang === "fr" ? "en" : "fr") as Lang; setLang(G.settings.lang); Audio.sfx("ui"); }
-      if (this.sel === 3) { Audio.sfx("back"); saveSettings(G.settings); SceneManager.pop(); }
+      if (this.sel === 3) { Audio.sfx("confirm"); SceneManager.push(new KeybindScene()); }
+      if (this.sel === 4) { Audio.sfx("back"); saveSettings(G.settings); SceneManager.pop(); }
     }
   }
 
   draw(g: CanvasRenderingContext2D) {
     dimBackground(g, 0.72);
-    const w = 460, h = 280, x = VW / 2 - w / 2, y = VH / 2 - h / 2;
+    const w = 460, h = 320, x = VW / 2 - w / 2, y = VH / 2 - h / 2;
     panel(g, x, y, w, h, T("options.title"));
 
     const rows = [
       { label: T("options.music"), value: G.settings.musicVol },
       { label: T("options.sfx"), value: G.settings.sfxVol },
       { label: T("options.lang"), value: -1 },
+      { label: T("options.controls"), value: -3 },
       { label: T("options.back"), value: -2 },
     ];
     rows.forEach((r, i) => {
-      const ry = y + 62 + i * 52;
+      const ry = y + 58 + i * 50;
       const selected = i === this.sel;
       if (selected) {
         g.fillStyle = "rgba(120,25,25,.5)";
@@ -258,8 +261,90 @@ export class OptionsScene implements Scene {
       } else if (r.value === -1) {
         text(g, G.settings.lang === "fr" ? T("options.lang.fr") : T("options.lang.en"), x + 250, ry, 16, selected ? "#ffd84a" : "#c8b060");
         if (selected) text(g, "◀ ▶", x + 380, ry, 13, "#8a8098");
+      } else if (r.value === -3) {
+        text(g, T("options.controls.open"), x + 250, ry, 14, selected ? "#ffd84a" : "#8a8098");
       }
     });
+  }
+}
+
+// ===== Remappage des touches (overlay) =====
+export class KeybindScene implements Scene {
+  private sel = 0;
+  private waiting = false; // en attente de la nouvelle touche
+  private t = 0;
+  private static readonly ROWS_VISIBLE = 8;
+
+  private applyAndSave(overrides: Record<string, string>) {
+    G.settings.binds = overrides;
+    Input.applyBindings(overrides);
+    saveSettings(G.settings);
+  }
+
+  update(dt: number) {
+    this.t += dt;
+    if (this.waiting) return; // la capture est gérée par Input.captureNext
+
+    const n = BIND_ORDER.length + 1; // + ligne "Réinitialiser"
+    if (Input.consume("cancel")) { Audio.sfx("back"); SceneManager.pop(); return; }
+    if (Input.consume("up")) { this.sel = (this.sel + n - 1) % n; Audio.sfx("ui"); }
+    if (Input.consume("down")) { this.sel = (this.sel + 1) % n; Audio.sfx("ui"); }
+    if (Input.consume("confirm")) {
+      if (this.sel === BIND_ORDER.length) {
+        // Réinitialiser
+        Audio.sfx("confirm");
+        this.applyAndSave({});
+        return;
+      }
+      // Remapper l'action sélectionnée : capture la prochaine touche.
+      Audio.sfx("ui");
+      this.waiting = true;
+      const action = BIND_ORDER[this.sel];
+      Input.captureNext((code) => {
+        this.waiting = false;
+        if (code === "Escape") { Audio.sfx("back"); return; } // annule
+        const binds = { ...(G.settings.binds ?? {}), [action]: code };
+        this.applyAndSave(binds);
+        Audio.sfx("confirm");
+        Input.clear();
+      });
+    }
+  }
+
+  draw(g: CanvasRenderingContext2D) {
+    dimBackground(g, 0.8);
+    const w = 520, h = 400, x = VW / 2 - w / 2, y = VH / 2 - h / 2;
+    panel(g, x, y, w, h, T("keybind.title"));
+
+    const total = BIND_ORDER.length + 1;
+    // fenêtre de défilement qui suit la sélection
+    let top = Math.max(0, Math.min(this.sel - Math.floor(KeybindScene.ROWS_VISIBLE / 2), total - KeybindScene.ROWS_VISIBLE));
+    top = Math.max(0, top);
+    for (let vi = 0; vi < KeybindScene.ROWS_VISIBLE && top + vi < total; vi++) {
+      const i = top + vi;
+      const ry = y + 52 + vi * 36;
+      const selected = i === this.sel;
+      if (selected) {
+        g.fillStyle = "rgba(120,25,25,.5)";
+        g.beginPath(); g.roundRect(x + 14, ry - 15, w - 28, 32, 6); g.fill();
+      }
+      if (i === BIND_ORDER.length) {
+        text(g, T("keybind.reset"), x + 30, ry, 15, selected ? "#ffd0d0" : "#c89a9a");
+      } else {
+        const action = BIND_ORDER[i];
+        text(g, T("key." + action), x + 30, ry, 15, selected ? "#fff" : "#a89ec0");
+        const capturing = selected && this.waiting;
+        const label = capturing ? (Math.sin(this.t * 8) > 0 ? T("keybind.press") : "…") : codeLabel(Input.boundCode(action));
+        g.fillStyle = "rgba(20,16,34,.8)";
+        const bw2 = 130;
+        g.beginPath(); g.roundRect(x + w - bw2 - 30, ry - 13, bw2, 26, 6); g.fill();
+        g.strokeStyle = capturing ? "#ffd84a" : "rgba(150,140,190,.4)"; g.lineWidth = 1.4;
+        g.beginPath(); g.roundRect(x + w - bw2 - 30, ry - 13, bw2, 26, 6); g.stroke();
+        text(g, label, x + w - bw2 / 2 - 30, ry, 13, capturing ? "#ffd84a" : "#c8d0e8", "center");
+      }
+    }
+
+    text(g, T("keybind.hint"), VW / 2, y + h - 16, 12, "#8a8098", "center");
   }
 }
 

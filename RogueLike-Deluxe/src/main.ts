@@ -39,6 +39,7 @@ setLang(G.settings.lang);
 G.ctx = new GameContext();
 G.world = new WorldRenderer();
 Input.attach(canvas);
+Input.applyBindings(G.settings.binds); // touches personnalisées du joueur
 Input.onAny = () => { Audio.ensure(); Audio.setMusicVol(G.settings.musicVol); Audio.setSfxVol(G.settings.sfxVol); };
 
 // ===== Navigation =====

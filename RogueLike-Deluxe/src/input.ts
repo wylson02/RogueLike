@@ -6,16 +6,46 @@ export type GameKey =
   | "confirm" | "cancel" | "inventory" | "progression"
   | "act1" | "act2" | "act3" | "act4" | "act5" | "act6" | "tabL" | "tabR";
 
+// Liaisons par défaut : chaque action accepte plusieurs codes physiques (QWERTY/AZERTY, flèches, pavé).
+export const DEFAULT_BINDS: Record<GameKey, string[]> = {
+  up: ["ArrowUp", "KeyW"], down: ["ArrowDown", "KeyS"], left: ["ArrowLeft", "KeyA"], right: ["ArrowRight", "KeyD"],
+  confirm: ["Enter", "Space", "NumpadEnter"], cancel: ["Escape"],
+  inventory: ["KeyI"], progression: ["KeyC", "KeyP"],
+  act1: ["Digit1", "Numpad1"], act2: ["Digit2", "Numpad2", "KeyH"], act3: ["Digit3", "Numpad3"],
+  act4: ["Digit4", "Numpad4", "KeyF"], act5: ["Digit5", "Numpad5"], act6: ["Digit6", "Numpad6"],
+  tabL: ["KeyQ"], tabR: ["KeyE"],
+};
+
+// Ordre d'affichage dans l'écran de remappage.
+export const BIND_ORDER: GameKey[] = [
+  "up", "down", "left", "right", "confirm", "cancel",
+  "act1", "act2", "act3", "act4", "act5", "act6", "tabL", "tabR", "inventory", "progression",
+];
+
+// Nom lisible d'un code clavier pour l'UI.
+export function codeLabel(code: string): string {
+  if (code.startsWith("Key")) return code.slice(3);
+  if (code.startsWith("Digit")) return code.slice(5);
+  if (code.startsWith("Numpad")) return "Pav." + code.slice(6);
+  if (code.startsWith("Arrow")) return { ArrowUp: "↑", ArrowDown: "↓", ArrowLeft: "←", ArrowRight: "→" }[code] ?? code;
+  return { Space: "ESPACE", Enter: "ENTRÉE", NumpadEnter: "Pav.ENTR", Escape: "ÉCHAP" }[code] ?? code;
+}
+
 class InputSys {
   private pressed = new Set<GameKey>();       // appuis "frais" (consommés une fois)
   private held = new Set<GameKey>();
   private repeatTimers = new Map<GameKey, number>();
   private padPrev: Record<number, boolean> = {};
   private padAxisPrev = { x: 0, y: 0 };
+  private codeMap = new Map<string, GameKey>(); // code physique → action (reconstruit au remappage)
+  private captureCb: ((code: string) => void) | null = null; // capture d'une touche (écran de réglages)
   onAny: (() => void) | null = null;
 
   attach(el: HTMLElement) {
+    this.applyBindings(); // liaisons par défaut ; main.ts réapplique celles sauvegardées
     window.addEventListener("keydown", (e) => {
+      // Capture pour le remappage : on avale la prochaine touche brute.
+      if (this.captureCb) { e.preventDefault(); const cb = this.captureCb; this.captureCb = null; cb(e.code); return; }
       if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Space", "Tab"].includes(e.code)) e.preventDefault();
       const k = this.mapKey(e);
       if (!k) return;
@@ -31,28 +61,33 @@ class InputSys {
     el.addEventListener("click", () => el.focus());
   }
 
-  private mapKey(e: KeyboardEvent): GameKey | null {
-    switch (e.code) {
-      case "ArrowUp": case "KeyW": return "up";       // W = Z sur AZERTY (position physique)
-      case "ArrowDown": case "KeyS": return "down";
-      case "ArrowLeft": case "KeyA": return "left";   // A = Q sur AZERTY
-      case "ArrowRight": case "KeyD": return "right";
-      case "Enter": case "Space": case "NumpadEnter": return "confirm";
-      case "Escape": return "cancel";
-      case "KeyI": return "inventory";
-      case "KeyC": case "KeyP": return "progression";
-      case "Digit1": case "Numpad1": return "act1";
-      case "Digit2": case "Numpad2": return "act2";
-      case "Digit3": case "Numpad3": return "act3";
-      case "Digit4": case "Numpad4": return "act4";
-      case "Digit5": case "Numpad5": return "act5";
-      case "Digit6": case "Numpad6": return "act6";
-      case "KeyH": return "act2";  // Soigner
-      case "KeyF": return "act4";  // Fuir
-      case "KeyQ": return "tabL";
-      case "KeyE": return "tabR";
-      default: return null;
+  // Reconstruit la table code→action à partir des défauts + surcharges du joueur.
+  // Une surcharge remplace la touche de l'action et la retire de toute autre action (pas de doublon).
+  applyBindings(overrides?: Record<string, string>) {
+    const binds: Record<GameKey, string[]> = {} as any;
+    for (const k of Object.keys(DEFAULT_BINDS) as GameKey[]) binds[k] = [...DEFAULT_BINDS[k]];
+    if (overrides) {
+      for (const [action, code] of Object.entries(overrides)) {
+        if (!(action in binds)) continue;
+        for (const k of Object.keys(binds) as GameKey[]) binds[k] = binds[k].filter(c => c !== code);
+        binds[action as GameKey] = [code];
+      }
     }
+    this.codeMap.clear();
+    for (const k of Object.keys(binds) as GameKey[]) for (const c of binds[k]) this.codeMap.set(c, k);
+  }
+
+  // Touche actuellement liée à une action (pour l'affichage).
+  boundCode(action: GameKey): string {
+    for (const [code, k] of this.codeMap) if (k === action) return code;
+    return "—";
+  }
+
+  // Capture la prochaine touche pressée (écran de remappage).
+  captureNext(cb: (code: string) => void) { this.captureCb = cb; }
+
+  private mapKey(e: KeyboardEvent): GameKey | null {
+    return this.codeMap.get(e.code) ?? null;
   }
 
   private press(k: GameKey) { this.pressed.add(k); }
