@@ -1079,6 +1079,102 @@ function abyssKingFilm(emprise: boolean): FilmShot[] {
 
 export function abyssKingFilmShots(emprise: boolean): FilmShot[] { return abyssKingFilm(emprise); }
 
+// ---- L'APPEL DE L'ABÎME : film d'accueil au lancement de l'application ----
+// Raconte en images le lore d'accueil (les sous-titres réutilisent les clés attract.* de
+// l'écran-titre) ; se fond ensuite dans la TitleScene. Entièrement skippable (Échap).
+function appIntroFilm(): FilmShot[] {
+  return [
+    { // 1. le noir absolu ; une unique braise tombe, éclairant des dalles runiques au passage
+      dur: 4, captionKey: "attract.1a", captionColor: "#c8c0d4", sfx: "night",
+      draw: (g, u, t) => {
+        const ey = 70 + u * 330, ex2 = VW / 2 + Math.sin(u * 6) * 24;
+        // la braise révèle faiblement les dalles proches du sol
+        const rev = clamp((u - 0.5) * 2, 0, 1);
+        if (rev > 0) {
+          g.save(); g.strokeStyle = `rgba(90,70,120,${0.35 * rev})`; g.lineWidth = 1.5;
+          for (let i = -3; i <= 3; i++) {
+            g.strokeRect(VW / 2 + i * 110 - 44, 440, 88, 26);
+          }
+          g.restore();
+        }
+        g.save();
+        g.fillStyle = "#ff9d5e"; g.shadowColor = "#ff7a3a"; g.shadowBlur = 18 + Math.sin(t * 8) * 6;
+        g.beginPath(); g.arc(ex2, ey, 3.2, 0, Math.PI * 2); g.fill();
+        // halo de lumière autour de la braise
+        const hg = g.createRadialGradient(ex2, ey, 4, ex2, ey, 90);
+        hg.addColorStop(0, "rgba(255,140,80,.12)"); hg.addColorStop(1, "rgba(255,140,80,0)");
+        g.fillStyle = hg; g.beginPath(); g.arc(ex2, ey, 90, 0, Math.PI * 2); g.fill();
+        g.restore();
+      },
+    },
+    { // 2. les trois sceaux s'allument en cascade… puis un grondement les fait vaciller
+      dur: 4, captionKey: "attract.1b", captionColor: "#8fd4ff", sfx: "seal",
+      draw: (g, u, t) => {
+        const rumble = u > 0.72 ? (u - 0.72) * 3.6 : 0;
+        g.save();
+        if (rumble > 0) g.translate((Math.random() - 0.5) * rumble * 10, (Math.random() - 0.5) * rumble * 10);
+        const lit = (i: number) => clamp((u - 0.12 - i * 0.18) * 5, 0, 1);
+        const flick = (i: number) => rumble > 0 ? 0.45 + Math.sin(t * 22 + i * 3) * 0.35 : 1;
+        drawSeal(g, VW / 2 - 210, VH / 2 + 8, 44, "#5adfe8", lit(0) * flick(0) * (0.5 + Math.sin(t * 1.8) * 0.2));
+        drawSeal(g, VW / 2, VH / 2 - 16, 54, "#7a9fe8", lit(1) * flick(1) * (0.55 + Math.sin(t * 1.5 + 2) * 0.2));
+        drawSeal(g, VW / 2 + 210, VH / 2 + 8, 44, "#8a5fd0", lit(2) * flick(2) * (0.5 + Math.sin(t * 2.1 + 4) * 0.2));
+        g.restore();
+      },
+    },
+    { // 3. les élus : une file de silhouettes marche vers la grande porte et y entre
+      dur: 4, captionKey: "attract.2a", captionColor: "#c8c0d4", sfx: "door",
+      draw: (g, u, t) => {
+        const doorX = 660;
+        drawGreatDoor(g, doorX, 250, 1.35, 0.3 + Math.sin(t * 1.6) * 0.15);
+        for (let i = 0; i < 4; i++) {
+          const prog = clamp(u * 1.3 - i * 0.16, 0, 1);
+          const x = 120 + prog * (doorX - 120);
+          const near = clamp((x - (doorX - 90)) / 90, 0, 1); // s'efface en franchissant le seuil
+          if (prog > 0 && near < 1)
+            drawShadowFigure(g, x, 408 + Math.sin(t * 7 + i) * 2, 0.42, "#8fb0d8", 0.2 * (1 - near));
+        }
+      },
+    },
+    { // 4. aucun n'est jamais remonté : leurs échos s'éteignent un à un, comme des bougies
+      dur: 4, captionKey: "attract.2b", captionColor: "#ff8a94", sfx: "night",
+      draw: (g, u, t) => {
+        for (let i = 0; i < 5; i++) {
+          const die = clamp((u - 0.1 - i * 0.16) * 6, 0, 1);
+          let a = 1 - die;
+          if (i === 4 && die > 0 && die < 1) a = 0.3 + Math.sin(t * 30) * 0.3; // le dernier lutte
+          if (a > 0.02)
+            drawShadowFigure(g, 180 + i * 150, 330, 0.6, "#8fb0d8", 0.32 * a);
+        }
+      },
+    },
+    { // 5. la dernière porte gronde : plein cadre, la fissure rouge s'élargit
+      dur: 4, captionKey: "attract.3a", captionColor: "#ff9090", sfx: "warden",
+      draw: (g, u, t) => {
+        const sh = u * 7;
+        g.save();
+        g.translate((Math.random() - 0.5) * sh, (Math.random() - 0.5) * sh);
+        drawGreatDoor(g, VW / 2, 210, 2.3, 0.45 + Math.sin(t * 2.6) * 0.25 + u * 0.3);
+        // la fissure verticale s'élargit, incandescente
+        g.strokeStyle = "#ff3040"; g.shadowColor = "#ff3040"; g.shadowBlur = 22;
+        g.lineWidth = 1.5 + u * 7;
+        g.globalAlpha = 0.5 + u * 0.5;
+        g.beginPath(); g.moveTo(VW / 2, 140); g.lineTo(VW / 2 + Math.sin(u * 9) * 8, 500); g.stroke();
+        g.restore();
+      },
+    },
+    { // 6. l'appel : aspiré dans le puits des strates — flash, puis l'écran-titre
+      dur: 4, captionKey: "attract.3b", captionColor: "#ffd0d0", sfx: "roar",
+      draw: (g, u, t) => {
+        drawStrataTunnel(g, VW / 2, VH / 2, t * (1 + u * 3.2)); // le tunnel accélère : le vertige
+        const flash = clamp((u - 0.82) * 6, 0, 1);
+        if (flash > 0) { g.fillStyle = `rgba(240,226,200,${flash})`; g.fillRect(0, 0, VW, VH); }
+      },
+    },
+  ];
+}
+
+export function appIntroFilmShots(): FilmShot[] { return appIntroFilm(); }
+
 // ===== La scène de film générique (identique au moteur des fins, pour tout moment) =====
 export class FilmScene implements Scene {
   private idx = 0; private st = 0; private t = 0;

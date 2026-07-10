@@ -6,11 +6,11 @@ import { Audio } from "./audio";
 import { setLang, T } from "./i18n";
 import { GameContext, LogKind } from "./context";
 import { SceneManager } from "./scenes";
-import { TitleScene, titleAttractPages } from "./titleScenes";
+import { TitleScene } from "./titleScenes";
 import { MainMenuScene } from "./menuScenes";
 import { ExploreScene, MerchantScene, CreedChoiceScene } from "./exploreScene";
 import { CombatScene } from "./combatScene";
-import { CinematicScene, bossIntroPages, bossEncounterPages, loreMarkPages, EndingFilmScene, FilmScene, introFilmShots, swordFilmShots, depthsFilmShots, endlessFilmShots, devourerFilmShots, abyssKingFilmShots, EndScene, EndingId } from "./cinematics";
+import { CinematicScene, bossIntroPages, bossEncounterPages, loreMarkPages, EndingFilmScene, FilmScene, introFilmShots, swordFilmShots, depthsFilmShots, endlessFilmShots, devourerFilmShots, abyssKingFilmShots, appIntroFilmShots, EndScene, EndingId } from "./cinematics";
 import { EndlessHubScene, RelicDraftScene, RunSummaryScene } from "./endlessScenes";
 import { EpicSelectScene, EpicRevealScene } from "./epicScenes";
 import { EpicCombatScene } from "./epicCombat";
@@ -213,11 +213,10 @@ Flow.epicStart = (index: number) => {
   Audio.setMode("boss");
 };
 
-// ===== Lancement : mini-cinématique d'accueil (skippable) → écran-titre stylé → menu =====
-SceneManager.switchNow(new CinematicScene(
-  titleAttractPages(),
+// ===== Lancement : film d'accueil "L'Appel de l'Abîme" (skippable) → écran-titre stylé → menu =====
+SceneManager.switchNow(new FilmScene(
+  appIntroFilmShots(),
   () => SceneManager.switchTo(() => new TitleScene()),
-  "#c04030",
 ));
 
 // ===== Boucle =====
