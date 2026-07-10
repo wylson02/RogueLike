@@ -1,6 +1,6 @@
 // ===== Menu principal, options, crédits =====
 import { Scene, SceneManager, panel, dimBackground } from "./scenes";
-import { VW, VH, text, textShadow, Particles, FONT } from "./render";
+import { VW, VH, text, textShadow, Particles, FONT, wrapLine } from "./render";
 import { Input, BIND_ORDER, codeLabel } from "./input";
 import { Audio } from "./audio";
 import { T, setLang, Lang } from "./i18n";
@@ -13,7 +13,7 @@ export class MainMenuScene implements Scene {
   private sel = 0;
   private t = 0;
   private particles = new Particles();
-  private items: { key: string; action: () => void; args?: any }[] = [];
+  private items: { key: string; action: () => void; args?: any; desc?: string }[] = [];
 
   enter() {
     Audio.setMode("menu");
@@ -23,13 +23,13 @@ export class MainMenuScene implements Scene {
   private buildItems() {
     this.items = [];
     if (hasSave())
-      this.items.push({ key: "menu.continue", args: { level: savedLevel() }, action: () => Flow.continueGame() });
-    this.items.push({ key: "menu.new", action: () => SceneManager.push(new ClassSelectScene()) });
-    this.items.push({ key: "menu.endless", action: () => Flow.endlessHub() });
-    this.items.push({ key: "menu.epic", action: () => Flow.epicHub() });
-    this.items.push({ key: "menu.options", action: () => SceneManager.push(new OptionsScene()) });
-    this.items.push({ key: "menu.credits", action: () => SceneManager.push(new CreditsScene()) });
-    this.items.push({ key: "menu.quit", action: () => { try { window.close(); } catch { } } });
+      this.items.push({ key: "menu.continue", args: { level: savedLevel() }, desc: "menu.continue.desc", action: () => Flow.continueGame() });
+    this.items.push({ key: "menu.new", desc: "menu.new.desc", action: () => SceneManager.push(new ClassSelectScene()) });
+    this.items.push({ key: "menu.endless", desc: "menu.endless.desc", action: () => Flow.endlessHub() });
+    this.items.push({ key: "menu.epic", desc: "menu.epic.desc", action: () => Flow.epicHub() });
+    this.items.push({ key: "menu.options", desc: "menu.options.desc", action: () => SceneManager.push(new OptionsScene()) });
+    this.items.push({ key: "menu.credits", desc: "menu.credits.desc", action: () => SceneManager.push(new CreditsScene()) });
+    this.items.push({ key: "menu.quit", desc: "menu.quit.desc", action: () => { try { window.close(); } catch { } } });
   }
 
   private lightning = 0; // éclair d'ambiance occasionnel
@@ -136,8 +136,8 @@ export class MainMenuScene implements Scene {
       g.restore();
     }
 
-    // menu
-    const my0 = 240, mh = 44;
+    // menu (resserré pour laisser la place au panneau de description)
+    const my0 = 214, mh = 38;
     this.items.forEach((it, i) => {
       const y = my0 + i * mh;
       const selected = i === this.sel;
@@ -145,18 +145,32 @@ export class MainMenuScene implements Scene {
       if (selected) {
         const w = 360;
         g.fillStyle = "rgba(120,25,25,.85)";
-        g.beginPath(); g.roundRect(VW / 2 - w / 2, y - 17, w, 36, 8); g.fill();
+        g.beginPath(); g.roundRect(VW / 2 - w / 2, y - 16, w, 34, 8); g.fill();
         g.strokeStyle = "#e8b0a0";
         g.lineWidth = 1.5;
-        g.beginPath(); g.roundRect(VW / 2 - w / 2, y - 17, w, 36, 8); g.stroke();
-        textShadow(g, "▶ " + label, VW / 2, y + 1, 19, "#fff", "center");
+        g.beginPath(); g.roundRect(VW / 2 - w / 2, y - 16, w, 34, 8); g.stroke();
+        textShadow(g, "▶ " + label, VW / 2, y + 1, 18, "#fff", "center");
       } else {
-        text(g, label, VW / 2, y + 1, 17, "#9a92ac", "center");
+        text(g, label, VW / 2, y + 1, 16, "#9a92ac", "center");
       }
     });
 
+    // panneau de description du mode sélectionné (pour les nouveaux joueurs)
+    const desc = this.items[this.sel]?.desc;
+    if (desc) {
+      const bw = 640, bx = VW / 2 - bw / 2, by = VH - 78, bh = 46;
+      g.fillStyle = "rgba(12,9,20,.72)";
+      g.beginPath(); g.roundRect(bx, by, bw, bh, 8); g.fill();
+      g.strokeStyle = "rgba(150,140,190,.3)"; g.lineWidth = 1;
+      g.beginPath(); g.roundRect(bx, by, bw, bh, 8); g.stroke();
+      g.font = `bold 13px ${FONT}`;
+      const lines = wrapLine(g, T(desc), bw - 32, 2);
+      let ly = by + (bh - (lines.length - 1) * 17) / 2;
+      for (const ln of lines) { text(g, ln, VW / 2, ly, 13, "#c8c0d8", "center"); ly += 17; }
+    }
+
     const blink = Math.sin(this.t * 4) > -0.3;
-    if (blink) text(g, T("menu.hint"), VW / 2, VH - 26, 12, "#6e6584", "center");
+    if (blink) text(g, T("menu.hint"), VW / 2, VH - 20, 12, "#6e6584", "center");
   }
 }
 
