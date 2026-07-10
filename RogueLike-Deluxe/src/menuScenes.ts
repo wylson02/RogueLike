@@ -273,6 +273,7 @@ export class KeybindScene implements Scene {
   private sel = 0;
   private waiting = false; // en attente de la nouvelle touche
   private t = 0;
+  private rejected = 0;    // clignote si un remappage a été refusé (touche essentielle)
   private static readonly ROWS_VISIBLE = 8;
 
   private applyAndSave(overrides: Record<string, string>) {
@@ -283,6 +284,7 @@ export class KeybindScene implements Scene {
 
   update(dt: number) {
     this.t += dt;
+    this.rejected = Math.max(0, this.rejected - dt);
     if (this.waiting) return; // la capture est gérée par Input.captureNext
 
     const n = BIND_ORDER.length + 1; // + ligne "Réinitialiser"
@@ -302,11 +304,13 @@ export class KeybindScene implements Scene {
       const action = BIND_ORDER[this.sel];
       Input.captureNext((code) => {
         this.waiting = false;
+        Input.clear();
         if (code === "Escape") { Audio.sfx("back"); return; } // annule
         const binds = { ...(G.settings.binds ?? {}), [action]: code };
+        // Refuse si ça priverait une touche essentielle (Valider/Annuler/Haut/Bas) de sa dernière touche.
+        if (!Input.validateBinds(binds)) { Audio.sfx("locked"); this.rejected = 1.4; return; }
         this.applyAndSave(binds);
         Audio.sfx("confirm");
-        Input.clear();
       });
     }
   }
@@ -344,6 +348,7 @@ export class KeybindScene implements Scene {
       }
     }
 
+    if (this.rejected > 0) textShadow(g, T("keybind.locked"), VW / 2, y + h - 36, 13, "#ff8080", "center");
     text(g, T("keybind.hint"), VW / 2, y + h - 16, 12, "#8a8098", "center");
   }
 }

@@ -17,10 +17,15 @@ export const DEFAULT_BINDS: Record<GameKey, string[]> = {
 };
 
 // Ordre d'affichage dans l'écran de remappage.
+// Valider (confirm) et Annuler (cancel) sont VOLONTAIREMENT absents : ce sont les touches qui
+// pilotent les menus — les laisser remappables permettrait de se bloquer (soft-lock).
 export const BIND_ORDER: GameKey[] = [
-  "up", "down", "left", "right", "confirm", "cancel",
+  "up", "down", "left", "right",
   "act1", "act2", "act3", "act4", "act5", "act6", "tabL", "tabR", "inventory", "progression",
 ];
+
+// Actions qui doivent TOUJOURS garder au moins une touche (sinon on ne peut plus opérer les menus).
+const ESSENTIAL: GameKey[] = ["up", "down", "confirm", "cancel"];
 
 // Nom lisible d'un code clavier pour l'UI.
 export function codeLabel(code: string): string {
@@ -61,9 +66,9 @@ class InputSys {
     el.addEventListener("click", () => el.focus());
   }
 
-  // Reconstruit la table code→action à partir des défauts + surcharges du joueur.
+  // Calcule les liaisons effectives (défauts + surcharges), sans les committer.
   // Une surcharge remplace la touche de l'action et la retire de toute autre action (pas de doublon).
-  applyBindings(overrides?: Record<string, string>) {
+  private computeBinds(overrides?: Record<string, string>): Record<GameKey, string[]> {
     const binds: Record<GameKey, string[]> = {} as any;
     for (const k of Object.keys(DEFAULT_BINDS) as GameKey[]) binds[k] = [...DEFAULT_BINDS[k]];
     if (overrides) {
@@ -73,8 +78,20 @@ class InputSys {
         binds[action as GameKey] = [code];
       }
     }
+    return binds;
+  }
+
+  // Reconstruit la table code→action à partir des défauts + surcharges du joueur.
+  applyBindings(overrides?: Record<string, string>) {
+    const binds = this.computeBinds(overrides);
     this.codeMap.clear();
     for (const k of Object.keys(binds) as GameKey[]) for (const c of binds[k]) this.codeMap.set(c, k);
+  }
+
+  // Un jeu de surcharges est-il sûr ? (aucune touche essentielle laissée orpheline → pas de soft-lock)
+  validateBinds(overrides: Record<string, string>): boolean {
+    const binds = this.computeBinds(overrides);
+    return ESSENTIAL.every(a => binds[a].length > 0);
   }
 
   // Touche actuellement liée à une action (pour l'affichage).
