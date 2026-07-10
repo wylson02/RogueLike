@@ -239,32 +239,36 @@ class BootScene implements Scene {
 
 SceneManager.switchNow(new BootScene());
 
-// ===== Combo SECRET de réinitialisation (façon soft-reset DS) =====
-// Maintiens les 4 flèches ↑ ↓ ← → ensemble pendant 2 s, n'importe où, pour tout effacer.
-// Codes physiques bruts : indépendant du clavier (AZERTY/QWERTY) ET du remappage.
-const RESET_HOLD = 2.0;
-let resetHold = 0;
-let didReset = false;
-function updateResetCombo(dt: number) {
-  const combo = Input.isCodeDown("ArrowUp") && Input.isCodeDown("ArrowDown")
-    && Input.isCodeDown("ArrowLeft") && Input.isCodeDown("ArrowRight");
-  resetHold = combo ? resetHold + dt : 0;
-  if (resetHold >= RESET_HOLD && !didReset) {
-    didReset = true;
-    resetAllData();
-    try { location.reload(); } catch { }
+// ===== Combo SECRET de réinitialisation (SÉQUENCE façon code Konami) =====
+// Saisis ↑ ↑ ↓ ↓ ← → ← → (une touche après l'autre) : efface tout et relance.
+// Séquence = zéro ghosting clavier (contrairement à un appui simultané), fiable sur tout clavier.
+const RESET_SEQ = ["ArrowUp", "ArrowUp", "ArrowDown", "ArrowDown", "ArrowLeft", "ArrowRight", "ArrowLeft", "ArrowRight"];
+let seqPos = 0, seqLast = 0;
+let resetFlash = 0, resetPending = false;
+window.addEventListener("keydown", (e) => {
+  const now = performance.now();
+  if (now - seqLast > 1500) seqPos = 0; // trop lent entre deux touches → on repart de zéro
+  seqLast = now;
+  if (e.code === RESET_SEQ[seqPos]) {
+    seqPos++;
+    if (seqPos >= RESET_SEQ.length) { seqPos = 0; resetPending = true; resetFlash = 1.0; }
+  } else {
+    seqPos = e.code === RESET_SEQ[0] ? 1 : 0; // tolère un faux départ qui recommence la séquence
+  }
+});
+function updateReset(dt: number) {
+  if (resetFlash > 0) {
+    resetFlash -= dt;
+    if (resetFlash <= 0 && resetPending) { resetPending = false; resetAllData(); try { location.reload(); } catch { } }
   }
 }
-function drawResetCombo(gg: CanvasRenderingContext2D) {
-  if (resetHold < 0.45) return; // discret : n'apparaît qu'une fois le combo bien enclenché
-  const p = Math.min(1, resetHold / RESET_HOLD);
+function drawReset(gg: CanvasRenderingContext2D) {
+  if (resetFlash <= 0) return;
   gg.save();
-  gg.globalAlpha = Math.min(1, (resetHold - 0.3) * 2);
-  gg.fillStyle = "rgba(5,4,10,.72)"; gg.fillRect(0, 0, VW, VH);
-  textShadow(gg, T("reset.hold"), VW / 2, VH / 2 - 20, 24, "#ff8080", "center");
-  const bw = 360, bx = VW / 2 - bw / 2, by = VH / 2 + 18;
-  gg.fillStyle = "#241c34"; gg.beginPath(); gg.roundRect(bx, by, bw, 14, 6); gg.fill();
-  gg.fillStyle = "#ff4040"; gg.beginPath(); gg.roundRect(bx, by, bw * p, 14, 6); gg.fill();
+  gg.globalAlpha = Math.min(1, resetFlash * 2);
+  gg.fillStyle = "rgba(110,8,8,.85)"; gg.fillRect(0, 0, VW, VH);
+  gg.shadowColor = "#ff2020"; gg.shadowBlur = 24;
+  textShadow(gg, T("reset.hold"), VW / 2, VH / 2, 32, "#fff", "center");
   gg.restore();
 }
 
@@ -274,11 +278,11 @@ function frame(now: number) {
   const dt = Math.min(0.1, (now - last) / 1000);
   last = now;
   Input.pollGamepad();
-  updateResetCombo(dt);
+  updateReset(dt);
   SceneManager.update(dt);
   g.setTransform(1, 0, 0, 1, 0, 0);
   SceneManager.draw(g);
-  drawResetCombo(g);
+  drawReset(g);
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
