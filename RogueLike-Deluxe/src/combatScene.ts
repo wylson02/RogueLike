@@ -1,5 +1,6 @@
 // ===== Scène de combat : mise en scène du CombatSession =====
-import { Scene } from "./scenes";
+import { Scene, SceneManager } from "./scenes";
+import { FilmScene, regicideFilmShots } from "./cinematics";
 import { VW, VH, text, textShadow, Particles, AmbientFX, FONT, wrapLine } from "./render";
 import { Input } from "./input";
 import { Audio } from "./audio";
@@ -730,11 +731,20 @@ export class CombatScene implements Scene {
       return;
     }
     if (s.victory && this.enemy.rank === MonsterRank.Boss) {
-      // Post-jeu : le Roi vaincu avec la Clé de l'Abîme → le portail des Profondeurs s'ouvre
-      if (G.ctx.currentLevel === 4 && G.ctx.player.inventory.some(i => i.id === "AbyssKey")) {
-        G.ctx.openAbyssPortal();
-        saveGame(G.ctx);
-        Flow.toExplore();
+      // LE RÉGICIDE : le Roi de l'Abîme tombe — mini-film du coup fatal (signé par ta classe),
+      // puis la suite normale (portail des Profondeurs ou écran de victoire).
+      if (this.enemy.nameKey === "mob.boss") {
+        const after = () => {
+          if (G.ctx.currentLevel === 4 && G.ctx.player.inventory.some(i => i.id === "AbyssKey")) {
+            G.ctx.openAbyssPortal();
+            saveGame(G.ctx);
+            Flow.toExplore();
+          } else {
+            Flow.endScreen(true);
+          }
+        };
+        SceneManager.switchTo(() => new FilmScene(regicideFilmShots(G.ctx.player.classId, G.ctx.oath < 0), after));
+        Audio.setMode("none");
         return;
       }
       // Le Dévoreur d'Âmes vaincu : la Boucle est entre tes mains. Ta fin dépend du Serment tenu.

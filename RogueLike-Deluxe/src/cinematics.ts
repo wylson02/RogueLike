@@ -1175,6 +1175,175 @@ function appIntroFilm(): FilmShot[] {
 
 export function appIntroFilmShots(): FilmShot[] { return appIntroFilm(); }
 
+// ---- LE RÉGICIDE : le coup fatal porté au Roi de l'Abîme, signé par TA classe ----
+// Plan 3 : variante Guerrier / Mage / Voleur. Plan 5 : la couronne roule à tes pieds —
+// elle luit encore si tu penches vers l'Emprise, elle s'éteint si Clémence.
+function regicideFilm(classId: string, emprise: boolean): FilmShot[] {
+  const throneY = 250;
+  // petite couronne dorée (chevrons) réutilisée sur plusieurs plans
+  const crown = (g: CanvasRenderingContext2D, cx: number, cy: number, s: number, glow: number, rot = 0) => {
+    g.save();
+    g.translate(cx, cy); g.rotate(rot);
+    g.strokeStyle = glow > 0.05 ? "#ffd84a" : "#6a6280";
+    g.shadowColor = "#ffd84a"; g.shadowBlur = 16 * glow; g.globalAlpha = 0.4 + glow * 0.6; g.lineWidth = 2.5 * s;
+    g.beginPath();
+    for (let i = -2; i <= 2; i++) { const x = i * 10 * s; g.moveTo(x - 4 * s, 0); g.lineTo(x, -12 * s); g.lineTo(x + 4 * s, 0); }
+    g.moveTo(-24 * s, 0); g.lineTo(24 * s, 0);
+    g.stroke();
+    g.restore();
+  };
+  const shots: FilmShot[] = [
+    { // 1. le roi vacille : à genoux, des fissures de lumière courent sur son corps
+      dur: 3.8, captionKey: "film.reg.1", captionColor: "#ff9090", sfx: "warden",
+      draw: (g, u, t) => {
+        drawThrone(g, VW / 2, throneY, 1.2, "#5a1020");
+        drawShadowFigure(g, VW / 2, throneY + 34, 1.15, "#ff2a44", 0.25 + Math.sin(t * 6) * 0.1); // effondré, bas
+        // fissures incandescentes sur son corps
+        g.save(); g.strokeStyle = "#ffe0b0"; g.shadowColor = "#ff9d2e"; g.shadowBlur = 12; g.lineWidth = 1.6;
+        g.globalAlpha = 0.4 + u * 0.6;
+        for (let i = 0; i < 4; i++) {
+          const sx = VW / 2 - 24 + i * 16, sy = throneY + 6 + (i % 2) * 22;
+          g.beginPath(); g.moveTo(sx, sy);
+          g.lineTo(sx + 8 + Math.sin(t * 3 + i) * 3, sy + 20); g.lineTo(sx + 2, sy + 38);
+          g.stroke();
+        }
+        g.restore();
+        crown(g, VW / 2 + 20, throneY - 26, 1, 0.5, 0.35 + u * 0.2); // la couronne glisse
+        drawSpriteFigure(g, "player", 200, 452, 44, 0.95);
+      },
+    },
+    { // 2. l'élan : ton héros s'élance, traînées de vitesse
+      dur: 2.8, captionKey: "film.reg.2", captionColor: "#c8c0d4", sfx: "dodge",
+      draw: (g, u, t) => {
+        // lignes de vitesse
+        g.save(); g.strokeStyle = "rgba(180,170,210,.25)"; g.lineWidth = 2;
+        for (let i = 0; i < 9; i++) {
+          const ly = 80 + i * 52, sp = (t * (300 + i * 60)) % (VW + 200);
+          g.beginPath(); g.moveTo(VW - sp, ly); g.lineTo(VW - sp + 90 + i * 12, ly); g.stroke();
+        }
+        g.restore();
+        drawShadowFigure(g, 780, 400, 1.15, "#ff2a44", 0.3); // le roi au loin
+        const hx2 = 140 + u * 480;
+        for (let k = 1; k <= 4; k++) drawSpriteFigure(g, "player", hx2 - k * 34, 430, 52, 0.28 / k); // traînée
+        drawSpriteFigure(g, "player", hx2, 430, 56, 1);
+      },
+    },
+  ];
+  // 3. LE COUP — la signature de ta classe, en version régicide
+  if (classId === "warrior") {
+    shots.push({
+      dur: 4.2, captionKey: "film.reg.w", captionColor: "#ffae57", sfx: "heavy",
+      draw: (g, u, t, f) => {
+        const sh = clamp(1 - u * 1.3, 0, 1) * 14;
+        g.save(); g.translate((Math.random() - 0.5) * sh, (Math.random() - 0.5) * sh);
+        drawShadowFigure(g, VW / 2 + 60, 380, 1.2, "#ff2a44", 0.5);
+        drawSpriteFigure(g, "player", VW / 2 - 80, 420, 60, 1);
+        // l'écran se fend : une faille tellurique verticale
+        const crack = clamp(u * 2.2, 0, 1);
+        g.strokeStyle = "#ffd8b0"; g.shadowColor = "#ffae57"; g.shadowBlur = 24; g.lineWidth = 3 + crack * 8;
+        g.globalAlpha = crack;
+        g.beginPath(); g.moveTo(VW / 2 + 60, 0);
+        g.lineTo(VW / 2 + 60 + Math.sin(u * 14) * 12, VH); g.stroke();
+        g.restore();
+        if (u > 0.25 && Math.random() < 0.8)
+          f.particles.spawn({ x: VW / 2 + 60 + (Math.random() - 0.5) * 140, y: 380 + (Math.random() - 0.5) * 80, vx: (Math.random() - 0.5) * 60, vy: -30 - Math.random() * 60, life: 1, maxLife: 1, size: 2 + Math.random() * 2.5, color: Math.random() < 0.6 ? "#ffae57" : "#8a6a4a", glow: true });
+      },
+    });
+  } else if (classId === "mage") {
+    shots.push({
+      dur: 4.2, captionKey: "film.reg.m", captionColor: "#b6a6ff", sfx: "chain",
+      draw: (g, u, t, f) => {
+        drawShadowFigure(g, VW / 2 + 60, 380, 1.2, "#ff2a44", 0.5);
+        drawSpriteFigure(g, "player", VW / 2 - 110, 420, 60, 1);
+        // pluie de traits convergents depuis les bords
+        g.save(); g.strokeStyle = "#c88aff"; g.shadowColor = "#c88aff"; g.shadowBlur = 14; g.lineWidth = 3; g.lineCap = "round";
+        for (let i = 0; i < 7; i++) {
+          const p = clamp(u * 2.4 - i * 0.14, 0, 1);
+          if (p <= 0 || p >= 1) continue;
+          const a = (i / 7) * Math.PI * 2 + 0.4;
+          const x1 = VW / 2 + 60 + Math.cos(a) * 520 * (1 - p), y1 = 380 + Math.sin(a) * 380 * (1 - p);
+          const x0 = VW / 2 + 60 + Math.cos(a) * 520 * Math.min(1, 1 - p + 0.16), y0 = 380 + Math.sin(a) * 380 * Math.min(1, 1 - p + 0.16);
+          g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1, y1); g.stroke();
+        }
+        // détonation : anneaux concentriques
+        const det = clamp((u - 0.55) * 2.6, 0, 1);
+        if (det > 0) {
+          g.globalAlpha = 1 - det;
+          for (const r of [60, 120, 190]) {
+            g.strokeStyle = "#b6a6ff"; g.lineWidth = 4; g.shadowBlur = 20;
+            g.beginPath(); g.arc(VW / 2 + 60, 380, r * det + 10, 0, Math.PI * 2); g.stroke();
+          }
+        }
+        g.restore();
+        if (u > 0.55 && Math.random() < 0.8)
+          f.particles.spawn({ x: VW / 2 + 60 + (Math.random() - 0.5) * 120, y: 380 + (Math.random() - 0.5) * 100, vx: (Math.random() - 0.5) * 70, vy: (Math.random() - 0.5) * 70, life: 0.9, maxLife: 0.9, size: 2 + Math.random() * 2, color: Math.random() < 0.5 ? "#c88aff" : "#8fb0ff", glow: true });
+      },
+    });
+  } else {
+    shots.push({
+      dur: 4.2, captionKey: "film.reg.r", captionColor: "#ffd84a", sfx: "crit",
+      draw: (g, u, t, f) => {
+        drawShadowFigure(g, VW / 2 + 40, 380, 1.2, "#ff2a44", 0.45);
+        // le voleur a DÉJÀ traversé : il est derrière le roi, immobile
+        drawSpriteFigure(g, "player", VW / 2 + 220, 420, 56, clamp(u * 3, 0, 1));
+        // cinq entailles apparaissent une à une, puis s'illuminent ensemble
+        g.save(); g.lineCap = "round";
+        for (let i = 0; i < 5; i++) {
+          const show = clamp((u - 0.08 - i * 0.11) * 8, 0, 1);
+          if (show <= 0) continue;
+          const flare = clamp((u - 0.72) * 4, 0, 1);
+          const ang = -0.7 + i * 0.35, len = 90 + (i % 2) * 40;
+          const cx2 = VW / 2 + 40 + (i - 2) * 14, cy2 = 372 + (i % 3) * 14;
+          g.strokeStyle = flare > 0 ? "#fff" : "#ffd84a";
+          g.shadowColor = "#ffd84a"; g.shadowBlur = 10 + flare * 26;
+          g.lineWidth = 3 + flare * 4; g.globalAlpha = show * (0.7 + flare * 0.3);
+          g.beginPath();
+          g.moveTo(cx2 - Math.cos(ang) * len / 2, cy2 - Math.sin(ang) * len / 2);
+          g.lineTo(cx2 + Math.cos(ang) * len / 2, cy2 + Math.sin(ang) * len / 2);
+          g.stroke();
+        }
+        g.restore();
+        if (u > 0.72 && Math.random() < 0.9)
+          f.particles.spawn({ x: VW / 2 + 40 + (Math.random() - 0.5) * 120, y: 380 + (Math.random() - 0.5) * 90, vx: (Math.random() - 0.5) * 80, vy: -20 - Math.random() * 50, life: 0.8, maxLife: 0.8, size: 2, color: Math.random() < 0.6 ? "#ffd84a" : "#ff4a6a", glow: true });
+      },
+    });
+  }
+  shots.push(
+    { // 4. l'impact figé : silence, presque monochrome — le plan "sabre rangé"
+      dur: 3, captionKey: "film.reg.4", captionColor: "#e8e0f0", sfx: "night",
+      draw: (g, u, t) => {
+        g.fillStyle = "rgba(10,8,16,.55)"; g.fillRect(0, 0, VW, VH); // voile sombre : le monde s'arrête
+        drawShadowFigure(g, VW / 2, 370, 1.2, "#8a8098", 0.15); // le roi, éteint
+        // la fissure fatale qui le traverse
+        g.save(); g.strokeStyle = "#fff"; g.shadowColor = "#ffe0b0"; g.shadowBlur = 18; g.lineWidth = 3;
+        g.globalAlpha = 0.75 + Math.sin(t * 2) * 0.15;
+        g.beginPath(); g.moveTo(VW / 2 - 60, 320); g.lineTo(VW / 2 + 64, 428); g.stroke();
+        g.restore();
+        drawSpriteFigure(g, "player", VW / 2 + 200, 424, 52, 0.9); // toi, immobile, dos au roi
+      },
+    },
+    { // 5. la chute : il éclate en cendres ; la couronne roule et s'arrête à tes pieds
+      dur: 4.2, captionKey: emprise ? "film.reg.5a" : "film.reg.5b", captionColor: emprise ? "#ffd84a" : "#a8a4b8", sfx: "die",
+      draw: (g, u, t, f) => {
+        const burst = clamp(u * 3, 0, 1);
+        if (burst < 1) drawShadowFigure(g, VW / 2, 370, 1.2 * (1 - burst * 0.5), "#ff2a44", 0.3 * (1 - burst));
+        if (u < 0.5 && Math.random() < 0.9)
+          f.particles.spawn({ x: VW / 2 + (Math.random() - 0.5) * 90, y: 370 + (Math.random() - 0.5) * 90, vx: (Math.random() - 0.5) * 30, vy: -40 - Math.random() * 60, life: 1.6, maxLife: 1.6, size: 2 + Math.random() * 2, color: Math.random() < 0.5 ? "#c0203a" : "#8a8098", glow: true });
+        // la couronne : arc de chute puis roulement jusqu'aux pieds du héros
+        const fall = clamp(u * 1.9, 0, 1);
+        const cx2 = VW / 2 + fall * 190;
+        const cy2 = 340 + Math.sin(fall * Math.PI) * -60 + fall * 118; // parabole vers le sol
+        const glow = emprise ? 0.5 + Math.sin(t * 4) * 0.4 : clamp(1 - u * 1.6, 0, 1) * 0.5; // luit encore / s'éteint
+        crown(g, cx2, Math.min(cy2, 458), 1.1, fall < 1 ? 0.5 : glow, fall * 9);
+        drawSpriteFigure(g, "player", VW / 2 + 260, 424, 52, 0.95);
+      },
+    },
+  );
+  return shots;
+}
+
+export function regicideFilmShots(classId: string, emprise: boolean): FilmShot[] { return regicideFilm(classId, emprise); }
+
 // ===== La scène de film générique (identique au moteur des fins, pour tout moment) =====
 export class FilmScene implements Scene {
   private idx = 0; private st = 0; private t = 0;
