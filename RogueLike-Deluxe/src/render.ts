@@ -212,6 +212,14 @@ export class AmbientFX {
   }
 }
 
+// ===== Cycle de marche : phase 0→1 sur la case en cours, déduite du tween =====
+// (la position rendue court après la position logique : la distance restante donne la phase)
+function walkCycle(logical: Pos, rp: { x: number; y: number }): { moving: boolean; ph: number } {
+  const dist = Math.max(Math.abs(logical.x - rp.x), Math.abs(logical.y - rp.y));
+  const moving = dist > 0.02;
+  return { moving, ph: moving ? 1 - Math.min(1, dist) : 0 };
+}
+
 // ===== Tweens de position des entités =====
 const tweenMap = new Map<object, { x: number; y: number }>();
 export function renderPos(ent: object, logical: Pos, dt: number, snap = false): { x: number; y: number } {
@@ -234,6 +242,7 @@ export class WorldRenderer {
   private nightBlend = 0;    // fondu jour ↔ nuit (0 = jour, 1 = nuit)
   private lastPPos = { x: -1, y: -1 }; // poussière de pas
   private heroFacingLeft = false;      // orientation du héros
+  private heroPrevTile: Pos | null = null; // dernière case logique (poussière de pas)
   private heroLastX = 0;
 
   addShake(power: number) { this.shake = Math.min(2, this.shake + power); }
@@ -469,18 +478,24 @@ export class WorldRenderer {
       textShadow(g, "$", sx + TS - 8, sy + 6 + bob, 13, "#c8a8ff", "center");
     }
 
-    // ---- Compagnon de quête (te suit ; barre de vie visible pour jauger le danger) ----
+    // ---- Compagnon de quête : il MARCHE derrière toi (tween + pas sauté, plus de téléportation) ----
     if (ctx.companion && ctx.companion.alive && ctx.visible.has(key(ctx.companion.pos))) {
       const co = ctx.companion;
-      const sx = co.pos.x * TS - cx, sy = co.pos.y * TS - cy;
-      const bob = Math.sin(t * 2.4) * 1.5;
+      const crp = renderPos(co, co.pos, dt);
+      const sx = crp.x * TS - cx, sy = crp.y * TS - cy;
+      const cw = walkCycle(co.pos, crp);
+      const hop = cw.moving ? Math.sin(cw.ph * Math.PI) * 3 : 0;
+      const bob = cw.moving ? 0 : Math.sin(t * 2.4) * 1.5;
       const spr = getSprite(co.sprite) ?? getSprite("pnj_orin");
+      // ombre au sol
+      g.fillStyle = "rgba(0,0,0,.35)";
+      g.beginPath(); g.ellipse(sx + TS / 2, sy + TS - 4, TS * 0.26, TS * 0.1, 0, 0, Math.PI * 2); g.fill();
       g.shadowColor = "#8fe8a0"; g.shadowBlur = 8;
-      g.drawImage(spr, sx + 2, sy + bob, TS - 4, TS - 4);
+      g.drawImage(spr, sx + 2, sy + bob - hop, TS - 4, TS - 4);
       g.shadowBlur = 0;
       const hpr = Math.max(0, Math.min(1, co.hp / co.maxHp));
-      g.fillStyle = "rgba(0,0,0,.6)"; g.fillRect(sx + 4, sy - 5, TS - 8, 4);
-      g.fillStyle = hpr > 0.35 ? "#5ad06a" : "#e05050"; g.fillRect(sx + 4, sy - 5, (TS - 8) * hpr, 4);
+      g.fillStyle = "rgba(0,0,0,.6)"; g.fillRect(sx + 4, sy - 5 - hop, TS - 8, 4);
+      g.fillStyle = hpr > 0.35 ? "#5ad06a" : "#e05050"; g.fillRect(sx + 4, sy - 5 - hop, (TS - 8) * hpr, 4);
     }
 
     // ---- PNJ ----
@@ -493,36 +508,59 @@ export class WorldRenderer {
       g.drawImage(spr, sx + 2, sy + Math.sin(t * 2 + rp.x * 3) * 1.5, TS - 4, TS - 4);
     }
 
-    // ---- Monstres ----
+    // ---- Monstres (petit bond de déplacement : eux aussi cessent de glisser) ----
     for (const m of ctx.monsters) {
       if (m.isDead) continue;
       if (!ctx.visible.has(key(m.pos))) continue;
       const rp = renderPos(m, m.pos, dt);
-      const sx = rp.x * TS - cx, sy = rp.y * TS - cy;
+      const mw = walkCycle(m.pos, rp);
+      const mhop = mw.moving ? Math.sin(mw.ph * Math.PI) * 2.4 : 0;
+      const sx = rp.x * TS - cx, sy = rp.y * TS - cy - mhop;
       this.drawMonster(g, m, sx, sy, t);
     }
 
-    // ---- Joueur (s'oriente dans le sens de la marche) ----
+    // ---- Joueur : il MARCHE (pas sauté, balancement, squash, frames de jambes, poussières) ----
     {
       const sx = pt.x * TS - cx, sy = pt.y * TS - cy;
-      const bob = Math.sin(t * 4) * 1.5;
       // aura du Panthéon : les rangs S font irradier le héros d'or (visible dans tous les modes)
       if (epicSCount() > 0 && Math.random() < dt * (3 + epicSCount() * 2))
         this.particles.spawn({ x: pt.x * TS + TS / 2 + (Math.random() - 0.5) * 16, y: pt.y * TS + TS / 2 + (Math.random() - 0.5) * 10, vx: (Math.random() - 0.5) * 8, vy: -14 - Math.random() * 12, life: 0.9, maxLife: 0.9, size: 1.6, color: "#ffd84a", glow: true });
       if (pt.x < this.heroLastX - 0.01) this.heroFacingLeft = true;
       else if (pt.x > this.heroLastX + 0.01) this.heroFacingLeft = false;
       this.heroLastX = pt.x;
-      // ombre
-      g.fillStyle = "rgba(0,0,0,.35)";
-      g.beginPath(); g.ellipse(sx + TS / 2, sy + TS - 4, TS * 0.3, TS * 0.12, 0, 0, Math.PI * 2); g.fill();
-      if (this.heroFacingLeft) {
-        g.save();
-        g.translate(sx + TS / 2, 0); g.scale(-1, 1); g.translate(-(sx + TS / 2), 0);
-        g.drawImage(getSprite("player"), sx + 2, sy - 2 + bob, TS - 4, TS - 4);
-        g.restore();
-      } else {
-        g.drawImage(getSprite("player"), sx + 2, sy - 2 + bob, TS - 4, TS - 4);
+
+      // cycle de marche : phase 0→1 sur la case en cours (distance restante du tween)
+      const w = walkCycle(ctx.player.pos, pt);
+      // poussière de pas : au départ de chaque nouvelle case
+      const lp = ctx.player.pos;
+      if (this.heroPrevTile && (this.heroPrevTile.x !== lp.x || this.heroPrevTile.y !== lp.y)) {
+        for (let i = 0; i < 3; i++)
+          this.particles.spawn({ x: this.heroPrevTile.x * TS + TS / 2 + (Math.random() - 0.5) * 10, y: this.heroPrevTile.y * TS + TS - 5, vx: (Math.random() - 0.5) * 16, vy: -6 - Math.random() * 10, life: 0.45, maxLife: 0.45, size: 1.8, color: "#8a7a66" });
       }
+      this.heroPrevTile = P(lp.x, lp.y);
+
+      const hop = w.moving ? Math.sin(w.ph * Math.PI) * 3.4 : 0;                    // pas sauté
+      const idleBob = w.moving ? 0 : Math.sin(t * 4) * 1.5;                          // respiration à l'arrêt
+      const swayDir = (lp.x + lp.y) % 2 === 0 ? 1 : -1;                              // balancement alterné par case
+      const rot = w.moving ? Math.sin(w.ph * Math.PI) * 0.07 * swayDir : 0;
+      const sqy = w.moving ? 1 + Math.sin(w.ph * Math.PI) * 0.05 : 1;                // léger stretch en l'air
+      const sqx = 1 / sqy;
+      // frame de marche : jambes écartées → jointes → écartées, un cycle par case
+      const frame = w.moving && w.ph > 0.25 && w.ph < 0.75 ? "player_walk" : "player";
+
+      // ombre AU SOL (elle ne saute pas : c'est elle qui vend le bond)
+      g.fillStyle = "rgba(0,0,0,.35)";
+      g.beginPath(); g.ellipse(sx + TS / 2, sy + TS - 4, TS * 0.3 * (1 - hop * 0.03), TS * 0.12, 0, 0, Math.PI * 2); g.fill();
+
+      g.save();
+      const pcx = sx + TS / 2, footY = sy + TS - 2;
+      g.translate(pcx, footY);
+      if (this.heroFacingLeft) g.scale(-1, 1);
+      g.rotate(rot);
+      g.scale(sqx, sqy);
+      g.translate(-pcx, -footY);
+      g.drawImage(getSprite(frame) ?? getSprite("player"), sx + 2, sy - 2 - hop + idleBob, TS - 4, TS - 4);
+      g.restore();
     }
 
     // ---- Particules ----

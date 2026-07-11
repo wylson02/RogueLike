@@ -48,6 +48,31 @@ export function initSprites() {
     s: "#c8d2e8", O,
   });
 
+  // Frame de marche du héros : jambes jointes (mi-pas). Alternée avec la pose
+  // de base (jambes écartées) pendant le déplacement → cycle de marche 2 frames.
+  sprites["player_walk"] = mk([
+    "......rr........",
+    ".....rrr........",
+    "....OhhhhO......",
+    "...OhhhhhhO.....",
+    "...OhDDDDhO.....",
+    "...OhhhhhhO.....",
+    "..OaaaaaaaaO....",
+    ".OwaALLALAawO...",
+    ".OwaAAAAAAawO.s.",
+    ".OwaALggLAawO.s.",
+    "..OaAAAAAAaO.gs.",
+    "...OaaaaaaO..Os.",
+    "...OllOOllO.....",
+    "....OllOllO.....",
+    "....ObbbbO......",
+    "................",
+  ], {
+    r: "#c23b3b", h: "#9ba8c2", D: "#232032", a: "#6b7a99", A: "#8b9ab8",
+    L: "#a8b6d2", g: "#e0b13e", w: "#7c8aa8", l: "#3d4358", b: "#2b2f40",
+    s: "#c8d2e8", O,
+  });
+
   // ================= LE RIVAL (écho sombre du héros — même silhouette, palette inversée) =================
   sprites["rival"] = mk([
     "......rr........",
