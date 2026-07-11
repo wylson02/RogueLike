@@ -5,6 +5,7 @@ import { Monster, MonsterRank, Chest, ChestType } from "./entities";
 import { boonById, ELEMENT_COLOR, hasResonance, elementStacks, Element } from "./boons";
 import { getSprite } from "./sprites";
 import { questDef } from "./quests";
+import { epicSCount } from "./epicMode";
 import { T } from "./i18n";
 
 export const VW = 960, VH = 540;
@@ -505,6 +506,9 @@ export class WorldRenderer {
     {
       const sx = pt.x * TS - cx, sy = pt.y * TS - cy;
       const bob = Math.sin(t * 4) * 1.5;
+      // aura du Panthéon : les rangs S font irradier le héros d'or (visible dans tous les modes)
+      if (epicSCount() > 0 && Math.random() < dt * (3 + epicSCount() * 2))
+        this.particles.spawn({ x: pt.x * TS + TS / 2 + (Math.random() - 0.5) * 16, y: pt.y * TS + TS / 2 + (Math.random() - 0.5) * 10, vx: (Math.random() - 0.5) * 8, vy: -14 - Math.random() * 12, life: 0.9, maxLife: 0.9, size: 1.6, color: "#ffd84a", glow: true });
       if (pt.x < this.heroLastX - 0.01) this.heroFacingLeft = true;
       else if (pt.x > this.heroLastX + 0.01) this.heroFacingLeft = false;
       this.heroLastX = pt.x;

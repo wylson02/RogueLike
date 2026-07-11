@@ -210,7 +210,7 @@ Flow.epicStart = (index: number) => {
     SceneManager.fadeSpeed = 5;
   };
   SceneManager.switchTo(() => new CinematicScene(boss.intro(), startFight, boss.glow));
-  Audio.setMode("boss");
+  Audio.setMode("pantheon"); // thème du Panthéon dès la cinématique du Colosse
 };
 
 // ===== Lancement : film d'accueil "L'Appel de l'Abîme" (skippable) → écran-titre stylé → menu =====

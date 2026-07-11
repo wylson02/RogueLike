@@ -9,11 +9,15 @@ import { Audio } from "./audio";
 import { T } from "./i18n";
 import { getSprite } from "./sprites";
 import { clamp, lerp } from "./core";
-import { EpicBoss, EpicAttack, EPIC_HERO, recordEpicRank } from "./epicMode";
+import { EpicBoss, EpicAttack, EPIC_HERO, recordEpicRank, isVowActive, activeVowCount, epicSCount } from "./epicMode";
 
 const ARENA_L = 96, ARENA_R = 864;   // bornes du sol
 const FLOOR_Y = 452;                 // ligne de sol (pieds des combattants)
-const INTRO_DUR = 1.6;
+const INTRO_DUR = 2.6;               // écran VS : pose du Colosse + nom gravé + face-à-face
+
+// Répliques des Colosses (premier sang / passage de phase) — piochées par index de boss
+const TAUNTS_BLOOD = ["epic.taunt.blood1", "epic.taunt.blood2", "epic.taunt.blood3"];
+const TAUNTS_PHASE = ["epic.taunt.phase1", "epic.taunt.phase2", "epic.taunt.phase3"];
 
 interface Floater { x: number; y: number; text: string; color: string; life: number; maxLife: number; size: number; }
 // Projectile / onde de choc : persiste et voyage seul (le boss peut agir après l'avoir lancé).
@@ -106,6 +110,18 @@ export class EpicCombatScene implements Scene {
   private dmgTaken = 0;
   private parries = 0;
   private rank: string | null = null;
+  // ---- riposte / esquive parfaite / coup chargé ----
+  private riposte = 0;        // >0 : la prochaine frappe est un critique doré (récompense de parade)
+  private pdodgeCd = 0;       // anti-spam de l'esquive parfaite
+  private charging = false;   // attaque lourde en cours de charge (maintien)
+  private chargeT = 0;
+  private chargedHit = false; // la lourde en vol est-elle chargée ? (brise-garde garanti)
+  // ---- taunts & marques ----
+  private firstBloodDone = false;
+  private tauntT = 0;
+  private tauntText = "";
+  private scars: { x: number; w: number; burn: boolean }[] = []; // marques persistantes du duel
+  private introRoared = false;
   private flashTint = 0;
   private flashColor = "#fff";
   private phaseBanner = 0;
@@ -126,6 +142,7 @@ export class EpicCombatScene implements Scene {
       fogBlobs: 7, motes: 48, fogColor: "120,110,150", moteColor: glow,
       fogOpacity: 0.07, moteOpacity: 0.2, speed: 1, fogBand: { y: 430, h: 110 },
     });
+    if (isVowActive("ascetic")) this.flasks = 0; // Serment de l'Ascète : aucune fiole
     // cendres de PREMIER PLAN : grosses, floues, elles passent devant les combattants (profondeur)
     for (let i = 0; i < 9; i++)
       this.fgAsh.push({
@@ -136,7 +153,7 @@ export class EpicCombatScene implements Scene {
   }
 
   enter() {
-    Audio.setMode("boss");
+    Audio.setMode("pantheon"); // thème dédié du Panthéon (repli sur boss.mp3 tant que la piste manque)
     Audio.sfx("roar");
   }
 
@@ -168,6 +185,13 @@ export class EpicCombatScene implements Scene {
 
     if (this.phase === "intro") {
       this.t += dt;
+      // le cri du Colosse au milieu de l'écran VS
+      if (!this.introRoared && this.t >= 0.9) {
+        this.introRoared = true;
+        Audio.sfx("roar");
+        this.screenShake = 1.4;
+        this.rings.push({ x: VW / 2 + 210, y: 250, r: 12, maxR: 240, life: 0.5, color: this.boss.glow });
+      }
       if (Input.consume("confirm")) this.t = Math.max(this.t, INTRO_DUR);
       if (this.t >= INTRO_DUR) { this.phase = "fight"; Input.clear(); }
       return;
@@ -230,6 +254,15 @@ export class EpicCombatScene implements Scene {
     }
     this.negFrames = Math.max(0, this.negFrames - dt);
     this.chroma = Math.max(0, this.chroma - dt * 2.2);
+    this.riposte = Math.max(0, this.riposte - dt);
+    this.pdodgeCd = Math.max(0, this.pdodgeCd - dt);
+    this.tauntT = Math.max(0, this.tauntT - dt);
+    // aura des rangs S : le héros irradie l'or gagné au Panthéon
+    if (epicSCount() > 0 && Math.random() < dt * (5 + epicSCount() * 3))
+      this.particles.spawn({ x: this.hx + (Math.random() - 0.5) * 40, y: FLOOR_Y - Math.random() * 80, vx: (Math.random() - 0.5) * 10, vy: -16 - Math.random() * 18, life: 1, maxLife: 1, size: 1.6, color: "#ffd84a", glow: true });
+    // riposte armée : la lame du héros ruisselle d'or
+    if (this.riposte > 0 && Math.random() < dt * 26)
+      this.particles.spawn({ x: this.hx + this.hFacing * (14 + Math.random() * 20), y: FLOOR_Y - 40 - Math.random() * 30, vx: this.hFacing * 8, vy: -12, life: 0.5, maxLife: 0.5, size: 1.8, color: "#ffe14a", glow: true });
     for (let i = this.bossGhosts.length - 1; i >= 0; i--) {
       this.bossGhosts[i].life -= dt * 3.2;
       if (this.bossGhosts[i].life <= 0) this.bossGhosts.splice(i, 1);
@@ -285,8 +318,26 @@ export class EpicCombatScene implements Scene {
     if (this.hurtTimer > 0) return;
 
     // ---- entrées libres ----
-    this.blocking = Input.isDown("down") && this.stamina > 0;
+    // Serment de la Lame : ni garde ni parade — l'esquive est ta seule défense.
+    this.blocking = !isVowActive("blade") && Input.isDown("down") && this.stamina > 0;
     if (this.blocking) this.blockHeld += dt; else this.blockHeld = 0;
+
+    // COUP CHARGÉ : maintenir la lourde la charge ; relâchée chargée, elle brise la garde à coup sûr.
+    if (this.charging) {
+      this.chargeT += dt;
+      if (Math.random() < dt * 30)
+        this.particles.spawn({ x: this.hx + (Math.random() - 0.5) * 70, y: FLOOR_Y - 20 - Math.random() * 60, vx: (this.hx - (this.hx + (Math.random() - 0.5) * 70)) * 2, vy: -10, life: 0.4, maxLife: 0.4, size: 2, color: "#ffd8b0", glow: true });
+      if (!Input.isDown("act1") || this.chargeT > 1.2) {
+        this.charging = false;
+        if (this.tryCost(EPIC_HERO.heavyCost)) {
+          this.chargedHit = this.chargeT >= 0.55;
+          if (this.chargedHit) { Audio.sfx("charge"); this.flashTint = 0.15; this.flashColor = "#ffd8b0"; }
+          this.startAttack("heavy");
+        }
+        this.chargeT = 0;
+      }
+      return; // immobile pendant la charge : un pari
+    }
 
     let move = 0;
     if (Input.isDown("left")) move -= 1;
@@ -309,9 +360,10 @@ export class EpicCombatScene implements Scene {
         Audio.sfx("dodge");
       }
     }
-    // attaque lourde
+    // attaque lourde : l'appui démarre une CHARGE (relâcher tôt = lourde normale)
     else if (Input.consume("act1")) {
-      if (this.tryCost(EPIC_HERO.heavyCost)) this.startAttack("heavy");
+      if (this.stamina >= EPIC_HERO.heavyCost) { this.charging = true; this.chargeT = 0; }
+      else { this.staminaFlash = 1; Audio.sfx("locked"); }
     }
     // attaque légère
     else if (Input.consume("confirm")) {
@@ -376,9 +428,22 @@ export class EpicCombatScene implements Scene {
   }
 
   private hitBoss(dmg: number, heavy: boolean) {
+    // RIPOSTE : la frappe qui suit une parade parfaite est un critique doré.
+    if (this.riposte > 0) {
+      dmg = Math.round(dmg * 1.75);
+      this.riposte = 0;
+      this.flashTint = 0.25; this.flashColor = "#ffe14a";
+      this.rings.push({ x: this.bx, y: FLOOR_Y - this.boss.size * 0.4, r: 8, maxR: 150, life: 0.45, color: "#ffe14a" });
+      this.pop(this.bx, FLOOR_Y - this.boss.size * 0.68, T("epic.riposte"), "#ffe14a", 24, 1.2);
+    }
+    // COUP CHARGÉ : dégâts majorés et brise-garde GARANTI.
+    const charged = heavy && this.chargedHit;
+    if (charged) { dmg = Math.round(dmg * 1.6); this.chargedHit = false; }
     // Une lourde qui percute le boss en pleine préparation brise sa garde (récompense les reads).
-    const poiseBreak = heavy && (this.bstate === "windup");
+    const poiseBreak = charged || (heavy && this.bstate === "windup");
     this.bhp -= dmg;
+    // le marbre garde la marque du coup
+    if (heavy && this.scars.length < 40) this.scars.push({ x: this.bx + (Math.random() - 0.5) * 30, w: 26 + Math.random() * 30, burn: false });
     this.bflash = 1;
     this.hitstop = heavy ? 0.12 : 0.05;
     this.screenShake = heavy ? 1.1 : 0.5;
@@ -670,6 +735,7 @@ export class EpicCombatScene implements Scene {
         if (z.delay <= 0) { // l'impact frappe
           this.screenShake = Math.max(this.screenShake, 0.6);
           this.particles.burst(z.x, FLOOR_Y, z.color, 20, 160, 0.6, 3.4, true);
+          if (this.scars.length < 40) this.scars.push({ x: z.x, w: z.r * 0.9, burn: true }); // brûlure au marbre
           Audio.sfx("hit");
         }
         continue;
@@ -701,7 +767,20 @@ export class EpicCombatScene implements Scene {
 
   // ---------------- Dégâts au héros (garde / parade / i-frames) ----------------
   private hurtHero(dmg: number, fromDir: number, knock: boolean) {
-    if (this.invuln > 0 || this.rollTimer > 0) return; // esquive parfaite
+    if (this.invuln > 0 || this.rollTimer > 0) {
+      // ESQUIVE PARFAITE : rouler dans les toutes premières frames au moment du coup
+      if (this.rollTimer > 0 && EPIC_HERO.rollDur - this.rollTimer < 0.16 && this.pdodgeCd <= 0) {
+        this.pdodgeCd = 0.6;
+        this.slowmo = Math.max(this.slowmo, 0.32);
+        this.stamina = Math.min(EPIC_HERO.maxStamina, this.stamina + 18);
+        this.chroma = Math.max(this.chroma, 0.1);
+        this.pop(this.hx, FLOOR_Y - 92, T("epic.pdodge"), "#8fe0ff", 20, 1.1);
+        this.particles.burst(this.hx, FLOOR_Y - 44, "#8fe0ff", 14, 110, 0.5, 3, true);
+        Audio.sfx("dodge");
+      }
+      return;
+    }
+    if (isVowActive("blood")) dmg *= 2; // Serment du Sang : chaque blessure compte double
 
     if (this.blocking) {
       // Parade : bloquer dans la toute première fenêtre annule tout et chancelle le boss.
@@ -717,6 +796,7 @@ export class EpicCombatScene implements Scene {
         this.pop(this.hx, FLOOR_Y - 84, T("epic.parry"), "#ffe14a", 24, 1.2);
         this.staggerBoss(1.2);
         this.stamina = Math.min(EPIC_HERO.maxStamina, this.stamina + 15);
+        this.riposte = 1.6; // ta prochaine frappe sera un critique doré
         return;
       }
       // Blocage normal : dégâts réduits, coûte de l'endurance ; à vide → garde brisée.
@@ -743,6 +823,12 @@ export class EpicCombatScene implements Scene {
   private takeHit(dmg: number, fromDir: number, knock: boolean) {
     this.hp -= dmg;
     this.dmgTaken += dmg;
+    // premier sang : le Colosse te nargue
+    if (!this.firstBloodDone) {
+      this.firstBloodDone = true;
+      this.tauntT = 2.6;
+      this.tauntText = T(TAUNTS_BLOOD[(this.bossIndex >= 0 ? this.bossIndex : 0) % TAUNTS_BLOOD.length]);
+    }
     this.hurtTimer = 0.28;
     this.invuln = 0.5;              // brefs i-frames après un coup (évite le stun-lock)
     this.atkTimer = 0; this.atkKind = null;
@@ -785,6 +871,10 @@ export class EpicCombatScene implements Scene {
         this.revealBanner = 2.6;
         this.revealText = revealed.map(a => T(a.labelKey)).join("  •  ");
       }
+      // le Colosse te nargue ; l'arène garde la cicatrice de sa colère
+      this.tauntT = 2.6;
+      this.tauntText = T(TAUNTS_PHASE[(this.bossIndex >= 0 ? this.bossIndex : 0) % TAUNTS_PHASE.length]);
+      if (this.scars.length < 40) this.scars.push({ x: this.bx, w: 70, burn: true });
       this.bstate = "idle"; this.bidle = 0.6; this.cur = null; this.comboLeft = 0;
       this.airborne = false;
       this.projectiles = []; this.zones = []; this.phantoms = [];
@@ -795,7 +885,7 @@ export class EpicCombatScene implements Scene {
   // Rang de combat : les dégâts subis pèsent, chaque parade rachète, la lenteur pénalise un peu.
   private computeRank(): string {
     const score = this.dmgTaken - this.parries * 8 + (this.fightT > 130 ? 15 : 0);
-    if (this.dmgTaken === 0 || score <= 12) return "S";
+    if (this.dmgTaken === 0 || score <= 12) return activeVowCount() > 0 ? "SS" : "S"; // les Serments transcendent le S
     if (score <= 50) return "A";
     if (score <= 105) return "B";
     return "C";
@@ -855,6 +945,26 @@ export class EpicCombatScene implements Scene {
     g.fillRect(ARENA_L - 30, FLOOR_Y + 8, ARENA_R - ARENA_L + 60, 4);
     g.fillStyle = "rgba(0,0,0,.35)";
     g.fillRect(-12, FLOOR_Y + 12, VW + 24, VH);
+
+    // marques persistantes du duel : fissures et brûlures — l'arène raconte le combat
+    for (const sc of this.scars) {
+      g.save();
+      if (sc.burn) {
+        const bg2 = g.createRadialGradient(sc.x, FLOOR_Y + 9, 2, sc.x, FLOOR_Y + 9, sc.w);
+        bg2.addColorStop(0, "rgba(20,10,8,.5)"); bg2.addColorStop(0.6, "rgba(60,25,12,.25)"); bg2.addColorStop(1, "rgba(0,0,0,0)");
+        g.fillStyle = bg2;
+        g.beginPath(); g.ellipse(sc.x, FLOOR_Y + 9, sc.w, sc.w * 0.22, 0, 0, Math.PI * 2); g.fill();
+      } else {
+        g.strokeStyle = "rgba(200,190,215,.22)"; g.lineWidth = 1.4;
+        g.beginPath();
+        g.moveTo(sc.x - sc.w / 2, FLOOR_Y + 10);
+        g.lineTo(sc.x - sc.w * 0.15, FLOOR_Y + 7);
+        g.lineTo(sc.x + sc.w * 0.2, FLOOR_Y + 11);
+        g.lineTo(sc.x + sc.w / 2, FLOOR_Y + 8);
+        g.stroke();
+      }
+      g.restore();
+    }
 
     this.ambient.draw(g);
     // éclairage dynamique : les télégraphes et tes frappes baignent l'arène de leur couleur
@@ -1396,14 +1506,76 @@ export class EpicCombatScene implements Scene {
       textShadow(g, T("epic.newmove", { name: this.revealText }), VW / 2, VH / 2 + 4, 17, "#ffd0d0", "center");
       g.globalAlpha = 1;
     }
+    // le Colosse te nargue (premier sang / phase) : réplique flottante à son aplomb
+    if (this.tauntT > 0 && this.phase === "fight") {
+      const a = clamp(this.tauntT / 0.5, 0, 1) * clamp((2.6 - this.tauntT) / 0.4, 0, 1);
+      g.globalAlpha = Math.min(1, a);
+      textShadow(g, "« " + this.tauntText + " »", clamp(this.bx, 200, VW - 200), FLOOR_Y - this.boss.size - 34, 15, this.boss.glow, "center");
+      g.globalAlpha = 1;
+    }
+    // charge de la lourde : jauge circulaire autour du héros
+    if (this.charging) {
+      const p = clamp(this.chargeT / 0.55, 0, 1);
+      const ready = p >= 1;
+      g.save();
+      g.strokeStyle = ready ? "#ffe14a" : "#ffd8b0";
+      g.shadowColor = ready ? "#ffe14a" : "#ffd8b0"; g.shadowBlur = ready ? 18 : 8;
+      g.lineWidth = 4;
+      g.globalAlpha = 0.85;
+      g.beginPath(); g.arc(this.hx, FLOOR_Y - 46, 42, -Math.PI / 2, -Math.PI / 2 + p * Math.PI * 2); g.stroke();
+      if (ready) textShadow(g, T("epic.charged"), this.hx, FLOOR_Y - 110, 14, "#ffe14a", "center");
+      g.restore();
+    }
   }
 
+  // Écran VS façon jeu de combat : les duellistes entrent, le nom se grave, le Colosse rugit.
   private drawIntro(g: CanvasRenderingContext2D) {
-    const a = clamp(1 - this.t / INTRO_DUR, 0, 1);
-    g.fillStyle = `rgba(5,4,10,${a * 0.7})`;
+    const fadeOut = clamp((this.t - (INTRO_DUR - 0.5)) / 0.5, 0, 1);
+    g.save();
+    g.globalAlpha = 1 - fadeOut;
+    g.fillStyle = "rgba(5,4,10,.86)";
     g.fillRect(0, 0, VW, VH);
-    textShadow(g, T(this.boss.nameKey), VW / 2, VH / 2 - 20, 46, "#f0e2c8", "center");
-    text(g, T(this.boss.titleKey), VW / 2, VH / 2 + 26, 18, this.boss.glow, "center");
+    // diagonale de séparation, teintée du Colosse
+    g.strokeStyle = this.boss.glow; g.globalAlpha = (1 - fadeOut) * 0.5; g.lineWidth = 3;
+    g.beginPath(); g.moveTo(VW / 2 + 90, -10); g.lineTo(VW / 2 - 90, VH + 10); g.stroke();
+    g.globalAlpha = 1 - fadeOut;
+    // les duellistes glissent en scène
+    const ease = (x: number) => 1 - Math.pow(1 - clamp(x, 0, 1), 3);
+    const hIn = ease(this.t / 0.6), bIn = ease((this.t - 0.15) / 0.6);
+    const hs = getSprite("player"), bs = getSprite(this.boss.sprite);
+    g.imageSmoothingEnabled = false;
+    if (hs) {
+      g.save(); g.shadowColor = "#ffd84a"; g.shadowBlur = 16;
+      g.drawImage(hs, -160 + hIn * (VW / 2 - 210) - 70, 210, 140, 140);
+      g.restore();
+    }
+    if (bs) {
+      const bsz = 180 + (this.introRoared ? Math.sin(this.t * 30) * 0 : 0);
+      g.save(); g.shadowColor = this.boss.glow; g.shadowBlur = 26 + (this.introRoared ? 14 : 0);
+      g.drawImage(bs, VW + 160 - bIn * (VW / 2 - 120) - bsz / 2, 250 - bsz / 2, bsz, bsz);
+      g.restore();
+    }
+    // "VS" au centre
+    const vsIn = ease((this.t - 0.5) / 0.35);
+    if (vsIn > 0) {
+      g.save();
+      g.translate(VW / 2, VH / 2 - 10); g.scale(2.2 - vsIn * 1.2, 2.2 - vsIn * 1.2);
+      g.globalAlpha = vsIn * (1 - fadeOut);
+      g.font = `bold 54px ${FONT}`; g.textAlign = "center"; g.textBaseline = "middle";
+      g.shadowColor = "#ff5060"; g.shadowBlur = 26;
+      g.fillStyle = "#f0e2c8"; g.fillText("VS", 0, 0);
+      g.restore();
+    }
+    // le nom du Colosse se GRAVE lettre à lettre
+    const full = T(this.boss.nameKey);
+    const nChars = Math.floor(clamp((this.t - 0.7) / 1.0, 0, 1) * full.length);
+    g.save(); g.shadowColor = this.boss.glow; g.shadowBlur = 18;
+    textShadow(g, full.slice(0, nChars), VW / 2, 92, 34, "#f0e2c8", "center");
+    g.restore();
+    if (this.t > 1.75) text(g, T(this.boss.titleKey), VW / 2, 128, 15, this.boss.glow, "center");
+    if (this.t > 2 && Math.sin(this.t * 5) > -0.2)
+      text(g, T("epic.continue"), VW / 2, VH - 46, 12, "#9a92ac", "center");
+    g.restore();
   }
 
   private drawOutcome(g: CanvasRenderingContext2D, won: boolean) {
@@ -1429,7 +1601,7 @@ export class EpicCombatScene implements Scene {
     if (won && this.rank) {
       const ra = clamp((this.outcomeT - 0.8) / 0.4, 0, 1);
       if (ra > 0) {
-        const RC: Record<string, string> = { S: "#ffd84a", A: "#c8a8ff", B: "#8fd4ff", C: "#a8a4b8" };
+        const RC: Record<string, string> = { SS: "#fff2c0", S: "#ffd84a", A: "#c8a8ff", B: "#8fd4ff", C: "#a8a4b8" };
         const scale = 1 + (1 - ra) * 1.6;
         g.save();
         g.globalAlpha = ra;

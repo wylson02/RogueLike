@@ -9,7 +9,7 @@ import { getSprite } from "./sprites";
 import { clamp } from "./core";
 import {
   EPIC_BOSSES, EPIC_SECRET_START, isEpicUnlocked, isEpicCleared, epicClearedCount,
-  epicVisibleCount, markEpicRevealed, epicBestRank,
+  epicVisibleCount, markEpicRevealed, epicBestRank, EPIC_VOWS, toggleVow, isVowActive, activeVowCount,
 } from "./epicMode";
 
 export class EpicSelectScene implements Scene {
@@ -38,6 +38,10 @@ export class EpicSelectScene implements Scene {
     const n = epicVisibleCount();
     if (Input.consume("left")) { this.sel = (this.sel + n - 1) % n; Audio.sfx("ui"); }
     if (Input.consume("right")) { this.sel = (this.sel + 1) % n; Audio.sfx("ui"); }
+    // Serments du Panthéon : touches 1-3 pour jurer/renoncer (rang SS à la clé)
+    if (Input.consume("act1")) { toggleVow(EPIC_VOWS[0].id); Audio.sfx(isVowActive(EPIC_VOWS[0].id) ? "seal" : "back"); }
+    if (Input.consume("act2")) { toggleVow(EPIC_VOWS[1].id); Audio.sfx(isVowActive(EPIC_VOWS[1].id) ? "seal" : "back"); }
+    if (Input.consume("act3")) { toggleVow(EPIC_VOWS[2].id); Audio.sfx(isVowActive(EPIC_VOWS[2].id) ? "seal" : "back"); }
     if (Input.consume("confirm")) {
       if (isEpicUnlocked(this.sel)) { Audio.sfx("confirm"); Flow.epicStart(this.sel); }
       else { Audio.sfx("locked"); }
@@ -98,7 +102,7 @@ export class EpicSelectScene implements Scene {
       // meilleur rang obtenu (badge haut-droite : S doré, A violet, B bleu, C gris)
       const rank = epicBestRank(i);
       if (rank && cleared) {
-        const RC: Record<string, string> = { S: "#ffd84a", A: "#c8a8ff", B: "#8fd4ff", C: "#a8a4b8" };
+        const RC: Record<string, string> = { SS: "#fff2c0", S: "#ffd84a", A: "#c8a8ff", B: "#8fd4ff", C: "#a8a4b8" };
         g.save();
         g.fillStyle = "rgba(8,6,14,.9)"; g.beginPath(); g.roundRect(cx + cardW - 26, cy + 6, 20, 20, 5); g.fill();
         g.strokeStyle = RC[rank] ?? "#a8a4b8"; g.lineWidth = 1.4;
@@ -146,6 +150,25 @@ export class EpicSelectScene implements Scene {
       text(g, T("epic.hint.fight"), VW / 2, py + 32, 14, "#c8c0d4", "center");
     } else {
       text(g, T("epic.hint.locked"), VW / 2, py + 8, 15, "#a89ec0", "center");
+    }
+
+    // ===== Les Serments du Panthéon : malus volontaires, rang SS à la clé =====
+    {
+      const vy = py + 58;
+      const label = activeVowCount() > 0 ? T("vow.header.on", { n: activeVowCount() }) : T("vow.header");
+      textShadow(g, label, VW / 2, vy, 12, activeVowCount() > 0 ? "#ffd84a" : "#9a8090", "center");
+      let vx = VW / 2 - 280;
+      EPIC_VOWS.forEach((v, i) => {
+        const on = isVowActive(v.id);
+        g.save();
+        g.fillStyle = on ? "rgba(120,90,20,.5)" : "rgba(20,14,26,.7)";
+        g.beginPath(); g.roundRect(vx, vy + 10, 180, 26, 6); g.fill();
+        g.strokeStyle = on ? "#ffd84a" : "rgba(140,120,150,.35)"; g.lineWidth = on ? 1.6 : 1;
+        g.beginPath(); g.roundRect(vx, vy + 10, 180, 26, 6); g.stroke();
+        textShadow(g, `${i + 1} · ${T(v.nameKey)}`, vx + 90, vy + 23, 12, on ? "#ffe6a0" : "#a8a0b8", "center");
+        g.restore();
+        vx += 190;
+      });
     }
 
     text(g, T("epic.nav"), VW / 2, VH - 22, 12, "#7e7490", "center");

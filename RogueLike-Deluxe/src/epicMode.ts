@@ -299,8 +299,8 @@ export function epicShouldReveal(): boolean {
 }
 export function markEpicRevealed() { const d = load(); d.revealed = true; save(d); }
 
-// ===== Rangs de combat (S > A > B > C) : on ne garde que le meilleur =====
-const RANK_ORDER = ["C", "B", "A", "S"];
+// ===== Rangs de combat (SS > S > A > B > C) : on ne garde que le meilleur =====
+const RANK_ORDER = ["C", "B", "A", "S", "SS"];
 export function epicBestRank(index: number): string | null { return load().ranks?.[index] ?? null; }
 export function recordEpicRank(index: number, rank: string) {
   const d = load();
@@ -308,6 +308,24 @@ export function recordEpicRank(index: number, rank: string) {
   const cur = d.ranks[index];
   if (cur === undefined || RANK_ORDER.indexOf(rank) > RANK_ORDER.indexOf(cur)) { d.ranks[index] = rank; save(d); }
 }
+// Nombre de Colosses vaincus au rang S ou mieux (alimente l'aura cosmétique du héros).
+export function epicSCount(): number {
+  const r = load().ranks ?? {};
+  return Object.values(r).filter(v => v === "S" || v === "SS").length;
+}
+
+// ===== Les Serments du Panthéon : malus volontaires choisis avant le duel =====
+// Avec au moins un Serment actif, un score de rang S devient SS. (État de session, non persisté.)
+export interface EpicVow { id: string; nameKey: string; descKey: string; }
+export const EPIC_VOWS: EpicVow[] = [
+  { id: "blood", nameKey: "vow.blood", descKey: "vow.blood.d" },   // dégâts subis ×2
+  { id: "ascetic", nameKey: "vow.ascetic", descKey: "vow.ascetic.d" }, // aucune fiole
+  { id: "blade", nameKey: "vow.blade", descKey: "vow.blade.d" },   // ni garde ni parade
+];
+const activeVows = new Set<string>();
+export function toggleVow(id: string) { activeVows.has(id) ? activeVows.delete(id) : activeVows.add(id); }
+export function isVowActive(id: string): boolean { return activeVows.has(id); }
+export function activeVowCount(): number { return activeVows.size; }
 
 // Nombre de cartes à afficher dans le menu : 5, ou les 8 une fois les secrets dévoilés.
 export function epicVisibleCount(): number {

@@ -2,7 +2,8 @@
 // Salles rectangulaires reliées par des couloirs en L ; connectivité garantie par
 // le chaînage des couloirs (chaque salle est reliée à la suivante).
 import { Tile, Pos, P, RNG, GameMap, manhattan } from "./core";
-import { Monster, MonsterCatalog, Chest, ChestType, Merchant, Pnj, Seal, Altar, Shrine, ELITE_AFFIXES } from "./entities";
+import { Monster, MonsterCatalog, MonsterRank, Chest, ChestType, Merchant, Pnj, Seal, Altar, Shrine, ELITE_AFFIXES } from "./entities";
+import { EPIC_BOSSES, epicClearedCount } from "./epicMode";
 import { Item, ItemCatalog } from "./items";
 import type { LevelData } from "./levels";
 
@@ -235,6 +236,22 @@ export function generateFloor(depth: number, rng: RNG): LevelData {
     }
     // Salle secrète (~55%) : un mur fissuré cache une poche au trésor légendaire.
     if (rng.next(0, 100) < 55) carveSecretRoom(map, rooms, rng, chests);
+    // L'ÉCHO DU COLOSSE (~8% dès la prof. 3) : un Colosse vaincu au Panthéon hante l'étage.
+    // Élite redoutable, grosse prime — le Panthéon déborde dans la Descente.
+    if (depth >= 3 && epicClearedCount() > 0 && rng.next(0, 100) < 8) {
+      const r = rooms[rng.next(1, rooms.length)];
+      const p = freeCellIn(r);
+      if (p) {
+        const eb = EPIC_BOSSES[rng.next(0, Math.min(epicClearedCount(), EPIC_BOSSES.length))];
+        monsters.push(new Monster({
+          nameKey: "mob.epicecho", pos: p,
+          hp: 30 + depth * 5, attack: 7 + Math.round(depth * 0.8),
+          minGold: 40 + depth * 4, maxGold: 60 + depth * 6,
+          minXp: 30 + depth * 3, maxXp: 45 + depth * 4,
+          rank: MonsterRank.MiniBoss, aggroRange: 6, sprite: eb.sprite,
+        }));
+      }
+    }
   }
 
   const pnjs: Pnj[] = [];

@@ -1,6 +1,7 @@
 // ===== Scène de combat : mise en scène du CombatSession =====
 import { Scene, SceneManager } from "./scenes";
 import { FilmScene, regicideFilmShots } from "./cinematics";
+import { epicSCount } from "./epicMode";
 import { VW, VH, text, textShadow, Particles, AmbientFX, FONT, wrapLine } from "./render";
 import { Input } from "./input";
 import { Audio } from "./audio";
@@ -202,6 +203,9 @@ export class CombatScene implements Scene {
     this.enemyLunge = Math.max(0, this.enemyLunge - dt * 4.5);
     this.allyLunge = Math.max(0, this.allyLunge - dt * 4.5);
     this.allyFlash = Math.max(0, this.allyFlash - dt * 4);
+    // aura du Panthéon : les rangs S font irradier le héros d'or, ici aussi
+    if (epicSCount() > 0 && Math.random() < dt * (3 + epicSCount() * 2))
+      this.particles.spawn({ x: this.heroX + (Math.random() - 0.5) * 40, y: this.heroY + (Math.random() - 0.5) * 40, vx: (Math.random() - 0.5) * 8, vy: -14 - Math.random() * 12, life: 0.9, maxLife: 0.9, size: 1.6, color: "#ffd84a", glow: true });
     this.ambient.update(dt);
     this.heroCast = Math.max(0, this.heroCast - dt * 2.6);
     this.enemyCast = Math.max(0, this.enemyCast - dt * 2.6);
