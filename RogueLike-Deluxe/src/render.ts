@@ -240,6 +240,7 @@ export class WorldRenderer {
   time = 0;
   private shake = 0;         // secousse caméra (exploration)
   private nightBlend = 0;    // fondu jour ↔ nuit (0 = jour, 1 = nuit)
+  private oathBlend = 0;     // fondu du Serment (< 0 Emprise rouge, > 0 Clémence froide)
   private lastPPos = { x: -1, y: -1 }; // poussière de pas
   private heroFacingLeft = false;      // orientation du héros
   private heroPrevTile: Pos | null = null; // dernière case logique (poussière de pas)
@@ -563,6 +564,24 @@ export class WorldRenderer {
       g.restore();
     }
 
+    // ---- Le Spectre (F2) : ta dépouille de la dernière run, un écho translucide à récupérer ----
+    if (ctx.spectre && ctx.discovered.has(key(P(ctx.spectre.x, ctx.spectre.y)))) {
+      const sx = ctx.spectre.x * TS - cx, sy = ctx.spectre.y * TS - cy;
+      const pulse = 0.4 + Math.sin(t * 3) * 0.18;
+      g.save();
+      g.globalAlpha = pulse;
+      g.shadowColor = "#b088e8"; g.shadowBlur = 14;
+      // silhouette spectrale (le héros, blanchi et fantomatique)
+      g.filter = "grayscale(1) brightness(1.6)";
+      const spr = getSprite("player");
+      if (spr) g.drawImage(spr, sx + 2, sy - 2 + Math.sin(t * 2) * 1.5, TS - 4, TS - 4);
+      g.filter = "none";
+      g.restore();
+      // lueur d'or au sol (l'or qu'il porte encore)
+      if (ctx.visible.has(key(P(ctx.spectre.x, ctx.spectre.y))) && Math.random() < dt * 10)
+        this.particles.spawn({ x: ctx.spectre.x * TS + TS / 2 + (Math.random() - 0.5) * 16, y: ctx.spectre.y * TS + TS / 2, vx: 0, vy: -14, life: 0.9, maxLife: 0.9, size: 2, color: "#ffd84a", glow: true });
+    }
+
     // ---- Particules ----
     this.particles.update(dt);
     this.particles.draw(g, cx, cy);
@@ -575,6 +594,30 @@ export class WorldRenderer {
     if (this.nightBlend > 0.01) {
       g.fillStyle = `rgba(30,40,110,${(0.18 * this.nightBlend).toFixed(3)})`;
       g.fillRect(0, 0, VW, VH);
+    }
+
+    // ---- F3 : L'ABÎME RÉAGIT À TON SERMENT ----
+    // Emprise (oath < 0) : le monde saigne, il pulse d'un rouge sourd — la Boucle t'épouse.
+    // Clémence (oath > 0) : une clarté froide baigne les ruines — tu cherches à les briser.
+    const oathN = clamp(ctx.oath / 8, -1, 1); // saturé à |oath|=8
+    this.oathBlend = lerp(this.oathBlend, oathN, clamp(dt * 1.5, 0, 1));
+    if (Math.abs(this.oathBlend) > 0.02 && !ctx.endless) {
+      const mag = Math.abs(this.oathBlend);
+      if (this.oathBlend < 0) {
+        // EMPRISE : vignette rouge qui bat comme un cœur + voile sanglant
+        const beat = 0.5 + Math.sin(t * 2.2) * 0.5;
+        const ov = g.createRadialGradient(VW / 2, VH / 2, VH * 0.28, VW / 2, VH / 2, VH * 0.95);
+        ov.addColorStop(0, "rgba(120,0,10,0)");
+        ov.addColorStop(1, `rgba(120,0,10,${(mag * (0.22 + beat * 0.12)).toFixed(3)})`);
+        g.fillStyle = ov; g.fillRect(0, 0, VW, VH);
+        g.fillStyle = `rgba(90,0,14,${(mag * 0.05).toFixed(3)})`; g.fillRect(0, 0, VW, VH);
+      } else {
+        // CLÉMENCE : halo froid et apaisé, une lumière qui refuse les ténèbres
+        const ov = g.createRadialGradient(VW / 2, VH * 0.42, VH * 0.15, VW / 2, VH / 2, VH * 0.9);
+        ov.addColorStop(0, `rgba(140,190,235,${(mag * 0.06).toFixed(3)})`);
+        ov.addColorStop(1, "rgba(140,190,235,0)");
+        g.fillStyle = ov; g.fillRect(0, 0, VW, VH);
+      }
     }
 
     // ---- Brume ambiante : deux nappes qui dérivent lentement ----

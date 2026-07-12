@@ -19,6 +19,7 @@ import { G, Flow } from "./game";
 import { loadSettings, loadGame, clearSave, saveGame, saveSettings } from "./save";
 import { Monster, Merchant, ClassId, applyClass } from "./entities";
 import { loadMeta, applyMetaToPlayer, essenceMultiplier } from "./meta";
+import { recordDeath } from "./legacy";
 
 const canvas = document.getElementById("game") as HTMLCanvasElement;
 const g = canvas.getContext("2d")!;
@@ -158,6 +159,11 @@ Flow.depthsIntroThenLevel5 = () => {
 
 Flow.endScreen = (victory: boolean, ending?: EndingId) => {
   if (victory) clearSave();
+  // F1/F2 — la Boucle te reprend : consigne ta chute (le monde s'en souviendra, ton Spectre t'attendra).
+  if (!victory && !G.ctx.endless) {
+    const p = G.ctx.player.pos;
+    recordDeath(G.ctx.currentLevel, p.x, p.y, G.ctx.player.gold, G.ctx.profAggro, G.ctx.profDef);
+  }
   SceneManager.switchTo(() => new EndScene(victory, () => Flow.toMenu(), ending));
 };
 

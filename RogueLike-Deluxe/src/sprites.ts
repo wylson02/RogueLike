@@ -466,6 +466,26 @@ export function initSprites() {
     "................",
   ], { W: "#c8c0b0", o: "#1a1620" });
 
+  // Pierre de Pacte (F4) : un autel noir veiné de rouge, l'Abîme te tend le pouvoir.
+  sprites["prop_pact"] = mk([
+    "................",
+    "................",
+    "......rrrr......",
+    ".....rRRRRr.....",
+    "....OaaaaaaO....",
+    "...OaAvvvvAaO...",
+    "...OavVRRVvaO...",
+    "...OaAvRRvAaO...",
+    "...OaAvvvvAaO...",
+    "...OaaaaaaaaO...",
+    "..OaaaaaaaaaaO..",
+    "..ObbbbbbbbbbO..",
+    "..ObbOObbOObbO..",
+    "...ObbbbbbbbO...",
+    "................",
+    "................",
+  ], { r: "#ff3b5a", R: "#c01030", a: "#3a2432", A: "#4e3244", v: "#1a0e18", V: "#2a1420", b: "#241820", O });
+
   // ================= PIÈGES DU LABYRINTHE =================
   sprites["trap_spikes"] = mk([
     "................",

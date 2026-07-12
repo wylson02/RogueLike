@@ -116,6 +116,7 @@ function level2(): LevelData {
       new Prop(P(22, 7), "column"), new Prop(P(17, 10), "column"),
       new Prop(P(11, 12), "puddle"), new Prop(P(17, 12), "puddle"),
       new Prop(P(10, 4), "skull"), new Prop(P(30, 5), "skull"),
+      new Prop(P(4, 18), "pact"), // PIERRE DE PACTE : dans la salle-refuge SO, entre Orin et Aelis
     ],
   };
 }
@@ -144,6 +145,7 @@ function level3(): LevelData {
       new Pnj(P(10, 8), "Elya", "pnj.elya"),
       new Pnj(P(28, 8), "Rival", "rival.lvl3.nosword"),
     ],
+    props: [new Prop(P(12, 8), "pact")], // PIERRE DE PACTE : sur le chemin, près d'Elya
     loreMarks: [new LoreMark(P(16, 8), "lore.inscription3", "lore_rune")],
   };
 }

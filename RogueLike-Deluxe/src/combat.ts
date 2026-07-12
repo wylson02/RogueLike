@@ -10,6 +10,7 @@ import { Monster, MonsterRank } from "./entities";
 import { hasResonance, elementStacks } from "./boons";
 import { SKILLS } from "./skills";
 import { codexRecordKill } from "./codex";
+import { legacyPlaystyle } from "./legacy";
 import { T } from "./i18n";
 
 export type CombatActionId = "attack" | "heal" | "dodge" | "flee" | "class" | "skill" | "item";
@@ -82,10 +83,19 @@ function patternFor(nameKey: string, phase2: boolean): Intent[] {
       return phase2
         ? [I.attack(1.1), I.pierce(1.4), I.charge(2.8, 5)]
         : [I.attack(), I.attack(1.1), I.charge(2.4, 4)];
-    case "mob.rival":
+    case "mob.rival": {
+      // F5 — LE RIVAL TE JOUE : il a appris ta façon de te battre à travers les Boucles.
+      const style = legacyPlaystyle();
+      if (style === "aggro")      // tu frappes sans cesse → il PARE et te punit
+        return phase2 ? [I.guard(2.5), I.pierce(1.5), I.charge(2.6, 3)] : [I.guard(2), I.attack(1.1), I.pierce(1.4)];
+      if (style === "def")        // tu temporises → il te SUBMERGE de coups imparables
+        return phase2 ? [I.pierce(1.5), I.pierce(1.4), I.charge(2.8, 4)] : [I.attack(1.1), I.pierce(1.4), I.pierce(1.3)];
+      if (style === "greed")      // tu thésaurises → il devient IMPRÉVISIBLE et brutal
+        return phase2 ? [I.charge(2.8, 4), I.attack(1.3), I.pierce(1.6)] : [I.pierce(1.4), I.charge(2.4, 3), I.attack(1.2)];
       return phase2
         ? [I.attack(1.1), I.pierce(1.5), I.charge(2.6, 3)]
         : [I.attack(), I.attack(), I.pierce(1.4)];
+    }
     case "mob.superboss":
       return phase2
         ? [I.pierce(1.4), I.leech(1.6, 80), I.charge(2.8, 5)]
@@ -143,6 +153,9 @@ export class CombatSession {
       this.addLog(T("combat.rival1"));
       this.addLog(T("combat.rival2", { name: enemy.name }));
       this.addLog(T(`combat.rival.class.${ctx.player.classId}`));
+      // F5 — il révèle qu'il a étudié ta manière de te battre au fil des Boucles
+      const style = legacyPlaystyle();
+      if (style) this.addLog(T(`combat.rival.learned.${style}`));
       this.addLog(T("combat.rival3"));
     } else if (enemy.rank === MonsterRank.Boss) {
       this.addLog(T("combat.boss1"));
@@ -403,6 +416,9 @@ export class CombatSession {
   }
 
   private executePlayerAction(action: CombatActionId, itemId?: string) {
+    // Profil de combat (F5) : le Rival apprendra ta façon de te battre au fil des Boucles.
+    if (action === "attack" || action === "skill") this.ctx.profAggro++;
+    else if (action === "dodge" || action === "heal" || action === "flee") this.ctx.profDef++;
     switch (action) {
       case "attack":
         this.strike(1, { label: "attack" });

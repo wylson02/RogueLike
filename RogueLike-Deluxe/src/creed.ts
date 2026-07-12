@@ -107,6 +107,39 @@ export const CREED_CHOICES: Record<string, CreedChoice> = {
   },
 };
 
+// ── Répétable : LA PIERRE DE PACTE (F4) — l'Abîme te tend le pouvoir, à un prix qui monte ──
+CREED_CHOICES["pact_abyss"] = {
+  id: "pact_abyss",
+  titleKey: "creed.pact.title",
+  sprite: "prop_pact",
+  spriteGlow: "#c01030",
+  quoteKey: "creed.pact.quote",
+  promptKey: "creed.pact.prompt",
+  options: [
+    {
+      id: "resist", side: "break", oath: +1,
+      labelKey: "creed.pact.resist", effectKey: "creed.pact.resist.fx", flavorKey: "creed.pact.resist.flavor",
+      apply: (ctx) => {
+        // Résister à l'appel affermit ta résolution : une part de tes forces revient.
+        ctx.player.heal(Math.round(ctx.player.maxHp * 0.15));
+      },
+    },
+    {
+      id: "seize", side: "perpetuate", oath: -2,
+      labelKey: "creed.pact.seize", effectKey: "creed.pact.seize.fx", flavorKey: "creed.pact.seize.flavor",
+      apply: (ctx) => {
+        // SAISIR : pouvoir immédiat (+ATK/+crit), mais chaque Pacte coûte plus de vie et t'enfonce.
+        ctx.pactsMade++;
+        ctx.player.modifyAttack(+2 + ctx.pactsMade);
+        ctx.player.modifyCritChance(+4);
+        const toll = 4 + ctx.pactsMade * 3; // le prix du sang, croissant
+        ctx.player.maxHp = Math.max(10, ctx.player.maxHp - toll);
+        if (ctx.player.hp > ctx.player.maxHp) ctx.player.hp = ctx.player.maxHp;
+      },
+    },
+  ],
+};
+
 export function getCreedChoice(id: string): CreedChoice | null {
   return CREED_CHOICES[id] ?? null;
 }

@@ -393,6 +393,16 @@ export const MonsterCatalog = {
     m.modifyCritMultiplierPercent(30);
     return m;
   },
+  // F6 — LA TRAQUE : l'écho du Rival te chasse la nuit (aggro longue portée, il te cherche).
+  rivalHunter: (pos: Pos) => {
+    const m = new Monster({
+      nameKey: "mob.rivalhunter", pos, hp: 34, attack: 8,
+      minGold: 30, maxGold: 55, minXp: 25, maxXp: 40,
+      rank: MonsterRank.MiniBoss, aggroRange: 14, sprite: "rival", aiKind: "aggro",
+    });
+    m.modifyCritChance(8);
+    return m;
+  },
   // Super-boss du donjon post-jeu (niveau 5)
   soulDevourer: (pos: Pos) => {
     const m = new Monster({
@@ -476,7 +486,7 @@ export class Trap {
 }
 
 // Décor purement visuel (non bloquant). Les torches émettent de la lumière.
-export type PropKind = "torch" | "bones" | "column" | "cobweb" | "puddle" | "skull";
+export type PropKind = "torch" | "bones" | "column" | "cobweb" | "puddle" | "skull" | "pact";
 export class Prop {
   pos: Pos; kind: PropKind;
   constructor(pos: Pos, kind: PropKind) { this.pos = pos; this.kind = kind; }

@@ -5,6 +5,7 @@ import { Pos, P, key, eqPos, move, Dir, DIRS4, Tile, GameMap, RNG, TimeSystem, m
 import { Player, Monster, MonsterCatalog, MonsterRank, Pnj, Chest, ChestType, Seal, Merchant, Altar, Shrine, Trap, Prop, LoreMark, Companion } from "./entities";
 import { QuestStatus, QUESTS, questDef } from "./quests";
 import { codexRecordLore } from "./codex";
+import { spectreFor, clearSpectre, legacyDeaths } from "./legacy";
 import { Item, ItemCatalog, rollLoot, NIGHT_MERCHANT_NAME } from "./items";
 import { createLevel, hasLevel } from "./levels";
 import { generateFloor, isBossDepth, isStratumEntry, stratumInfo } from "./procgen";
@@ -80,6 +81,12 @@ export class GameContext {
   oath = 0;
   choices: Record<string, string> = {}; // choiceId -> option retenue (mémoire des actes)
   rivalSpared = false;
+
+  // ===== L'Héritage de la Boucle (F1/F2/F4/F5) =====
+  spectre: { x: number; y: number; gold: number } | null = null; // ta dépouille de la dernière run sur cet étage
+  pactsMade = 0;      // Pactes de l'Abîme scellés ce run (coût croissant, glisse vers l'Emprise)
+  profAggro = 0;      // profil de combat du run : actions offensives
+  profDef = 0;        // profil de combat du run : esquives / soins / fuites
 
   // ===== Descente Infinie (roguelite procédural) =====
   endless = false;            // le run en cours est-il une Descente Infinie ?
@@ -251,6 +258,21 @@ export class GameContext {
     this.updateVision();
     this.pendingFloorBanner = true; // le bandeau ne s'affiche qu'à l'arrivée sur une nouvelle map (pas au retour de combat)
     this.eventCd = 30; this.eventsLeft = 2; // les événements rares se réarment à chaque map
+
+    // F2 — LE SPECTRE : si tu es tombé sur cet étage la dernière run, ta dépouille t'attend.
+    this.spectre = null;
+    if (!this.endless) {
+      const sp = spectreFor(level);
+      if (sp && this.map.inBounds(P(sp.x, sp.y)) && !eqPos(P(sp.x, sp.y), this.player.pos))
+        this.spectre = { x: sp.x, y: sp.y, gold: sp.gold };
+      // F1 — LA MORT EST DIÉGÉTIQUE : la Boucle se souvient de tes chutes.
+      const deaths = legacyDeaths();
+      if (deaths > 0 && level === 1) {
+        const line = deaths >= 5 ? "loop.remember3" : deaths >= 2 ? "loop.remember2" : "loop.remember1";
+        this.pushLog(T(line), LogKind.Warning);
+      }
+    }
+
     this.emit({ type: "levelLoaded", level });
   }
 
@@ -436,11 +458,41 @@ export class GameContext {
           this.nightMerchant = null;
           this.pushLog(T("night.merchant.gone"), LogKind.System);
         }
+        // F6 — l'aube chasse le traqueur : l'écho du Rival se dissipe.
+        if (this.rivalHunterActive) {
+          this.monsters = this.monsters.filter(m => !(m.nameKey === "mob.rivalhunter" && !m.isDead));
+          this.rivalHunterActive = false;
+        }
       }
     }
     this.tryNightSpawn();
+    this.tryRivalHunter();
     this.tryNightMerchantSpawn();
     this.clearToastIfExpired();
+  }
+
+  // F6 — LE RIVAL CHASSE LA NUIT : sur les premiers étages, son écho te traque dans l'ombre.
+  private rivalHunterActive = false;
+  private tryRivalHunter() {
+    if (this.endless || !this.time.isNight || this.rivalHunterActive) return;
+    if (this.currentLevel > 3) return; // au-delà, tu l'affrontes en personne
+    if (this.time.tick < this.nightSpawnBlockUntil) return;
+    if (this.rng.next(0, 100) > 14) return;
+    // il apparaît LOIN de toi (il vient de l'ombre, il faut le sentir approcher)
+    let pos: Pos | null = null;
+    for (let i = 0; i < 60; i++) {
+      const p = this.findSpawnCell();
+      if (p && manhattan(p, this.player.pos) >= 7) { pos = p; break; }
+    }
+    if (!pos) return;
+    const hunter = MonsterCatalog.rivalHunter(pos);
+    hunter.modifyAttack(+2); hunter.nightBuffed = true;
+    this.monsters.push(hunter);
+    this.rivalHunterActive = true;
+    this.pushLog(T("rivalhunt.appear"), LogKind.Warning);
+    this.showToast(T("rivalhunt.toast"), "#ffd0d0", "#2a0a14", 12);
+    this.emit({ type: "sfx", name: "spawn" });
+    this.emit({ type: "fx", name: "spawn", pos });
   }
 
   private tryNightMerchantSpawn() {
@@ -827,6 +879,19 @@ export class GameContext {
     // Déplacement
     this.player.setPosition(next);
     this.stepCompanion(prev);
+
+    // F2 — récupérer ton Spectre : ta dépouille rend l'or que tu portais à ta chute.
+    if (this.spectre && eqPos(next, P(this.spectre.x, this.spectre.y))) {
+      const g = this.spectre.gold;
+      this.spectre = null;
+      clearSpectre();
+      if (g > 0) this.player.addGold(g);
+      this.pushLog(T("spectre.reclaim", { n: g }), LogKind.Loot);
+      this.showToast(T("spectre.reclaim.toast"), "#e8d0ff", "#1a0f2a", 10);
+      this.emit({ type: "sfx", name: "pickup" });
+      this.emit({ type: "fx", name: "spectre", pos: next });
+    }
+
     this.tryExploreEvent(); // le donjon murmure parfois (événements rares)
     this.emit({ type: "sfx", name: "step" });
 
@@ -889,6 +954,16 @@ export class GameContext {
       this.updateVision();
       this.advanceTimeAfterPlayerMove();
       this.monstersTurn();
+      return;
+    }
+
+    // F4 — PIERRE DE PACTE : l'Abîme te tend le pouvoir. Un choix moral (Serment) escaladant.
+    const pact = this.props.find(pr => pr.kind === "pact" && eqPos(pr.pos, next));
+    if (pact) {
+      this.props = this.props.filter(pr => pr !== pact); // la pierre se consume une fois éveillée
+      this.updateVision();
+      this.emit({ type: "sfx", name: "altar" });
+      this.emit({ type: "creedChoice", id: "pact_abyss" });
       return;
     }
 
