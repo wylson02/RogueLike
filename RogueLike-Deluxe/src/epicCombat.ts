@@ -118,6 +118,8 @@ export class EpicCombatScene implements Scene {
   private chargedHit = false; // la lourde en vol est-elle chargée ? (brise-garde garanti)
   // ---- taunts & marques ----
   private firstBloodDone = false;
+  private walking = false;    // le héros se déplace-t-il cette frame ? (cycle de marche)
+  private walkPhase = 0;      // phase de foulée, avance avec la distance parcourue
   private tauntT = 0;
   private tauntText = "";
   private scars: { x: number; w: number; burn: boolean }[] = []; // marques persistantes du duel
@@ -342,9 +344,15 @@ export class EpicCombatScene implements Scene {
     let move = 0;
     if (Input.isDown("left")) move -= 1;
     if (Input.isDown("right")) move += 1;
+    this.walking = false;
     if (move !== 0 && !this.blocking) {
       this.hFacing = move as 1 | -1;
       this.hx = clamp(this.hx + move * EPIC_HERO.moveSpeed * dt, ARENA_L, ARENA_R);
+      // cycle de marche piloté par la distance parcourue (mouvement continu, ~46px par foulée)
+      this.walkPhase += (EPIC_HERO.moveSpeed * dt) / 46;
+      this.walking = true;
+      if (Math.random() < dt * 7)
+        this.particles.spawn({ x: this.hx - move * 14, y: FLOOR_Y + 2, vx: -move * 14, vy: -8 - Math.random() * 8, life: 0.4, maxLife: 0.4, size: 1.8, color: "#7a6e5c" });
     }
 
     // régénération d'endurance (réduite en garde)
@@ -1327,7 +1335,11 @@ export class EpicCombatScene implements Scene {
 
   private drawHero(g: CanvasRenderingContext2D) {
     const size = 90;
-    const spr = getSprite("player");
+    // cycle de marche : bond de foulée + alternance jambes écartées / jointes
+    const stride = this.walkPhase % 1;
+    const hop = this.walking ? Math.abs(Math.sin(this.walkPhase * Math.PI)) * 3 : 0;
+    const sway = this.walking ? Math.sin(this.walkPhase * Math.PI * 2) * 0.045 : 0;
+    const spr = getSprite(this.walking && stride > 0.25 && stride < 0.75 ? "player_walk" : "player") ?? getSprite("player");
     // ghosts de roulade
     for (const gh of this.ghosts) {
       g.globalAlpha = gh.life * 0.35;
@@ -1347,8 +1359,10 @@ export class EpicCombatScene implements Scene {
     if (flip) { g.translate(this.hx, 0); g.scale(-1, 1); g.translate(-this.hx, 0); }
     const rollLean = this.rollTimer > 0 ? Math.sin((1 - this.rollTimer / EPIC_HERO.rollDur) * Math.PI) * 0.5 : 0;
     if (rollLean) { g.translate(this.hx, FLOOR_Y - size / 2); g.rotate(this.rollDir * rollLean); g.translate(-this.hx, -(FLOOR_Y - size / 2)); }
-    this.hDraw = { x: this.hx - size / 2, y: FLOOR_Y - size, s: size, flip }; // mémorisé pour reflets / chroma / négatif
-    if (spr) g.drawImage(spr, this.hx - size / 2, FLOOR_Y - size, size, size);
+    // balancement de foulée (autour des pieds), seulement hors roulade
+    if (!rollLean && sway) { g.translate(this.hx, FLOOR_Y - 2); g.rotate(sway); g.translate(-this.hx, -(FLOOR_Y - 2)); }
+    this.hDraw = { x: this.hx - size / 2, y: FLOOR_Y - size - hop, s: size, flip }; // mémorisé pour reflets / chroma / négatif
+    if (spr) g.drawImage(spr, this.hx - size / 2, FLOOR_Y - size - hop, size, size);
     g.restore();
 
     // arme / effet d'attaque : double arc de lame avec traînée (le coup a un corps)
