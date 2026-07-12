@@ -3,14 +3,14 @@ import { Dir } from "./core";
 
 export type GameKey =
   | "up" | "down" | "left" | "right"
-  | "confirm" | "cancel" | "inventory" | "progression"
+  | "confirm" | "cancel" | "inventory" | "progression" | "map"
   | "act1" | "act2" | "act3" | "act4" | "act5" | "act6" | "tabL" | "tabR";
 
 // Liaisons par défaut : chaque action accepte plusieurs codes physiques (QWERTY/AZERTY, flèches, pavé).
 export const DEFAULT_BINDS: Record<GameKey, string[]> = {
   up: ["ArrowUp", "KeyW"], down: ["ArrowDown", "KeyS"], left: ["ArrowLeft", "KeyA"], right: ["ArrowRight", "KeyD"],
   confirm: ["Enter", "Space", "NumpadEnter"], cancel: ["Escape"],
-  inventory: ["KeyI"], progression: ["KeyC", "KeyP"],
+  inventory: ["KeyI"], progression: ["KeyC", "KeyP"], map: ["KeyM"],
   act1: ["Digit1", "Numpad1"], act2: ["Digit2", "Numpad2", "KeyH"], act3: ["Digit3", "Numpad3"],
   act4: ["Digit4", "Numpad4", "KeyF"], act5: ["Digit5", "Numpad5"], act6: ["Digit6", "Numpad6"],
   tabL: ["KeyQ"], tabR: ["KeyE"],
@@ -21,7 +21,7 @@ export const DEFAULT_BINDS: Record<GameKey, string[]> = {
 // pilotent les menus — les laisser remappables permettrait de se bloquer (soft-lock).
 export const BIND_ORDER: GameKey[] = [
   "up", "down", "left", "right",
-  "act1", "act2", "act3", "act4", "act5", "act6", "tabL", "tabR", "inventory", "progression",
+  "act1", "act2", "act3", "act4", "act5", "act6", "tabL", "tabR", "inventory", "progression", "map",
 ];
 
 // Actions qui doivent TOUJOURS garder au moins une touche (sinon on ne peut plus opérer les menus).

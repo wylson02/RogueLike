@@ -9,6 +9,7 @@ import { G, Flow } from "./game";
 import { getSprite } from "./sprites";
 import { ClassId, ClassCatalog } from "./entities";
 import { clamp } from "./core";
+import { BESTIARY, BestiaryEntry, codexKills, codexLoreFound, LORE_KEYS } from "./codex";
 
 export class MainMenuScene implements Scene {
   private sel = 0;
@@ -28,6 +29,7 @@ export class MainMenuScene implements Scene {
     this.items.push({ key: "menu.new", desc: "menu.new.desc", action: () => SceneManager.push(new ClassSelectScene()) });
     this.items.push({ key: "menu.endless", desc: "menu.endless.desc", action: () => Flow.endlessHub() });
     this.items.push({ key: "menu.epic", desc: "menu.epic.desc", action: () => Flow.epicHub() });
+    this.items.push({ key: "menu.codex", desc: "menu.codex.desc", action: () => SceneManager.push(new CodexScene()) });
     this.items.push({ key: "menu.options", desc: "menu.options.desc", action: () => SceneManager.push(new OptionsScene()) });
     this.items.push({ key: "menu.credits", desc: "menu.credits.desc", action: () => SceneManager.push(new CreditsScene()) });
     this.items.push({ key: "menu.quit", desc: "menu.quit.desc", action: () => { try { window.close(); } catch { } } });
@@ -399,6 +401,81 @@ export class KeybindScene implements Scene {
 }
 
 // ===== Crédits =====
+// ===== LE CODEX : bestiaire + échos de lore, consignés au fil des parties =====
+export class CodexScene implements Scene {
+  private sel = 0;
+  private t = 0;
+
+  update(dt: number) {
+    this.t += dt;
+    if (Input.consume("cancel")) { Audio.sfx("back"); SceneManager.pop(); return; }
+    const n = BESTIARY.length;
+    if (Input.consume("left")) { this.sel = (this.sel + n - 1) % n; Audio.sfx("ui"); }
+    if (Input.consume("right")) { this.sel = (this.sel + 1) % n; Audio.sfx("ui"); }
+    if (Input.consume("up")) { this.sel = (this.sel + n - 6) % n; Audio.sfx("ui"); }
+    if (Input.consume("down")) { this.sel = (this.sel + 6) % n; Audio.sfx("ui"); }
+  }
+
+  // cumule les variantes (le Gardien enragé compte avec le Gardien)
+  private killsFor(e: BestiaryEntry): number {
+    let k = codexKills(e.nameKey);
+    if (e.nameKey === "mob.warden") k += codexKills("mob.warden.enraged");
+    return k;
+  }
+
+  draw(g: CanvasRenderingContext2D) {
+    dimBackground(g);
+    const w = 760, h = 470, x = VW / 2 - w / 2, y = VH / 2 - h / 2;
+    panel(g, x, y, w, h, T("codex.title"));
+
+    // ---- grille du bestiaire (6 × 2) ----
+    const cols = 6, cell = 92, gx = x + (w - cols * cell) / 2, gy = y + 52;
+    BESTIARY.forEach((e, i) => {
+      const cx2 = gx + (i % cols) * cell, cy2 = gy + Math.floor(i / cols) * cell;
+      const known = this.killsFor(e) > 0;
+      const selected = i === this.sel;
+      g.fillStyle = selected ? "rgba(120,30,40,.55)" : "rgba(20,14,28,.75)";
+      g.beginPath(); g.roundRect(cx2 + 4, cy2 + 4, cell - 8, cell - 8, 8); g.fill();
+      g.strokeStyle = selected ? "#ffb0a0" : e.boss && known ? "rgba(200,120,140,.55)" : "rgba(130,120,155,.3)";
+      g.lineWidth = selected ? 2 : 1;
+      g.beginPath(); g.roundRect(cx2 + 4, cy2 + 4, cell - 8, cell - 8, 8); g.stroke();
+      const spr = getSprite(e.sprite);
+      if (spr) {
+        g.save();
+        g.imageSmoothingEnabled = false;
+        if (!known) g.filter = "brightness(0.12)"; // silhouette : encore à découvrir
+        else if (e.boss) { g.shadowColor = "#ff5060"; g.shadowBlur = 10; }
+        g.drawImage(spr, cx2 + cell / 2 - 28, cy2 + cell / 2 - 30, 56, 56);
+        g.restore();
+      }
+      if (!known) textShadow(g, "?", cx2 + cell / 2, cy2 + cell - 16, 13, "#7a7090", "center");
+    });
+
+    // ---- fiche de l'entrée sélectionnée ----
+    const e = BESTIARY[this.sel];
+    const known = this.killsFor(e) > 0;
+    const fy = gy + 2 * cell + 12;
+    g.strokeStyle = "rgba(150,130,180,.25)"; g.lineWidth = 1;
+    g.beginPath(); g.moveTo(x + 20, fy - 4); g.lineTo(x + w - 20, fy - 4); g.stroke();
+    if (known) {
+      textShadow(g, T(e.nameKey) + (e.boss ? "   ✦" : ""), x + w / 2, fy + 12, 16, e.boss ? "#ff9aa4" : "#f0e2c8", "center");
+      text(g, T("codex.kills", { n: this.killsFor(e) }), x + w / 2, fy + 32, 12, "#c8a86a", "center");
+      g.font = `bold 12px ${FONT}`;
+      const lines = wrapLine(g, T(e.descKey), w - 80, 3);
+      let ly = fy + 52;
+      for (const ln of lines) { text(g, ln, x + w / 2, ly, 12, "#b8b0c8", "center"); ly += 16; }
+    } else {
+      textShadow(g, "???", x + w / 2, fy + 12, 16, "#7a7090", "center");
+      text(g, T("codex.unknown"), x + w / 2, fy + 40, 12, "#8a8098", "center");
+    }
+
+    // ---- échos de lore ----
+    const found = codexLoreFound().filter(k => LORE_KEYS.includes(k));
+    textShadow(g, T("codex.lore", { n: found.length, total: LORE_KEYS.length }), x + w / 2, y + h - 42, 13, "#c8a8ff", "center");
+    text(g, T("codex.nav"), x + w / 2, y + h - 20, 11, "#8a8098", "center");
+  }
+}
+
 export class CreditsScene implements Scene {
   update(dt: number) {
     if (Input.consume("cancel") || Input.consume("confirm")) { Audio.sfx("back"); SceneManager.pop(); }

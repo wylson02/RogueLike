@@ -75,7 +75,8 @@ function level2(): LevelData {
       MonsterCatalog.slime(P(18, 4)),      // couloir nord
       MonsterCatalog.golem(P(16, 11)),     // patrouille la rotonde centrale
       MonsterCatalog.slime(P(15, 17)),     // route sud
-      MonsterCatalog.gargoyle(P(30, 17)),  // garde la salle de la sortie
+      MonsterCatalog.gargoyle(P(24, 17)),  // rôde sur la route sud
+      MonsterCatalog.minotaur(P(30, 17)),  // LE MINOTAURE : boss du Labyrinthe, garde la sortie
     ],
     items: [],
     chests: [

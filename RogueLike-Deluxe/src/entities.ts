@@ -353,6 +353,12 @@ export const MonsterCatalog = {
     minGold: 30, maxGold: 55, minXp: 25, maxXp: 40,
     rank: MonsterRank.MiniBoss, aggroRange: 6, sprite: "warden",
   }),
+  // Boss du Labyrinthe : le Minotaure des Catacombes garde la sortie du niveau 2.
+  minotaur: (pos: Pos) => new Monster({
+    nameKey: "mob.minotaur", pos, hp: 40, attack: 8,
+    minGold: 40, maxGold: 70, minXp: 35, maxXp: 50,
+    rank: MonsterRank.MiniBoss, aggroRange: 6, sprite: "minotaur", aiKind: "patrol",
+  }),
   // Cible de prime (quête bounty_gnaw) : une élite nommée qui rôde dans le labyrinthe.
   gnawer: (pos: Pos) => new Monster({
     nameKey: "mob.gnawer", pos, hp: 34, attack: 8,

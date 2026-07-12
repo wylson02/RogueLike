@@ -96,7 +96,8 @@ export class CombatScene implements Scene {
     // le Dévoreur et les autres boss gardent boss.mp3.
     const warden = this.enemy.nameKey.startsWith("mob.warden");
     const king = this.enemy.nameKey === "mob.boss" && !G.ctx.endless;
-    Audio.setMode(warden ? "warden" : king ? "abyssking" : this.enemy.rank === MonsterRank.Boss ? "boss" : "combat");
+    const minotaur = this.enemy.nameKey === "mob.minotaur"; // le maître du Labyrinthe mérite le thème boss
+    Audio.setMode(warden ? "warden" : king ? "abyssking" : minotaur || this.enemy.rank === MonsterRank.Boss ? "boss" : "combat");
     if (this.enemy.rank === MonsterRank.Boss) Audio.sfx("roar");
     else Audio.sfx("hit");
   }

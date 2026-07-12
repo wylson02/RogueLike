@@ -9,6 +9,7 @@ import { LogKind, GameEvent } from "./context";
 import { StatType, Merchant, EquipSlot, MAX_WEAPON_UPGRADE, Monster, MonsterRank, TalentCatalog, chooseTalent, Altar } from "./entities";
 import { RelicDraftScene } from "./endlessScenes";
 import { bossEncounterPages } from "./cinematics";
+import { Tile, key, P } from "./core";
 import { stratumInfo } from "./procgen";
 import { Item, ItemCatalog, sellPrice, MERCHANT_STOCK, NIGHT_MERCHANT_STOCK, NIGHT_MERCHANT_NAME } from "./items";
 import { getSprite } from "./sprites";
@@ -27,6 +28,7 @@ export class ExploreScene implements Scene {
   private flashT = 0;
   private bannerT = 0;          // bannière d'étage (Descente)
   private bannerText = "";
+  private mapOpen = false;      // carte plein écran (touche M)
 
   enter() {
     Audio.setMode(G.ctx.time.isNight ? "night" : "explore");
@@ -74,6 +76,13 @@ export class ExploreScene implements Scene {
     // Palier de talent en attente (niveaux 3 et 6) : choix obligatoire avant de continuer
     const tier = ctx.player.pendingTalentTier();
     if (tier) { SceneManager.push(new TalentChoiceScene(tier)); return; }
+
+    // carte plein écran : M ouvre/ferme, tout le reste est gelé pendant la lecture
+    if (Input.consume("map")) { this.mapOpen = !this.mapOpen; Audio.sfx("ui"); Input.clear(); return; }
+    if (this.mapOpen) {
+      if (Input.consume("cancel") || Input.consume("confirm")) { this.mapOpen = false; Audio.sfx("back"); Input.clear(); }
+      return;
+    }
 
     if (Input.consume("cancel")) { Audio.sfx("ui"); SceneManager.push(new PauseScene()); return; }
     if (Input.consume("inventory")) { Audio.sfx("ui"); SceneManager.push(new InventoryScene()); return; }
@@ -145,6 +154,47 @@ export class ExploreScene implements Scene {
   draw(g: CanvasRenderingContext2D) {
     G.world.draw(g, G.ctx, Math.min(0.05, this.lastDt));
     drawHud(g, G.ctx, this.t);
+
+    // ===== carte plein écran (touche M) : tout ce qui a été découvert, annoté =====
+    if (this.mapOpen) {
+      const ctx = G.ctx, m = ctx.map;
+      g.fillStyle = "rgba(5,4,10,.92)"; g.fillRect(0, 0, VW, VH);
+      textShadow(g, T("map.title"), VW / 2, 36, 22, "#e8d8c0", "center");
+      const s = Math.min((VW - 120) / m.width, (VH - 150) / m.height);
+      const ox = VW / 2 - (m.width * s) / 2, oy = 70;
+      const TILE_COL: Record<number, string> = {
+        [Tile.Floor]: "#3a3450", [Tile.Wall]: "#181428", [Tile.Exit]: "#ffd84a",
+        [Tile.DoorClosed]: "#c07a3a", [Tile.DoorOpen]: "#7a5a30", [Tile.Cracked]: "#4a4060",
+      };
+      for (let y = 0; y < m.height; y++)
+        for (let x = 0; x < m.width; x++) {
+          if (!ctx.discovered.has(key(P(x, y)))) continue;
+          g.fillStyle = TILE_COL[m.get(P(x, y))] ?? "#3a3450";
+          g.fillRect(ox + x * s, oy + y * s, s - 0.5, s - 0.5);
+        }
+      // annotations (uniquement ce qui est découvert)
+      const dot = (p: { x: number; y: number }, col: string, r = s * 0.42) => {
+        g.fillStyle = col; g.shadowColor = col; g.shadowBlur = 6;
+        g.beginPath(); g.arc(ox + p.x * s + s / 2, oy + p.y * s + s / 2, r, 0, Math.PI * 2); g.fill();
+        g.shadowBlur = 0;
+      };
+      if (ctx.merchant && ctx.discovered.has(key(ctx.merchant.pos))) dot(ctx.merchant.pos, "#ffd84a");
+      for (const se of ctx.seals) if (!se.isActivated && ctx.discovered.has(key(se.pos))) dot(se.pos, "#8a5fd0");
+      for (const n of ctx.pnjs) if (ctx.discovered.has(key(n.pos))) dot(n.pos, "#5ad06a");
+      if (ctx.companion?.alive) dot(ctx.companion.pos, "#8fe8a0");
+      // le héros pulse en blanc
+      dot(ctx.player.pos, "#ffffff", s * (0.5 + Math.sin(this.t * 5) * 0.12));
+      // légende
+      const leg: [string, string][] = [["#ffffff", T("map.you")], ["#5ad06a", T("map.pnj")], ["#ffd84a", T("map.merchant")], ["#8a5fd0", T("map.seal")], ["#c07a3a", T("map.door")]];
+      let lx2 = VW / 2 - 300;
+      for (const [col, lab] of leg) {
+        g.fillStyle = col; g.beginPath(); g.arc(lx2, VH - 44, 5, 0, Math.PI * 2); g.fill();
+        text(g, lab, lx2 + 12, VH - 44, 12, "#b8b0c8", "left");
+        lx2 += 130;
+      }
+      text(g, T("map.hint"), VW / 2, VH - 18, 11, "#7e7490", "center");
+      return; // rien d'autre par-dessus la carte
+    }
 
     // Bannière d'étage (Descente) : la profondeur s'annonce en lettres de pierre
     if (this.bannerT > 0) {

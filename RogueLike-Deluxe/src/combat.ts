@@ -9,6 +9,7 @@ import { GameContext, LogKind } from "./context";
 import { Monster, MonsterRank } from "./entities";
 import { hasResonance, elementStacks } from "./boons";
 import { SKILLS } from "./skills";
+import { codexRecordKill } from "./codex";
 import { T } from "./i18n";
 
 export type CombatActionId = "attack" | "heal" | "dodge" | "flee" | "class" | "skill" | "item";
@@ -74,6 +75,7 @@ function patternFor(nameKey: string, phase2: boolean): Intent[] {
     case "mob.spider": return [I.attack(), I.venom(0.9, 2), I.attack(1.1)];
     case "mob.golem": return [I.attack(), I.attack(0.9), I.charge(2.4, 3)];
     case "mob.gargoyle": return [I.attack(), I.guard(2), I.heavy(1.6)];
+    case "mob.minotaur": return [I.attack(1.1), I.charge(2.3, 3), I.attack(), I.pierce(1.5)];
     case "mob.warden":
     case "mob.warden.enraged": return [I.attack(), I.guard(3), I.charge(2.2, 2)];
     case "mob.boss":
@@ -581,6 +583,10 @@ export class CombatSession {
     };
     switch (this.enemy.nameKey) {
       case "mob.golem": if (hpPct <= 0.5) forceCharge(3, 5); break;
+      case "mob.minotaur":
+        // Enragé à mi-vie : il charge tête baissée, encore et encore.
+        if (hpPct <= 0.5) { forceCharge(3, 4); this.addLog(T("combat.special.minotaur", { name: this.enemy.name })); }
+        break;
       case "mob.nightslime":
         if (hpPct <= 0.5) { this.enemySpecialUsed = true; this.intent = I.leech(2, 50); }
         break;
@@ -615,6 +621,7 @@ export class CombatSession {
 
   private checkEnemyDead() {
     if (!this.enemy.isDead) return;
+    codexRecordKill(this.enemy.nameKey); // le Codex consigne chaque créature abattue
     this.addLog(T(this.enemy.feminine ? "combat.dead.f" : "combat.dead", { name: this.enemy.name }));
     if (!this.rewardGiven && !this.playerFled) {
       this.rewardGiven = true;

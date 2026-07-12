@@ -241,6 +241,15 @@ export function bossEncounterPages(nameKey: string): CinePage[] | null {
         ],
         sfx: "warden",
       }];
+    case "mob.minotaur": // Le Minotaure des Catacombes — le maître du Labyrinthe
+      return [{
+        title: T("mob.minotaur").toUpperCase(), sprite: "minotaur", spriteGlow: "#c07a3a", bg: "#0e0a06",
+        lines: [
+          { text: T("bossenc.minotaur.1") },
+          { text: T("bossenc.minotaur.2"), color: "#ffb070" },
+        ],
+        sfx: "roar",
+      }];
     case "mob.rival": { // Le Rival — sa transformation. Il te reconnaît selon LE SERMENT que tu portes.
       const tier = G.ctx.creedTier();
       // Selon ta voie, il te retrouve en frère d'armes, en étranger, ou en tyran jumeau.

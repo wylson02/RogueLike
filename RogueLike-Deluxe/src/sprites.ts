@@ -215,6 +215,29 @@ export function initSprites() {
     "................",
   ], { r: "#4a5560", R: "#7a8a9a", e: "#3af0c8", f: "#8afff0", c: "#5fd442", C: "#3a9e2a", O });
 
+  // ================= LE MINOTAURE DES CATACOMBES (boss du Labyrinthe) =================
+  sprites["minotaur"] = mk([
+    ".W...........W..",
+    ".WW.........WW..",
+    "..WOhhhhhhhOW...",
+    "..OhhhhhhhhhO...",
+    "..OhReehheeRhO..",
+    "..OhhhhnnhhhhO..",
+    "...OhhhnnhhhO...",
+    "..ObbbbbbbbbbO..",
+    ".ObbBBBBBBBBbbO.",
+    ".ObbBBBBBBBBbbO.",
+    ".ObbbBBBBBBbbbO.",
+    "..ObbbbbbbbbbO..",
+    "...ObbbOObbbO...",
+    "...OllO..OllO...",
+    "..OwwO....OwwO..",
+    "................",
+  ], {
+    W: "#e8dcc0", h: "#6b4a32", R: "#ff3b3b", e: "#ff6b4a", n: "#2a1c14",
+    b: "#7a5238", B: "#8a6244", l: "#4a3424", w: "#3a2a1c", O,
+  });
+
   // ================= GOLEM =================
   sprites["golem"] = mk([
     "................",

@@ -4,6 +4,7 @@
 import { Pos, P, key, eqPos, move, Dir, DIRS4, Tile, GameMap, RNG, TimeSystem, manhattan } from "./core";
 import { Player, Monster, MonsterCatalog, MonsterRank, Pnj, Chest, ChestType, Seal, Merchant, Altar, Shrine, Trap, Prop, LoreMark, Companion } from "./entities";
 import { QuestStatus, QUESTS, questDef } from "./quests";
+import { codexRecordLore } from "./codex";
 import { Item, ItemCatalog, rollLoot, NIGHT_MERCHANT_NAME } from "./items";
 import { createLevel, hasLevel } from "./levels";
 import { generateFloor, isBossDepth, isStratumEntry, stratumInfo } from "./procgen";
@@ -68,6 +69,10 @@ export class GameContext {
   // ===== Quêtes & compagnon =====
   questStates: Record<string, QuestStatus> = {}; // questId -> état (persistant ; "failed" définitif)
   companion: Companion | null = null;            // PNJ recruté qui te suit et combat à tes côtés
+
+  // ===== Événements d'exploration rares (campagne) =====
+  private eventCd = 30;     // pas restants avant qu'un événement puisse surgir
+  private eventsLeft = 2;   // maximum par map (la rareté fait le sel)
 
   // ===== LE SERMENT : axe moral de campagne (Briser vs Perpétuer la Boucle) =====
   // oath < 0 : Emprise (tu embrasses la Boucle, tu descends vers le trône)
@@ -245,7 +250,47 @@ export class GameContext {
     if (level >= 4) this.ensureBossReachable();
     this.updateVision();
     this.pendingFloorBanner = true; // le bandeau ne s'affiche qu'à l'arrivée sur une nouvelle map (pas au retour de combat)
+    this.eventCd = 30; this.eventsLeft = 2; // les événements rares se réarment à chaque map
     this.emit({ type: "levelLoaded", level });
+  }
+
+  // ===== Événements d'exploration rares : le donjon murmure parfois =====
+  private tryExploreEvent() {
+    if (this.endless || this.eventsLeft <= 0) return;
+    if (this.eventCd > 0) { this.eventCd--; return; }
+    if (this.rng.next(0, 100) >= 3) return; // ~3% par pas une fois le délai passé
+    this.eventCd = 45; this.eventsLeft--;
+    const roll = this.rng.next(0, 3);
+    if (roll === 0) {
+      // les ossements d'un descendeur d'avant : sa bourse a survécu
+      const gold = 15 + this.rng.next(0, 16);
+      this.player.addGold(gold);
+      this.pushLog(T("event.bones", { n: gold }), LogKind.Loot);
+      this.showToast(T("event.bones.toast"), "#ffe9c0", "#3a2a10", 9);
+      this.emit({ type: "sfx", name: "pickup" });
+    } else if (roll === 1) {
+      // un écho bienveillant : une âme apaisée souffle sur tes plaies
+      const heal = 12;
+      this.player.heal(heal);
+      this.pushLog(T("event.echo", { n: heal }), LogKind.Loot);
+      this.showToast(T("event.echo.toast"), "#c8f0ff", "#10344a", 9);
+      this.emit({ type: "sfx", name: "heal" });
+    } else {
+      // une cache oubliée : trésor... ou piège (le donjon ne donne rien gratuitement)
+      if (this.rng.next(0, 100) < 55) {
+        this.player.addToInventory(ItemCatalog.create("Bomb", P(-1, -1)));
+        this.pushLog(T("event.cache.good"), LogKind.Loot);
+        this.showToast(T("event.cache.good.toast"), "#ffe9c0", "#3a2a10", 9);
+        this.emit({ type: "sfx", name: "chest" });
+      } else {
+        const dmg = 6;
+        this.player.hp -= dmg;
+        this.pushLog(T("event.cache.bad", { n: dmg }), LogKind.Warning);
+        this.showToast(T("event.cache.bad.toast"), "#ffd0d0", "#3a0a0a", 9);
+        this.emit({ type: "sfx", name: "hurt" });
+        this.emit({ type: "shake", power: 0.8 });
+      }
+    }
   }
 
   // ===== Descente Infinie : démarre un run et charge un étage procédural =====
@@ -782,6 +827,7 @@ export class GameContext {
     // Déplacement
     this.player.setPosition(next);
     this.stepCompanion(prev);
+    this.tryExploreEvent(); // le donjon murmure parfois (événements rares)
     this.emit({ type: "sfx", name: "step" });
 
     // Marchand
@@ -850,6 +896,7 @@ export class GameContext {
     const lore = this.loreMarkAt(next);
     if (lore) {
       lore.seen = true;
+      codexRecordLore(lore.cineKey); // consigné au Codex
       this.updateVision();
       this.emit({ type: "sfx", name: "seal" });
       this.emit({ type: "lore", mark: lore });
